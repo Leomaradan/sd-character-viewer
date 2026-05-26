@@ -61,11 +61,6 @@ function buildPoseOptions(images: IImageItem[]): string[] {
   return [...uniquePoses].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
-function buildCharacterOptions(images: IImageItem[]): string[] {
-  const uniqueCharacters = new Set(images.map((image) => image.characterName));
-  return [...uniqueCharacters].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-}
-
 function buildPoseFilterOptions(poses: string[]): Array<{ value: string; label: string }> {
   const nonWithPoses: Array<{ value: string; label: string }> = [];
   let hasWithPoses = false;
@@ -191,8 +186,7 @@ export default function ImageViewerApp() {
   const [characterDetailPose, setCharacterDetailPose] = useState<string>("all");
 
   const [styleViewStyle, setStyleViewStyle] = useState<TStyle>("3d");
-  const [styleViewCharacter, setStyleViewCharacter] = useState<string>("all");
-  const [styleViewPose, setStyleViewPose] = useState<string>("all");
+  const [styleViewSearchText, setStyleViewSearchText] = useState<string>("");
 
   const [poseViewSelectedPoses, setPoseViewSelectedPoses] = useState<string[]>([]);
   const [poseViewStyle, setPoseViewStyle] = useState<"all" | TStyle>("all");
@@ -267,22 +261,19 @@ export default function ImageViewerApp() {
   }, [selectedCharacterImages, characterDetailStyle, characterDetailPose]);
 
   const styleFilteredImages = useMemo(() => {
+    const normalizedSearchText = styleViewSearchText.trim().toLowerCase();
+
     return library.images.filter((image) => {
       const matchesStyle = image.style === styleViewStyle;
-      const matchesCharacter =
-        styleViewCharacter === "all" ? true : image.characterName === styleViewCharacter;
-      const matchesPose = styleViewPose === "all" ? true : image.poseBaseName === styleViewPose;
-      return matchesStyle && matchesCharacter && matchesPose;
+      const matchesSearchText =
+        normalizedSearchText.length === 0
+          ? true
+          : image.characterName.toLowerCase().includes(normalizedSearchText) ||
+            image.poseBaseName.toLowerCase().includes(normalizedSearchText);
+
+      return matchesStyle && matchesSearchText;
     });
-  }, [library.images, styleViewStyle, styleViewCharacter, styleViewPose]);
-
-  const styleViewCharacters = useMemo(() => {
-    return buildCharacterOptions(library.images.filter((image) => image.style === styleViewStyle));
-  }, [library.images, styleViewStyle]);
-
-  const styleViewPoses = useMemo(() => {
-    return buildPoseOptions(library.images.filter((image) => image.style === styleViewStyle));
-  }, [library.images, styleViewStyle]);
+  }, [library.images, styleViewStyle, styleViewSearchText]);
 
   const poseFilteredImages = useMemo(() => {
     const normalizedCharacterSearch = poseViewCharacterSearch.trim().toLowerCase();
@@ -516,44 +507,35 @@ export default function ImageViewerApp() {
             color={styleViewStyle === style ? "primary" : "default"}
             onClick={() => {
               setStyleViewStyle(style);
-              setStyleViewCharacter("all");
-              setStyleViewPose("all");
+              setStyleViewSearchText("");
             }}
           />
         ))}
       </Stack>
 
-      <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
-        <Chip
-          label="All characters"
-          color={styleViewCharacter === "all" ? "secondary" : "default"}
-          onClick={() => setStyleViewCharacter("all")}
-        />
-        {styleViewCharacters.map((characterName) => (
-          <Chip
-            key={characterName}
-            label={characterName}
-            color={styleViewCharacter === characterName ? "secondary" : "default"}
-            onClick={() => setStyleViewCharacter(characterName)}
-          />
-        ))}
-      </Stack>
-
-      <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
-        <Chip
-          label="All poses"
-          color={styleViewPose === "all" ? "secondary" : "default"}
-          onClick={() => setStyleViewPose("all")}
-        />
-        {styleViewPoses.map((poseName) => (
-          <Chip
-            key={poseName}
-            label={poseName}
-            color={styleViewPose === poseName ? "secondary" : "default"}
-            onClick={() => setStyleViewPose(poseName)}
-          />
-        ))}
-      </Stack>
+      <TextField
+        fullWidth
+        label="Search character or pose"
+        value={styleViewSearchText}
+        onChange={(event) => setStyleViewSearchText(event.target.value)}
+        placeholder="Type part of a character or pose name"
+        slotProps={{
+          input: {
+            endAdornment: styleViewSearchText ? (
+              <InputAdornment position="end">
+                <IconButton
+                  edge="end"
+                  size="small"
+                  aria-label="Clear style search"
+                  onClick={() => setStyleViewSearchText("")}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </InputAdornment>
+            ) : undefined,
+          },
+        }}
+      />
 
       <Box
         sx={{
