@@ -1,9 +1,14 @@
 import { promises as fs } from "node:fs";
+import { isAuthenticatedRequest, isPasswordProtectionEnabled } from "@/lib/auth";
 import { resolveImageFilePath } from "@/lib/image-library";
 
 export const dynamic = "force-dynamic";
 
 export const GET = async (request: Request) => {
+  if (isPasswordProtectionEnabled() && !isAuthenticatedRequest(request)) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const requestedPath = searchParams.get("path")?.trim() ?? "";
 

@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import { decode } from "png-chunk-text";
 import extractChunks from "png-chunks-extract";
+import { isAuthenticatedRequest, isPasswordProtectionEnabled } from "@/lib/auth";
 import { resolveImageFilePath } from "@/lib/image-library";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,10 @@ function sweepExpiredEntries(): void {
 // ---------- route handler ----------
 
 export const GET = async (request: Request) => {
+  if (isPasswordProtectionEnabled() && !isAuthenticatedRequest(request)) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const requestedPath = searchParams.get("path")?.trim() ?? "";
 
