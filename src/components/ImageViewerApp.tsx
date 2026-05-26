@@ -4,185 +4,27 @@ import {
   Alert,
   AppBar,
   Box,
-  Card,
-  CardActionArea,
-  CardContent,
-  Chip,
   CircularProgress,
   Drawer,
   IconButton,
-  InputAdornment,
-  List,
-  ListItemButton,
-  ListItemText,
-  Stack,
-  TextField,
   Toolbar,
   Typography,
 } from "@mui/material";
-import CloseIcon from "@mui/icons-material/Close";
 import MenuIcon from "@mui/icons-material/Menu";
-import type { SxProps, Theme } from "@mui/material/styles";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { IImageItem, ILibraryData, TMajorFilter, TStyle } from "@/types/library";
-
-const DEFAULT_LIBRARY: ILibraryData = {
-  rootConfigured: false,
-  rootPath: null,
-  defaultStyle: "3d",
-  styles: ["realistic", "3d", "anime"],
-  images: [],
-  characters: [],
-  poses: [],
-  warning: null,
-};
-
-const SIDEBAR_WIDTH = 280;
-const WITH_SOMEBODY_FILTER = "__with_somebody__";
-
-function getImageUrl(relativePath: string): string {
-  return `/api/image?path=${encodeURIComponent(relativePath)}`;
-}
-
-function formatMajorFilterLabel(majorFilter: TMajorFilter): string {
-  if (majorFilter === "character") {
-    return "Filter by Character";
-  }
-
-  if (majorFilter === "style") {
-    return "Filter by Style";
-  }
-
-  return "Filter by Pose";
-}
-
-function formatStyleLabel(style: TStyle): string {
-  if (style === "3d") {
-    return "3D";
-  }
-
-  if (style === "anime") {
-    return "Anime";
-  }
-
-  return "Realistic";
-}
-
-function buildPoseOptions(images: IImageItem[]): string[] {
-  const uniquePoses = new Set(images.map((image) => image.poseBaseName));
-  return [...uniquePoses].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-}
-
-function buildPoseFilterOptions(poses: string[]): Array<{ value: string; label: string }> {
-  const nonWithPoses: Array<{ value: string; label: string }> = [];
-  let hasWithPoses = false;
-
-  for (const pose of poses) {
-    if (pose.startsWith("With ")) {
-      hasWithPoses = true;
-      continue;
-    }
-
-    nonWithPoses.push({ value: pose, label: pose });
-  }
-
-  if (hasWithPoses) {
-    nonWithPoses.push({ value: WITH_SOMEBODY_FILTER, label: "With Somebody" });
-  }
-
-  return nonWithPoses;
-}
-
-function LazyImage({
-  relativePath,
-  alt,
-  sx,
-}: Readonly<{ relativePath: string; alt: string; sx: SxProps<Theme> }>) {
-  const imageContainerRef = useRef<HTMLDivElement | null>(null);
-  const [shouldLoad, setShouldLoad] = useState(false);
-
-  useEffect(() => {
-    if (shouldLoad) {
-      return;
-    }
-
-    const element = imageContainerRef.current;
-    if (!element) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const isIntersecting = entries.some((entry) => entry.isIntersecting);
-
-        if (isIntersecting) {
-          setShouldLoad(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "300px 0px" },
-    );
-
-    observer.observe(element);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [shouldLoad]);
-
-  return (
-    <Box ref={imageContainerRef} sx={sx}>
-      {shouldLoad ? (
-        <Box
-          component="img"
-          src={getImageUrl(relativePath)}
-          alt={alt}
-          loading="lazy"
-          decoding="async"
-          sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-        />
-      ) : null}
-    </Box>
-  );
-}
-
-function EmptyState({ title, description }: Readonly<{ title: string; description: string }>) {
-  return (
-    <Card variant="outlined" sx={{ borderStyle: "dashed" }}>
-      <CardContent>
-        <Typography variant="h6">{title}</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          {description}
-        </Typography>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ImageCard({ image }: Readonly<{ image: IImageItem }>) {
-  return (
-    <Card elevation={1}>
-      <LazyImage
-        relativePath={image.relativePath}
-        alt={`${image.characterName} ${image.poseName}`}
-        sx={{
-          width: "100%",
-          aspectRatio: "3 / 4",
-          borderBottom: "1px solid",
-          borderColor: "divider",
-        }}
-      />
-      <CardContent>
-        <Typography variant="subtitle1" noWrap>
-          {image.characterName}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" noWrap>
-          {image.style} - {image.poseName}
-        </Typography>
-      </CardContent>
-    </Card>
-  );
-}
+import { useEffect, useMemo, useState } from "react";
+import { CharacterView } from "@/components/image-viewer/CharacterView";
+import {
+  DEFAULT_LIBRARY,
+  SIDEBAR_WIDTH,
+  WITH_SOMEBODY_FILTER,
+} from "@/components/image-viewer/constants";
+import { EmptyState } from "@/components/image-viewer/EmptyState";
+import { HeroCard } from "@/components/image-viewer/HeroCard";
+import { PoseView } from "@/components/image-viewer/PoseView";
+import { SideMenu } from "@/components/image-viewer/SideMenu";
+import { StyleView } from "@/components/image-viewer/StyleView";
+import { buildPoseFilterOptions, buildPoseOptions } from "@/components/image-viewer/utils";
+import type { ILibraryData, TMajorFilter, TStyle } from "@/types/library";
 
 export default function ImageViewerApp() {
   const [library, setLibrary] = useState<ILibraryData>(DEFAULT_LIBRARY);
@@ -192,7 +34,6 @@ export default function ImageViewerApp() {
 
   const [majorFilter, setMajorFilter] = useState<TMajorFilter>("character");
 
-  const [browseStyle, setBrowseStyle] = useState<TStyle>("3d");
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [characterDetailStyle, setCharacterDetailStyle] = useState<"all" | TStyle>("all");
   const [characterDetailPose, setCharacterDetailPose] = useState<string>("all");
@@ -224,7 +65,6 @@ export default function ImageViewerApp() {
 
         setLibrary(data);
         setRequestError(null);
-        setBrowseStyle(data.defaultStyle);
         setStyleViewStyle(data.defaultStyle);
       } catch (error) {
         if (!isMounted) {
@@ -247,8 +87,10 @@ export default function ImageViewerApp() {
   }, []);
 
   const charactersForBrowseStyle = useMemo(() => {
-    return library.characters.filter((character) => character.styles.includes(browseStyle));
-  }, [browseStyle, library.characters]);
+    return library.characters.filter((character) =>
+      character.styles.includes(library.defaultStyle),
+    );
+  }, [library.characters, library.defaultStyle]);
 
   const selectedCharacterImages = useMemo(() => {
     if (!selectedCharacter) {
@@ -339,347 +181,79 @@ export default function ImageViewerApp() {
     });
   }
 
-  const heroContent = (
-    <Card
-      sx={{
-        borderRadius: 4,
-        mb: 2,
-        background:
-          "radial-gradient(circle at 20% 10%, rgba(31,111,235,0.28), transparent 40%), radial-gradient(circle at 80% 90%, rgba(249,115,22,0.18), transparent 45%), linear-gradient(135deg, #0f172a, #172554)",
-        color: "#f8fafc",
-      }}
-    >
-      <CardContent>
-        <Typography variant="h4" sx={{ fontWeight: 700 }}>
-          Stable Diffusion Character Viewer
-        </Typography>
-        <Typography variant="body1" sx={{ opacity: 0.88, mt: 1 }}>
-          Browse characters, styles, and poses from your mounted image library.
-        </Typography>
-      </CardContent>
-    </Card>
-  );
+  let bodyContent: React.ReactNode;
 
-  const sideMenu = (
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h6" sx={{ mb: 2 }}>
-        Major Filter
-      </Typography>
-
-      <List disablePadding>
-        <ListItemButton
-          selected={majorFilter === "character"}
-          onClick={() => handleMajorFilterChange("character")}
-          sx={{ borderRadius: 1 }}
-        >
-          <ListItemText primary="Filter by Character" />
-        </ListItemButton>
-        <ListItemButton
-          selected={majorFilter === "style"}
-          onClick={() => handleMajorFilterChange("style")}
-          sx={{ borderRadius: 1 }}
-        >
-          <ListItemText primary="Filter by Style" />
-        </ListItemButton>
-        <ListItemButton
-          selected={majorFilter === "pose"}
-          onClick={() => handleMajorFilterChange("pose")}
-          sx={{ borderRadius: 1 }}
-        >
-          <ListItemText primary="Filter by Pose" />
-        </ListItemButton>
-      </List>
-
-      <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-        {formatMajorFilterLabel(majorFilter)}
-      </Typography>
-    </Box>
-  );
-
-  const characterBrowseView = (
-    <Stack spacing={2}>
-      {selectedCharacter ? (
-        <>
-          <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
-            <Chip
-              label="All styles"
-              color={characterDetailStyle === "all" ? "primary" : "default"}
-              onClick={() => setCharacterDetailStyle("all")}
-            />
-            {library.styles.map((style) => (
-              <Chip
-                key={style}
-                label={formatStyleLabel(style)}
-                color={characterDetailStyle === style ? "primary" : "default"}
-                onClick={() => setCharacterDetailStyle(style)}
-              />
-            ))}
-          </Stack>
-
-          <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
-            <Chip
-              label="All poses"
-              color={characterDetailPose === "all" ? "secondary" : "default"}
-              onClick={() => setCharacterDetailPose("all")}
-            />
-            {characterDetailPoseOptions.map((pose) => (
-              <Chip
-                key={pose}
-                label={pose}
-                color={characterDetailPose === pose ? "secondary" : "default"}
-                onClick={() => setCharacterDetailPose(pose)}
-              />
-            ))}
-          </Stack>
-
-          <Chip
-            label="Back to characters"
-            variant="outlined"
-            onClick={() => setSelectedCharacter(null)}
-            sx={{ width: "fit-content" }}
-          />
-
-          <Typography variant="h6">{selectedCharacter}</Typography>
-
-          <Box
-            sx={{
-              display: "grid",
-              gap: 2,
-              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-            }}
-          >
-            {visibleCharacterDetailImages.map((image) => (
-              <ImageCard key={image.id} image={image} />
-            ))}
-          </Box>
-        </>
-      ) : (
-        <Box
-          sx={{
-            display: "grid",
-            gap: 2,
-            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-          }}
-        >
-          {charactersForBrowseStyle.map((character) => {
-            const thumbnailPath =
-              character.thumbnailsByStyle[browseStyle] ??
-              character.thumbnailsByStyle[library.defaultStyle] ??
-              Object.values(character.thumbnailsByStyle)[0];
-
-            return (
-              <Card key={character.name}>
-                <CardActionArea onClick={() => setSelectedCharacter(character.name)}>
-                  <Box
-                    sx={{
-                      width: "100%",
-                      aspectRatio: "3 / 4",
-                      bgcolor: "grey.100",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {thumbnailPath ? (
-                      <LazyImage
-                        relativePath={thumbnailPath}
-                        alt={`${character.name} base`}
-                        sx={{ width: "100%", height: "100%", objectFit: "cover" }}
-                      />
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No Base image
-                      </Typography>
-                    )}
-                  </Box>
-                  <CardContent>
-                    <Typography variant="subtitle1" noWrap>
-                      {character.name}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {character.imageCount} images
-                    </Typography>
-                  </CardContent>
-                </CardActionArea>
-              </Card>
-            );
-          })}
-        </Box>
-      )}
-    </Stack>
-  );
-
-  const styleView = (
-    <Stack spacing={2}>
-      <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
-        {library.styles.map((style) => (
-          <Chip
-            key={style}
-            label={formatStyleLabel(style)}
-            color={styleViewStyle === style ? "primary" : "default"}
-            onClick={() => {
-              setStyleViewStyle(style);
-              setStyleViewSearchText("");
-            }}
-          />
-        ))}
-      </Stack>
-
-      <TextField
-        fullWidth
-        label="Search character or pose"
-        value={styleViewSearchText}
-        onChange={(event) => setStyleViewSearchText(event.target.value)}
-        placeholder="Type part of a character or pose name"
-        slotProps={{
-          input: {
-            endAdornment: styleViewSearchText ? (
-              <InputAdornment position="end">
-                <IconButton
-                  edge="end"
-                  size="small"
-                  aria-label="Clear style search"
-                  onClick={() => setStyleViewSearchText("")}
-                >
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </InputAdornment>
-            ) : undefined,
-          },
-        }}
-      />
-
-      <Box
-        sx={{
-          display: "grid",
-          gap: 2,
-          gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-        }}
-      >
-        {styleFilteredImages.map((image) => (
-          <ImageCard key={image.id} image={image} />
-        ))}
+  if (isLoading) {
+    bodyContent = (
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", py: 12 }}>
+        <CircularProgress />
       </Box>
-    </Stack>
-  );
-
-  const poseView = (
-    <Stack spacing={2}>
-      <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
-        <Chip
-          label="All poses"
-          color={poseViewSelectedPoses.length === 0 ? "primary" : "default"}
-          onClick={() => setPoseViewSelectedPoses([])}
-        />
-        {poseViewPoseOptions.map((poseOption) => (
-          <Chip
-            key={poseOption.value}
-            label={poseOption.label}
-            color={poseViewSelectedPoses.includes(poseOption.value) ? "primary" : "default"}
-            onClick={() => togglePoseFilter(poseOption.value)}
-          />
-        ))}
-      </Stack>
-
-      <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
-        <Chip
-          label="All styles"
-          color={poseViewStyle === "all" ? "secondary" : "default"}
-          onClick={() => setPoseViewStyle("all")}
-        />
-        {library.styles.map((style) => (
-          <Chip
-            key={style}
-            label={formatStyleLabel(style)}
-            color={poseViewStyle === style ? "secondary" : "default"}
-            onClick={() => setPoseViewStyle(style)}
-          />
-        ))}
-      </Stack>
-
-      <TextField
-        fullWidth
-        label="Character contains"
-        value={poseViewCharacterSearch}
-        onChange={(event) => setPoseViewCharacterSearch(event.target.value)}
-        placeholder="Type part of a character name"
-        slotProps={{
-          input: {
-            endAdornment: poseViewCharacterSearch ? (
-              <InputAdornment position="end">
-                <IconButton
-                  edge="end"
-                  size="small"
-                  aria-label="Clear character search"
-                  onClick={() => setPoseViewCharacterSearch("")}
-                >
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </InputAdornment>
-            ) : undefined,
-          },
-        }}
+    );
+  } else if (requestError) {
+    bodyContent = <Alert severity="error">{requestError}</Alert>;
+  } else if (!library.rootConfigured) {
+    bodyContent = (
+      <EmptyState
+        title="Image root is not configured"
+        description="Set SD_IMAGES_ROOT and restart the server. The app expects characters/{style}/{character}/*.png."
       />
-
-      <Box
-        sx={{
-          display: "grid",
-          gap: 2,
-          gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+    );
+  } else if (library.warning) {
+    bodyContent = <Alert severity="warning">{library.warning}</Alert>;
+  } else if (library.images.length === 0) {
+    bodyContent = (
+      <EmptyState
+        title="No PNG files found"
+        description="Check the folder pattern characters/{style}/{character}/*.png and ensure styles use realistic, 3d, or anime."
+      />
+    );
+  } else if (majorFilter === "character") {
+    bodyContent = (
+      <CharacterView
+        styles={library.styles}
+        defaultStyle={library.defaultStyle}
+        browseStyle={library.defaultStyle}
+        selectedCharacter={selectedCharacter}
+        characterDetailStyle={characterDetailStyle}
+        characterDetailPose={characterDetailPose}
+        characterDetailPoseOptions={characterDetailPoseOptions}
+        charactersForBrowseStyle={charactersForBrowseStyle}
+        visibleCharacterDetailImages={visibleCharacterDetailImages}
+        onSelectCharacter={setSelectedCharacter}
+        onCharacterDetailStyleChange={setCharacterDetailStyle}
+        onCharacterDetailPoseChange={setCharacterDetailPose}
+      />
+    );
+  } else if (majorFilter === "style") {
+    bodyContent = (
+      <StyleView
+        styles={library.styles}
+        styleViewStyle={styleViewStyle}
+        styleViewSearchText={styleViewSearchText}
+        styleFilteredImages={styleFilteredImages}
+        onStyleSelect={(style) => {
+          setStyleViewStyle(style);
+          setStyleViewSearchText("");
         }}
-      >
-        {poseFilteredImages.map((image) => (
-          <ImageCard key={image.id} image={image} />
-        ))}
-      </Box>
-    </Stack>
-  );
-
-  const bodyContent = (() => {
-    if (isLoading) {
-      return (
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", py: 12 }}>
-          <CircularProgress />
-        </Box>
-      );
-    }
-
-    if (requestError) {
-      return <Alert severity="error">{requestError}</Alert>;
-    }
-
-    if (!library.rootConfigured) {
-      return (
-        <EmptyState
-          title="Image root is not configured"
-          description="Set SD_IMAGES_ROOT and restart the server. The app expects characters/{style}/{character}/*.png."
-        />
-      );
-    }
-
-    if (library.warning) {
-      return <Alert severity="warning">{library.warning}</Alert>;
-    }
-
-    if (library.images.length === 0) {
-      return (
-        <EmptyState
-          title="No PNG files found"
-          description="Check the folder pattern characters/{style}/{character}/*.png and ensure styles use realistic, 3d, or anime."
-        />
-      );
-    }
-
-    if (majorFilter === "character") {
-      return characterBrowseView;
-    }
-
-    if (majorFilter === "style") {
-      return styleView;
-    }
-
-    return poseView;
-  })();
+        onStyleSearchTextChange={setStyleViewSearchText}
+      />
+    );
+  } else {
+    bodyContent = (
+      <PoseView
+        styles={library.styles}
+        poseViewPoseOptions={poseViewPoseOptions}
+        poseViewSelectedPoses={poseViewSelectedPoses}
+        poseViewStyle={poseViewStyle}
+        poseViewCharacterSearch={poseViewCharacterSearch}
+        poseFilteredImages={poseFilteredImages}
+        onClearPoses={() => setPoseViewSelectedPoses([])}
+        onTogglePose={togglePoseFilter}
+        onPoseStyleChange={setPoseViewStyle}
+        onCharacterSearchChange={setPoseViewCharacterSearch}
+      />
+    );
+  }
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
@@ -722,7 +296,7 @@ export default function ImageViewerApp() {
         }}
       >
         <Toolbar />
-        {sideMenu}
+        <SideMenu majorFilter={majorFilter} onMajorFilterChange={handleMajorFilterChange} />
       </Drawer>
 
       <Drawer
@@ -739,12 +313,12 @@ export default function ImageViewerApp() {
         }}
       >
         <Toolbar />
-        {sideMenu}
+        <SideMenu majorFilter={majorFilter} onMajorFilterChange={handleMajorFilterChange} />
       </Drawer>
 
       <Box component="main" sx={{ ml: { sm: `${SIDEBAR_WIDTH}px` }, p: { xs: 2, sm: 3 } }}>
         <Toolbar sx={{ display: { xs: "flex", sm: "none" } }} />
-        {heroContent}
+        <HeroCard />
         {bodyContent}
       </Box>
     </Box>

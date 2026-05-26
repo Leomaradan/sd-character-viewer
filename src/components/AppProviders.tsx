@@ -62,10 +62,12 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       styles += cache.inserted[name];
     }
 
+    const dangerousHtml = { __html: styles };
+
     return (
       <style
         data-emotion={`${cache.key} ${names.join(" ")}`}
-        dangerouslySetInnerHTML={{ __html: styles }}
+        dangerouslySetInnerHTML={dangerousHtml}
       />
     );
   });
