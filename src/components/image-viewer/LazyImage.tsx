@@ -11,7 +11,9 @@ interface ILazyImageProps {
   sx: SxProps<Theme>;
 }
 
-export function LazyImage({ relativePath, alt, sx }: Readonly<ILazyImageProps>) {
+const IMAGE_SX = { width: "100%", height: "100%", objectFit: "cover", display: "block" };
+
+export const LazyImage = ({ relativePath, alt, sx }: Readonly<ILazyImageProps>) => {
   const imageContainerRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(false);
 
@@ -53,9 +55,9 @@ export function LazyImage({ relativePath, alt, sx }: Readonly<ILazyImageProps>) 
           alt={alt}
           loading="lazy"
           decoding="async"
-          sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          sx={IMAGE_SX}
         />
       ) : null}
     </Box>
   );
-}
+};

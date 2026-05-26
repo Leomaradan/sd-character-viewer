@@ -8,18 +8,20 @@ interface IImageCardProps {
   image: IImageItem;
 }
 
-export function ImageCard({ image }: Readonly<IImageCardProps>) {
+const IMAGE_CARD = {
+  width: "100%",
+  aspectRatio: "3 / 4",
+  borderBottom: "1px solid",
+  borderColor: "divider",
+};
+
+export const ImageCard = ({ image }: Readonly<IImageCardProps>) => {
   return (
     <Card elevation={1}>
       <LazyImage
         relativePath={image.relativePath}
         alt={`${image.characterName} ${image.poseName}`}
-        sx={{
-          width: "100%",
-          aspectRatio: "3 / 4",
-          borderBottom: "1px solid",
-          borderColor: "divider",
-        }}
+        sx={IMAGE_CARD}
       />
       <CardContent>
         <Typography variant="subtitle1" noWrap>
@@ -31,4 +33,4 @@ export function ImageCard({ image }: Readonly<IImageCardProps>) {
       </CardContent>
     </Card>
   );
-}
+};

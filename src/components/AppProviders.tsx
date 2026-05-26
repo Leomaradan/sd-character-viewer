@@ -21,7 +21,7 @@ const APP_THEME = {
   },
 };
 
-export function AppProviders({ children }: Readonly<PropsWithChildren>) {
+export const AppProviders = ({ children }: Readonly<PropsWithChildren>) => {
   const [{ cache, flush }] = useState(() => {
     const cacheInstance = createCache({ key: "mui" });
     cacheInstance.compat = true;
@@ -49,20 +49,30 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
     };
   });
 
-  useServerInsertedHTML(() => {
+  const styles = useMemo(() => {
     const names = flush();
 
     if (names.length === 0) {
       return null;
     }
 
-    let styles = "";
+    let stylesString = "";
 
     for (const name of names) {
-      styles += cache.inserted[name];
+      stylesString += cache.inserted[name];
     }
 
-    const dangerousHtml = { __html: styles };
+    return { __html: stylesString };
+  }, [cache.inserted, flush]);
+
+  useServerInsertedHTML(() => {
+    const names = flush();
+
+    if (!styles) {
+      return null;
+    }
+
+    const dangerousHtml = styles;
 
     return (
       <style
@@ -92,4 +102,4 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       </ThemeProvider>
     </CacheProvider>
   );
-}
+};

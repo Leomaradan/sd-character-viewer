@@ -28,23 +28,25 @@ interface ILibraryIndexState {
   poseCounter: Map<string, number>;
 }
 
-function normalizeRelativePath(filePath: string): string {
+const normalizeRelativePath = (filePath: string): string => {
   return filePath.split(path.sep).join(path.posix.sep);
-}
+};
 
-function compareNatural(a: string, b: string): number {
+const compareNatural = (a: string, b: string): number => {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
-}
+};
 
-function sanitizePoseName(rawPoseName: string): string {
+const sanitizePoseName = (rawPoseName: string): string => {
   return rawPoseName.replace(/[_-]+/g, " ").trim();
-}
+};
 
-export function parsePoseName(fileName: string): {
+export const parsePoseName = (
+  fileName: string,
+): {
   poseName: string;
   poseBaseName: string;
   poseVariant: number;
-} {
+} => {
   const extension = path.extname(fileName);
   const withoutExtension = fileName.slice(0, Math.max(0, fileName.length - extension.length));
   const cleanName = sanitizePoseName(withoutExtension);
@@ -67,26 +69,26 @@ export function parsePoseName(fileName: string): {
     poseBaseName: poseBaseName || cleanName,
     poseVariant: variantRaw ? Number.parseInt(variantRaw, 10) : 1,
   };
-}
+};
 
-async function listPngFiles(characterFolderPath: string): Promise<string[]> {
+const listPngFiles = async (characterFolderPath: string): Promise<string[]> => {
   const entries = await fs.readdir(characterFolderPath, { withFileTypes: true });
 
   return entries
     .filter((entry) => entry.isFile())
     .map((entry) => entry.name)
     .filter((fileName) => fileName.toLowerCase().endsWith(PNG_EXTENSION));
-}
+};
 
-async function resolveStyleFolders(charactersRootPath: string): Promise<TStyle[]> {
+const resolveStyleFolders = async (charactersRootPath: string): Promise<TStyle[]> => {
   const styleEntries = await fs.readdir(charactersRootPath, { withFileTypes: true });
 
   return STYLES.filter((style) => {
     return styleEntries.some((entry) => entry.isDirectory() && entry.name === style);
   });
-}
+};
 
-function toCharacterSummary(accumulator: ICharacterAccumulator): ICharacterSummary {
+const toCharacterSummary = (accumulator: ICharacterAccumulator): ICharacterSummary => {
   return {
     name: accumulator.name,
     imageCount: accumulator.imageCount,
@@ -94,19 +96,19 @@ function toCharacterSummary(accumulator: ICharacterAccumulator): ICharacterSumma
     styles: [...accumulator.styles].sort(compareNatural),
     thumbnailsByStyle: accumulator.thumbnailsByStyle,
   };
-}
+};
 
-function toPoseSummaries(poseCounter: Map<string, number>): IPoseSummary[] {
+const toPoseSummaries = (poseCounter: Map<string, number>): IPoseSummary[] => {
   return [...poseCounter.entries()]
     .map(([name, imageCount]) => ({ name, imageCount }))
     .sort((a, b) => compareNatural(a.name, b.name));
-}
+};
 
-function createEmptyLibraryData(
+const createEmptyLibraryData = (
   rootConfigured: boolean,
   rootPath: string | null,
   warning: string | null,
-): ILibraryData {
+): ILibraryData => {
   return {
     rootConfigured,
     rootPath,
@@ -117,17 +119,17 @@ function createEmptyLibraryData(
     poses: [],
     warning,
   };
-}
+};
 
-function createLibraryIndexState(): ILibraryIndexState {
+const createLibraryIndexState = (): ILibraryIndexState => {
   return {
     imageItems: [],
     characterMap: new Map<string, ICharacterAccumulator>(),
     poseCounter: new Map<string, number>(),
   };
-}
+};
 
-function buildImageItem(style: TStyle, characterName: string, pngFile: string): IImageItem {
+const buildImageItem = (style: TStyle, characterName: string, pngFile: string): IImageItem => {
   const parsedPose = parsePoseName(pngFile);
   const relativePath = normalizeRelativePath(
     path.join("characters", style, characterName, pngFile),
@@ -142,12 +144,12 @@ function buildImageItem(style: TStyle, characterName: string, pngFile: string): 
     poseVariant: parsedPose.poseVariant,
     relativePath,
   };
-}
+};
 
-function updateCharacterAccumulator(
+const updateCharacterAccumulator = (
   characterMap: Map<string, ICharacterAccumulator>,
   imageItem: IImageItem,
-): void {
+): void => {
   const existingCharacter = characterMap.get(imageItem.characterName);
   const isBasePose = imageItem.poseBaseName.toLowerCase() === "base";
 
@@ -172,27 +174,27 @@ function updateCharacterAccumulator(
   };
 
   characterMap.set(imageItem.characterName, characterAccumulator);
-}
+};
 
-function incrementPoseCounter(poseCounter: Map<string, number>, poseBaseName: string): void {
+const incrementPoseCounter = (poseCounter: Map<string, number>, poseBaseName: string): void => {
   const currentPoseCount = poseCounter.get(poseBaseName) ?? 0;
   poseCounter.set(poseBaseName, currentPoseCount + 1);
-}
+};
 
-function mergeIndexState(target: ILibraryIndexState, source: ILibraryIndexState): void {
+const mergeIndexState = (target: ILibraryIndexState, source: ILibraryIndexState): void => {
   for (const imageItem of source.imageItems) {
     target.imageItems.push(imageItem);
     updateCharacterAccumulator(target.characterMap, imageItem);
     incrementPoseCounter(target.poseCounter, imageItem.poseBaseName);
   }
-}
+};
 
-async function indexCharacterFolder(
+const indexCharacterFolder = async (
   style: TStyle,
   characterName: string,
   characterFolderPath: string,
   state: ILibraryIndexState,
-): Promise<void> {
+): Promise<void> => {
   const pngFiles = await listPngFiles(characterFolderPath);
 
   for (const pngFile of pngFiles) {
@@ -201,13 +203,13 @@ async function indexCharacterFolder(
     updateCharacterAccumulator(state.characterMap, imageItem);
     incrementPoseCounter(state.poseCounter, imageItem.poseBaseName);
   }
-}
+};
 
-async function indexStyleFolder(
+const indexStyleFolder = async (
   style: TStyle,
   stylePath: string,
   state: ILibraryIndexState,
-): Promise<void> {
+): Promise<void> => {
   const characterEntries = await fs.readdir(stylePath, { withFileTypes: true });
 
   for (const characterEntry of characterEntries) {
@@ -219,9 +221,9 @@ async function indexStyleFolder(
     const characterFolderPath = path.join(stylePath, characterName);
     await indexCharacterFolder(style, characterName, characterFolderPath, state);
   }
-}
+};
 
-function sortImageItems(imageItems: IImageItem[]): void {
+const sortImageItems = (imageItems: IImageItem[]): void => {
   imageItems.sort((a, b) => {
     if (a.characterName !== b.characterName) {
       return compareNatural(a.characterName, b.characterName);
@@ -237,9 +239,9 @@ function sortImageItems(imageItems: IImageItem[]): void {
 
     return a.poseVariant - b.poseVariant;
   });
-}
+};
 
-function toLibraryData(rootPath: string, state: ILibraryIndexState): ILibraryData {
+const toLibraryData = (rootPath: string, state: ILibraryIndexState): ILibraryData => {
   const characters = [...state.characterMap.values()]
     .map(toCharacterSummary)
     .sort((a, b) => compareNatural(a.name, b.name));
@@ -256,15 +258,15 @@ function toLibraryData(rootPath: string, state: ILibraryIndexState): ILibraryDat
     poses,
     warning: null,
   };
-}
+};
 
-export function getImagesRootPathFromEnv(): string | null {
+export const getImagesRootPathFromEnv = (): string | null => {
   ensureLocalEnvLoaded();
   const configuredRoot = process.env[IMAGE_ROOT_ENV_KEY]?.trim();
   return configuredRoot || null;
-}
+};
 
-export async function readImageLibrary(): Promise<ILibraryData> {
+export const readImageLibrary = async (): Promise<ILibraryData> => {
   const rootPath = getImagesRootPathFromEnv();
 
   if (!rootPath) {
@@ -305,9 +307,9 @@ export async function readImageLibrary(): Promise<ILibraryData> {
   sortImageItems(indexState.imageItems);
 
   return toLibraryData(rootPath, indexState);
-}
+};
 
-export function resolveImageFilePath(relativePath: string): string | null {
+export const resolveImageFilePath = (relativePath: string): string | null => {
   const rootPath = getImagesRootPathFromEnv();
 
   if (!rootPath) {
@@ -334,4 +336,4 @@ export function resolveImageFilePath(relativePath: string): string | null {
   }
 
   return fullPath;
-}
+};

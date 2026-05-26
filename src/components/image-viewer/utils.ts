@@ -1,11 +1,11 @@
 import type { IImageItem, TMajorFilter, TStyle } from "@/types/library";
 import { WITH_SOMEBODY_FILTER } from "@/components/image-viewer/constants";
 
-export function getImageUrl(relativePath: string): string {
+export const getImageUrl = (relativePath: string): string => {
   return `/api/image?path=${encodeURIComponent(relativePath)}`;
-}
+};
 
-export function formatMajorFilterLabel(majorFilter: TMajorFilter): string {
+export const formatMajorFilterLabel = (majorFilter: TMajorFilter): string => {
   if (majorFilter === "character") {
     return "Filter by Character";
   }
@@ -15,9 +15,9 @@ export function formatMajorFilterLabel(majorFilter: TMajorFilter): string {
   }
 
   return "Filter by Pose";
-}
+};
 
-export function formatStyleLabel(style: TStyle): string {
+export const formatStyleLabel = (style: TStyle): string => {
   if (style === "3d") {
     return "3D";
   }
@@ -27,14 +27,16 @@ export function formatStyleLabel(style: TStyle): string {
   }
 
   return "Realistic";
-}
+};
 
-export function buildPoseOptions(images: IImageItem[]): string[] {
+export const buildPoseOptions = (images: IImageItem[]): string[] => {
   const uniquePoses = new Set(images.map((image) => image.poseBaseName));
   return [...uniquePoses].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-}
+};
 
-export function buildPoseFilterOptions(poses: string[]): Array<{ value: string; label: string }> {
+export const buildPoseFilterOptions = (
+  poses: string[],
+): Array<{ value: string; label: string }> => {
   const nonWithPoses: Array<{ value: string; label: string }> = [];
   let hasWithPoses = false;
 
@@ -52,4 +54,4 @@ export function buildPoseFilterOptions(poses: string[]): Array<{ value: string; 
   }
 
   return nonWithPoses;
-}
+};
