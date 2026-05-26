@@ -1,20 +1,8 @@
-import type { IImageItem, TMajorFilter, TStyle } from "@/types/library";
+import type { IImageItem, TStyle } from "@/types/library";
 import { WITH_SOMEBODY_FILTER } from "@/components/image-viewer/constants";
 
 export const getImageUrl = (relativePath: string): string => {
   return `/api/image?path=${encodeURIComponent(relativePath)}`;
-};
-
-export const formatMajorFilterLabel = (majorFilter: TMajorFilter): string => {
-  if (majorFilter === "character") {
-    return "Filter by Character";
-  }
-
-  if (majorFilter === "style") {
-    return "Filter by Style";
-  }
-
-  return "Filter by Pose";
 };
 
 export const formatStyleLabel = (style: TStyle): string => {

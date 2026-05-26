@@ -260,7 +260,7 @@ const toLibraryData = (rootPath: string, state: ILibraryIndexState): ILibraryDat
   };
 };
 
-export const getImagesRootPathFromEnv = (): string | null => {
+const getImagesRootPathFromEnv = (): string | null => {
   ensureLocalEnvLoaded();
   const configuredRoot = process.env[IMAGE_ROOT_ENV_KEY]?.trim();
   return configuredRoot || null;
