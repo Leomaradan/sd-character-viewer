@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@emotion/cache':
+        specifier: ^11.14.0
+        version: 11.14.0
       '@emotion/react':
         specifier: ^11.14.0
         version: 11.14.0(@types/react@19.2.15)(react@19.2.4)
@@ -20,9 +23,18 @@ importers:
       '@mui/material':
         specifier: ^9.0.1
         version: 9.0.1(@emotion/react@11.14.0(@types/react@19.2.15)(react@19.2.4))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.15)(react@19.2.4))(@types/react@19.2.15)(react@19.2.4))(@types/react@19.2.15)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@next/env':
+        specifier: 16.2.6
+        version: 16.2.6
       next:
         specifier: 16.2.6
         version: 16.2.6(@babel/core@7.29.7)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      png-chunk-text:
+        specifier: ^1.0.0
+        version: 1.0.0
+      png-chunks-extract:
+        specifier: ^1.0.0
+        version: 1.0.0
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -42,6 +54,12 @@ importers:
       '@types/node':
         specifier: ^20
         version: 20.19.41
+      '@types/png-chunk-text':
+        specifier: ^1.0.3
+        version: 1.0.3
+      '@types/png-chunks-extract':
+        specifier: ^1.0.2
+        version: 1.0.2
       '@types/react':
         specifier: ^19
         version: 19.2.15
@@ -72,9 +90,6 @@ importers:
       oxfmt:
         specifier: ^0.52.0
         version: 0.52.0
-      tailwindcss:
-        specifier: ^4
-        version: 4.3.0
       typescript:
         specifier: ^5
         version: 5.9.3
@@ -1068,6 +1083,12 @@ packages:
   '@types/parse-json@4.0.2':
     resolution: {integrity: sha512-dISoDXWWQwUquiKsyZ4Ng+HX2KsPL7LyHKHQwgGFEA3IaKac4Obd+h2a/a6waisAoepJlBcx9paWqjA8/HVjCw==}
 
+  '@types/png-chunk-text@1.0.3':
+    resolution: {integrity: sha512-7keEFz73uNJ9Ar1XMCNnHEXT9pICJnouMQCCYgBEmHMgdkXaQzSTmSvr6tUDSqgdEgmlRAxZd97wprgliyZoCg==}
+
+  '@types/png-chunks-extract@1.0.2':
+    resolution: {integrity: sha512-z6djfFIbrrddtunoMJBOPlyZrnmeuG1kkvHUNi2QfpOb+JMMLuLliHHTmMyRi7k7LiTAut0HbdGCF6ibDtQAHQ==}
+
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
 
@@ -1485,6 +1506,10 @@ packages:
   cosmiconfig@7.1.0:
     resolution: {integrity: sha512-AdmX6xUzdNASswsFtmwSt7Vj8po9IuqXm0UXz7QKPuEUmPB4XyjGfaAr2PSuELMwkRMVH1EpIkX5bTZGRB3eCA==}
     engines: {node: '>=10'}
+
+  crc-32@0.3.0:
+    resolution: {integrity: sha512-kucVIjOmMc1f0tv53BJ/5WIX+MGLcKuoBhnGqQrgKJNqLByb/sVMWfW/Aw6hw0jgcqjJ2pi9E5y32zOIpaUlsA==}
+    engines: {node: '>=0.8'}
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -2440,6 +2465,12 @@ packages:
   picomatch@4.0.4:
     resolution: {integrity: sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==}
     engines: {node: '>=12'}
+
+  png-chunk-text@1.0.0:
+    resolution: {integrity: sha512-DEROKU3SkkLGWNMzru3xPVgxyd48UGuMSZvioErCure6yhOc/pRH2ZV+SEn7nmaf7WNf3NdIpH+UTrRdKyq9Lw==}
+
+  png-chunks-extract@1.0.0:
+    resolution: {integrity: sha512-ZiVwF5EJ0DNZyzAqld8BP1qyJBaGOFaq9zl579qfbkcmOwWLLO4I9L8i2O4j3HkI6/35i0nKG2n+dZplxiT89Q==}
 
   possible-typed-array-names@1.1.0:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
@@ -3783,6 +3814,10 @@ snapshots:
 
   '@types/parse-json@4.0.2': {}
 
+  '@types/png-chunk-text@1.0.3': {}
+
+  '@types/png-chunks-extract@1.0.2': {}
+
   '@types/prop-types@15.7.15': {}
 
   '@types/react-dom@19.2.3(@types/react@19.2.15)':
@@ -4221,6 +4256,8 @@ snapshots:
       parse-json: 5.2.0
       path-type: 4.0.0
       yaml: 1.10.3
+
+  crc-32@0.3.0: {}
 
   cross-spawn@7.0.6:
     dependencies:
@@ -5313,6 +5350,12 @@ snapshots:
   picomatch@2.3.2: {}
 
   picomatch@4.0.4: {}
+
+  png-chunk-text@1.0.0: {}
+
+  png-chunks-extract@1.0.0:
+    dependencies:
+      crc-32: 0.3.0
 
   possible-typed-array-names@1.1.0: {}
 

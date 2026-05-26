@@ -2,7 +2,6 @@
   "name": "sd-character-viewer",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -15,11 +14,15 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@emotion/cache": "^11.14.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.0.1",
     "@mui/material": "^9.0.1",
+    "@next/env": "16.2.6",
     "next": "16.2.6",
+    "png-chunk-text": "^1.0.0",
+    "png-chunks-extract": "^1.0.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
@@ -28,6 +31,8 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^20",
+    "@types/png-chunk-text": "^1.0.3",
+    "@types/png-chunks-extract": "^1.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.7",
@@ -38,8 +43,8 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "jsdom": "^29.1.1",
     "oxfmt": "^0.52.0",
-    "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.7"
-  }
+  },
+  "packageManager": "pnpm@10.33.0"
 }
