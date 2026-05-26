@@ -4,17 +4,16 @@ import {
   Alert,
   AppBar,
   Box,
-  IconButton,
   Card,
   CardActionArea,
   CardContent,
   Chip,
   CircularProgress,
   Drawer,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemText,
   Stack,
   ToggleButton,
   ToggleButtonGroup,
@@ -22,7 +21,6 @@ import {
   Typography,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
-import type { SelectChangeEvent } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import type { IImageItem, ILibraryData, TMajorFilter, TStyle } from "@/types/library";
 
@@ -53,14 +51,6 @@ function formatMajorFilterLabel(majorFilter: TMajorFilter): string {
   }
 
   return "Filter by Pose";
-}
-
-function majorFilterFromValue(value: string): TMajorFilter {
-  if (value === "style" || value === "pose" || value === "character") {
-    return value;
-  }
-
-  return "character";
 }
 
 function buildPoseOptions(images: IImageItem[]): string[] {
@@ -238,9 +228,9 @@ export default function ImageViewerApp() {
     return library.characters.map((character) => character.name);
   }, [library.characters]);
 
-  function handleMajorFilterChange(event: SelectChangeEvent<string>) {
-    const nextFilter = majorFilterFromValue(event.target.value);
+  function handleMajorFilterChange(nextFilter: TMajorFilter) {
     setMajorFilter(nextFilter);
+    closeMobileDrawer();
 
     if (nextFilter !== "character") {
       setSelectedCharacter(null);
@@ -279,41 +269,39 @@ export default function ImageViewerApp() {
       <Typography variant="h6" sx={{ mb: 2 }}>
         Major Filter
       </Typography>
-      <FormControl fullWidth>
-        <InputLabel id="major-filter-label">View</InputLabel>
-        <Select
-          labelId="major-filter-label"
-          value={majorFilter}
-          label="View"
-          onChange={handleMajorFilterChange}
+
+      <List disablePadding>
+        <ListItemButton
+          selected={majorFilter === "character"}
+          onClick={() => handleMajorFilterChange("character")}
+          sx={{ borderRadius: 1 }}
         >
-          <MenuItem value="character">Filter by Character</MenuItem>
-          <MenuItem value="style">Filter by Style</MenuItem>
-          <MenuItem value="pose">Filter by Pose</MenuItem>
-        </Select>
-      </FormControl>
+          <ListItemText primary="Filter by Character" />
+        </ListItemButton>
+        <ListItemButton
+          selected={majorFilter === "style"}
+          onClick={() => handleMajorFilterChange("style")}
+          sx={{ borderRadius: 1 }}
+        >
+          <ListItemText primary="Filter by Style" />
+        </ListItemButton>
+        <ListItemButton
+          selected={majorFilter === "pose"}
+          onClick={() => handleMajorFilterChange("pose")}
+          sx={{ borderRadius: 1 }}
+        >
+          <ListItemText primary="Filter by Pose" />
+        </ListItemButton>
+      </List>
+
       <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
         {formatMajorFilterLabel(majorFilter)}
-      </Typography>
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
-        Source: {library.rootPath ?? "not configured"}
       </Typography>
     </Box>
   );
 
   const characterBrowseView = (
     <Stack spacing={2}>
-      <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
-        {library.styles.map((style) => (
-          <Chip
-            key={style}
-            label={style}
-            color={browseStyle === style ? "primary" : "default"}
-            onClick={() => setBrowseStyle(style)}
-          />
-        ))}
-      </Stack>
-
       {selectedCharacter ? (
         <>
           <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
