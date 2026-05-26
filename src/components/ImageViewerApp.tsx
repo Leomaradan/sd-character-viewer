@@ -306,7 +306,10 @@ export default function ImageViewerApp() {
 
   const characterBrowseView = (
     <Stack spacing={2}>
-      <Stack direction="row" gap={1} flexWrap="wrap">
+      <Stack   spacing={{ xs: 1, sm: 2 }}
+  direction="row"
+  useFlexGap
+  sx={{ flexWrap: 'wrap' }}>
         {library.styles.map((style) => (
           <Chip
             key={style}
@@ -319,7 +322,10 @@ export default function ImageViewerApp() {
 
       {selectedCharacter ? (
         <>
-          <Stack direction="row" gap={1} flexWrap="wrap">
+          <Stack   spacing={{ xs: 1, sm: 2 }}
+  direction="row"
+  useFlexGap
+  sx={{ flexWrap: 'wrap' }}>
             <Chip
               label="All styles"
               color={characterDetailStyle === "all" ? "primary" : "default"}
@@ -335,7 +341,10 @@ export default function ImageViewerApp() {
             ))}
           </Stack>
 
-          <Stack direction="row" gap={1} flexWrap="wrap">
+          <Stack   spacing={{ xs: 1, sm: 2 }}
+  direction="row"
+  useFlexGap
+  sx={{ flexWrap: 'wrap' }}>
             <Chip
               label="All poses"
               color={characterDetailPose === "all" ? "secondary" : "default"}
@@ -431,7 +440,10 @@ export default function ImageViewerApp() {
 
   const styleView = (
     <Stack spacing={2}>
-      <Stack direction="row" gap={1} flexWrap="wrap">
+      <Stack   spacing={{ xs: 1, sm: 2 }}
+  direction="row"
+  useFlexGap
+  sx={{ flexWrap: 'wrap' }}>
         {library.styles.map((style) => (
           <Chip
             key={style}
@@ -446,7 +458,10 @@ export default function ImageViewerApp() {
         ))}
       </Stack>
 
-      <Stack direction="row" gap={1} flexWrap="wrap">
+      <Stack   spacing={{ xs: 1, sm: 2 }}
+  direction="row"
+  useFlexGap
+  sx={{ flexWrap: 'wrap' }}>
         <Chip
           label="All characters"
           color={styleViewCharacter === "all" ? "secondary" : "default"}
@@ -462,7 +477,10 @@ export default function ImageViewerApp() {
         ))}
       </Stack>
 
-      <Stack direction="row" gap={1} flexWrap="wrap">
+      <Stack   spacing={{ xs: 1, sm: 2 }}
+  direction="row"
+  useFlexGap
+  sx={{ flexWrap: 'wrap' }}>
         <Chip
           label="All poses"
           color={styleViewPose === "all" ? "secondary" : "default"}
@@ -494,7 +512,10 @@ export default function ImageViewerApp() {
 
   const poseView = (
     <Stack spacing={2}>
-      <Stack direction="row" gap={1} flexWrap="wrap">
+      <Stack   spacing={{ xs: 1, sm: 2 }}
+  direction="row"
+  useFlexGap
+  sx={{ flexWrap: 'wrap' }}>
         <Chip
           label="All poses"
           color={poseViewPose === "all" ? "primary" : "default"}
@@ -510,7 +531,10 @@ export default function ImageViewerApp() {
         ))}
       </Stack>
 
-      <Stack direction="row" gap={1} flexWrap="wrap">
+      <Stack   spacing={{ xs: 1, sm: 2 }}
+  direction="row"
+  useFlexGap
+  sx={{ flexWrap: 'wrap' }}>
         <Chip
           label="All styles"
           color={poseViewStyle === "all" ? "secondary" : "default"}
