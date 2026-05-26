@@ -46,8 +46,8 @@ SD_IMAGES_ROOT=/absolute/path/to/your/images/root
 ## Run
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Open `http://localhost:3000`.
@@ -78,7 +78,7 @@ Example character flow:
 ## Test And Lint
 
 ```bash
-npm run lint
-npm run test
-npm run test:coverage
+pnpm lint
+pnpm test
+pnpm test:coverage
 ```
