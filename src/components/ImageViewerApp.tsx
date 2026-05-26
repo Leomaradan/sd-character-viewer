@@ -142,7 +142,7 @@ export default function ImageViewerApp() {
   const [styleViewCharacter, setStyleViewCharacter] = useState<string>("all");
   const [styleViewPose, setStyleViewPose] = useState<string>("all");
 
-  const [poseViewPose, setPoseViewPose] = useState<string>("all");
+  const [poseViewSelectedPoses, setPoseViewSelectedPoses] = useState<string[]>([]);
   const [poseViewStyle, setPoseViewStyle] = useState<"all" | TStyle>("all");
   const [poseViewCharacterSearch, setPoseViewCharacterSearch] = useState<string>("");
 
@@ -234,14 +234,14 @@ export default function ImageViewerApp() {
 
   const poseFilteredImages = useMemo(() => {
     const normalizedCharacterSearch = poseViewCharacterSearch.trim().toLowerCase();
+    const selectedPoses = new Set(poseViewSelectedPoses);
+    const isAllPosesSelected = selectedPoses.size === 0;
 
     return library.images.filter((image) => {
       const matchesPose =
-        poseViewPose === "all"
-          ? true
-          : poseViewPose === WITH_SOMEBODY_FILTER
-            ? image.poseBaseName.startsWith("With ")
-            : image.poseBaseName === poseViewPose;
+        isAllPosesSelected ||
+        selectedPoses.has(image.poseBaseName) ||
+        (selectedPoses.has(WITH_SOMEBODY_FILTER) && image.poseBaseName.startsWith("With "));
       const matchesStyle = poseViewStyle === "all" ? true : image.style === poseViewStyle;
       const matchesCharacter =
         normalizedCharacterSearch.length === 0
@@ -249,7 +249,7 @@ export default function ImageViewerApp() {
           : image.characterName.toLowerCase().includes(normalizedCharacterSearch);
       return matchesPose && matchesStyle && matchesCharacter;
     });
-  }, [library.images, poseViewPose, poseViewStyle, poseViewCharacterSearch]);
+  }, [library.images, poseViewSelectedPoses, poseViewStyle, poseViewCharacterSearch]);
 
   const allPoseOptions = useMemo(() => {
     return library.poses.map((pose) => pose.name);
@@ -272,6 +272,16 @@ export default function ImageViewerApp() {
 
   function closeMobileDrawer() {
     setIsMobileDrawerOpen(false);
+  }
+
+  function togglePoseFilter(poseValue: string) {
+    setPoseViewSelectedPoses((previousSelectedPoses) => {
+      if (previousSelectedPoses.includes(poseValue)) {
+        return previousSelectedPoses.filter((value) => value !== poseValue);
+      }
+
+      return [...previousSelectedPoses, poseValue];
+    });
   }
 
   const heroContent = (
@@ -513,15 +523,15 @@ export default function ImageViewerApp() {
       <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
         <Chip
           label="All poses"
-          color={poseViewPose === "all" ? "primary" : "default"}
-          onClick={() => setPoseViewPose("all")}
+          color={poseViewSelectedPoses.length === 0 ? "primary" : "default"}
+          onClick={() => setPoseViewSelectedPoses([])}
         />
         {poseViewPoseOptions.map((poseOption) => (
           <Chip
             key={poseOption.value}
             label={poseOption.label}
-            color={poseViewPose === poseOption.value ? "primary" : "default"}
-            onClick={() => setPoseViewPose(poseOption.value)}
+            color={poseViewSelectedPoses.includes(poseOption.value) ? "primary" : "default"}
+            onClick={() => togglePoseFilter(poseOption.value)}
           />
         ))}
       </Stack>
