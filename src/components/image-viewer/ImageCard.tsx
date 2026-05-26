@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardActionArea, CardContent, Typography } from "@mui/material";
+import { useCallback } from "react";
 import type { IImageItem } from "@/types/library";
 import { LazyImage } from "@/components/image-viewer/LazyImage";
 
@@ -17,9 +18,13 @@ const IMAGE_CARD = {
 };
 
 export const ImageCard = ({ image, onSelect }: Readonly<IImageCardProps>) => {
+  const handleClick = useCallback(() => {
+    onSelect?.(image);
+  }, [image, onSelect]);
+
   return (
     <Card elevation={1}>
-      <CardActionArea onClick={() => onSelect?.(image)}>
+      <CardActionArea onClick={handleClick}>
         <LazyImage
           relativePath={image.relativePath}
           alt={`${image.characterName} ${image.poseName}`}

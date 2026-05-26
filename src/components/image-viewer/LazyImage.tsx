@@ -2,7 +2,7 @@
 
 import { Box } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getImageUrl } from "@/components/image-viewer/utils";
 
 interface ILazyImageProps {
@@ -22,6 +22,7 @@ const IMAGE_SX: SxProps<Theme> = {
 export const LazyImage = ({ relativePath, alt, sx, imgSx }: Readonly<ILazyImageProps>) => {
   const imageContainerRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(false);
+  const mergedImgSx = useMemo(() => (imgSx ? { ...IMAGE_SX, ...imgSx } : IMAGE_SX), [imgSx]);
 
   useEffect(() => {
     if (shouldLoad) {
@@ -61,7 +62,7 @@ export const LazyImage = ({ relativePath, alt, sx, imgSx }: Readonly<ILazyImageP
           alt={alt}
           loading="lazy"
           decoding="async"
-          sx={imgSx ? { ...IMAGE_SX, ...imgSx } : IMAGE_SX}
+          sx={mergedImgSx}
         />
       ) : null}
     </Box>

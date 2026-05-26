@@ -58,6 +58,10 @@ export const ImageViewerApp = () => {
     setIsMobileDrawerOpen(false);
   }, []);
 
+  const handleCloseImageModal = useCallback(() => {
+    setSelectedImageForModal(null);
+  }, []);
+
   const handleMajorFilterChange = useCallback(
     (nextFilter: TMajorFilter) => {
       setMajorFilter(nextFilter);
@@ -121,10 +125,7 @@ export const ImageViewerApp = () => {
         />
       </Box>
 
-      <ImageDetailModal
-        image={selectedImageForModal}
-        onClose={() => setSelectedImageForModal(null)}
-      />
+      <ImageDetailModal image={selectedImageForModal} onClose={handleCloseImageModal} />
     </Box>
   );
 };
