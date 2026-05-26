@@ -56,6 +56,18 @@ function formatMajorFilterLabel(majorFilter: TMajorFilter): string {
   return "Filter by Pose";
 }
 
+function formatStyleLabel(style: TStyle): string {
+  if (style === "3d") {
+    return "3D";
+  }
+
+  if (style === "anime") {
+    return "Anime";
+  }
+
+  return "Realistic";
+}
+
 function buildPoseOptions(images: IImageItem[]): string[] {
   const uniquePoses = new Set(images.map((image) => image.poseBaseName));
   return [...uniquePoses].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -397,7 +409,7 @@ export default function ImageViewerApp() {
             {library.styles.map((style) => (
               <Chip
                 key={style}
-                label={style}
+                label={formatStyleLabel(style)}
                 color={characterDetailStyle === style ? "primary" : "default"}
                 onClick={() => setCharacterDetailStyle(style)}
               />
@@ -503,7 +515,7 @@ export default function ImageViewerApp() {
         {library.styles.map((style) => (
           <Chip
             key={style}
-            label={style}
+            label={formatStyleLabel(style)}
             color={styleViewStyle === style ? "primary" : "default"}
             onClick={() => {
               setStyleViewStyle(style);
@@ -578,7 +590,7 @@ export default function ImageViewerApp() {
         {library.styles.map((style) => (
           <Chip
             key={style}
-            label={style}
+            label={formatStyleLabel(style)}
             color={poseViewStyle === style ? "secondary" : "default"}
             onClick={() => setPoseViewStyle(style)}
           />
