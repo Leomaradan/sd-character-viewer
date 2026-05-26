@@ -8,6 +8,7 @@ const lexend = Lexend({
   subsets: ["latin"],
 });
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const metadata: Metadata = {
   title: "Stable Diffusion Character Viewer",
   description: "Browse Stable Diffusion character images by character, style, and pose.",
