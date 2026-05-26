@@ -7,6 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "format": "oxfmt \"src/**/*.{ts,tsx}\" \"*.{ts,mjs}\"",
+    "format:check": "oxfmt --check \"src/**/*.{ts,tsx}\" \"*.{ts,mjs}\"",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -32,6 +34,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "jsdom": "^29.1.1",
+    "oxfmt": "^0.52.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.7"

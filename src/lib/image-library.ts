@@ -129,7 +129,9 @@ function createLibraryIndexState(): ILibraryIndexState {
 
 function buildImageItem(style: TStyle, characterName: string, pngFile: string): IImageItem {
   const parsedPose = parsePoseName(pngFile);
-  const relativePath = normalizeRelativePath(path.join("characters", style, characterName, pngFile));
+  const relativePath = normalizeRelativePath(
+    path.join("characters", style, characterName, pngFile),
+  );
 
   return {
     id: `${style}::${characterName}::${pngFile}`,

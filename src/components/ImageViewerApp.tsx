@@ -73,10 +73,7 @@ function buildCharacterOptions(images: IImageItem[]): string[] {
   return [...uniqueCharacters].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
-function EmptyState({
-  title,
-  description,
-}: Readonly<{ title: string; description: string }>) {
+function EmptyState({ title, description }: Readonly<{ title: string; description: string }>) {
   return (
     <Card variant="outlined" sx={{ borderStyle: "dashed" }}>
       <CardContent>
@@ -306,10 +303,7 @@ export default function ImageViewerApp() {
 
   const characterBrowseView = (
     <Stack spacing={2}>
-      <Stack   spacing={{ xs: 1, sm: 2 }}
-  direction="row"
-  useFlexGap
-  sx={{ flexWrap: 'wrap' }}>
+      <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
         {library.styles.map((style) => (
           <Chip
             key={style}
@@ -322,10 +316,7 @@ export default function ImageViewerApp() {
 
       {selectedCharacter ? (
         <>
-          <Stack   spacing={{ xs: 1, sm: 2 }}
-  direction="row"
-  useFlexGap
-  sx={{ flexWrap: 'wrap' }}>
+          <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
             <Chip
               label="All styles"
               color={characterDetailStyle === "all" ? "primary" : "default"}
@@ -341,10 +332,7 @@ export default function ImageViewerApp() {
             ))}
           </Stack>
 
-          <Stack   spacing={{ xs: 1, sm: 2 }}
-  direction="row"
-  useFlexGap
-  sx={{ flexWrap: 'wrap' }}>
+          <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
             <Chip
               label="All poses"
               color={characterDetailPose === "all" ? "secondary" : "default"}
@@ -440,10 +428,7 @@ export default function ImageViewerApp() {
 
   const styleView = (
     <Stack spacing={2}>
-      <Stack   spacing={{ xs: 1, sm: 2 }}
-  direction="row"
-  useFlexGap
-  sx={{ flexWrap: 'wrap' }}>
+      <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
         {library.styles.map((style) => (
           <Chip
             key={style}
@@ -458,10 +443,7 @@ export default function ImageViewerApp() {
         ))}
       </Stack>
 
-      <Stack   spacing={{ xs: 1, sm: 2 }}
-  direction="row"
-  useFlexGap
-  sx={{ flexWrap: 'wrap' }}>
+      <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
         <Chip
           label="All characters"
           color={styleViewCharacter === "all" ? "secondary" : "default"}
@@ -477,10 +459,7 @@ export default function ImageViewerApp() {
         ))}
       </Stack>
 
-      <Stack   spacing={{ xs: 1, sm: 2 }}
-  direction="row"
-  useFlexGap
-  sx={{ flexWrap: 'wrap' }}>
+      <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
         <Chip
           label="All poses"
           color={styleViewPose === "all" ? "secondary" : "default"}
@@ -512,10 +491,7 @@ export default function ImageViewerApp() {
 
   const poseView = (
     <Stack spacing={2}>
-      <Stack   spacing={{ xs: 1, sm: 2 }}
-  direction="row"
-  useFlexGap
-  sx={{ flexWrap: 'wrap' }}>
+      <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
         <Chip
           label="All poses"
           color={poseViewPose === "all" ? "primary" : "default"}
@@ -531,10 +507,7 @@ export default function ImageViewerApp() {
         ))}
       </Stack>
 
-      <Stack   spacing={{ xs: 1, sm: 2 }}
-  direction="row"
-  useFlexGap
-  sx={{ flexWrap: 'wrap' }}>
+      <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap sx={{ flexWrap: "wrap" }}>
         <Chip
           label="All styles"
           color={poseViewStyle === "all" ? "secondary" : "default"}

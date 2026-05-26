@@ -78,6 +78,8 @@ Example character flow:
 ## Test And Lint
 
 ```bash
+pnpm format
+pnpm format:check
 pnpm lint
 pnpm test
 pnpm test:coverage
