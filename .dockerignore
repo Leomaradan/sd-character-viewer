@@ -1,0 +1,16 @@
+.git
+.next
+.vscode
+node_modules
+coverage
+dist
+*.log
+*.tsbuildinfo
+
+# Local env files are not needed in image build context.
+.env
+.env.*
+
+# Keep docs and project metadata out of build context.
+AGENTS.md
+CLAUDE.md

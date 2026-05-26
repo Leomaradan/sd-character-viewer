@@ -52,6 +52,36 @@ pnpm dev
 
 Open `http://localhost:3000`.
 
+## Run With Docker
+
+Build and run directly with Docker:
+
+```bash
+docker build -t sd-character-viewer .
+docker run --rm -p 3000:3000 \
+	-e SD_IMAGES_ROOT=/data \
+	-e SD_PASSWORD=your-password \
+	-v /absolute/path/to/your/images/root:/data:ro \
+	sd-character-viewer
+```
+
+Run with Docker Compose:
+
+1. Set compose variables in your shell or a local `.env` file:
+
+```bash
+SD_IMAGES_HOST_PATH=/absolute/path/to/your/images/root
+SD_PASSWORD=your-password
+```
+
+2. Start the app:
+
+```bash
+docker compose up --build
+```
+
+3. Open `http://localhost:3000`.
+
 ## Filter Flow
 
 The left menu controls the major filter:
