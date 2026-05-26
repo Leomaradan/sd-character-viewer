@@ -7,14 +7,15 @@ import reactPerf from "eslint-plugin-react-perf";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+
+  reactPerf.configs.flat.recommended,
   {
     plugins: {
       "react-refresh": reactRefresh,
-      "react-perf": reactPerf,
     },
     rules: {
+      ...reactRefresh.configs.next.rules,
       "react-refresh/only-export-components": "warn",
-      "react-perf/jsx-no-new-object-as-prop": "warn",
     },
   },
   // Override default ignores of eslint-config-next.
