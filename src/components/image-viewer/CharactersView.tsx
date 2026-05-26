@@ -22,6 +22,7 @@ interface ICharactersViewProps {
   onSelectCharacter: (characterName: string | null) => void;
   onCharacterDetailStyleChange: (style: "all" | TStyle) => void;
   onCharacterDetailPoseChange: (pose: string) => void;
+  onImageSelect: (image: IImageItem) => void;
 }
 
 const WIDTH_FIT_CONTENT = { width: "fit-content" };
@@ -39,6 +40,7 @@ export const CharactersView = ({
   onSelectCharacter,
   onCharacterDetailStyleChange,
   onCharacterDetailPoseChange,
+  onImageSelect,
 }: Readonly<ICharactersViewProps>) => {
   const onCharacterDetailStyleChangeHandlerAll = useCallback(() => {
     onCharacterDetailStyleChange("all");
@@ -99,7 +101,7 @@ export const CharactersView = ({
 
           <Box sx={GRID}>
             {visibleCharacterDetailImages.map((image) => (
-              <ImageCard key={image.id} image={image} />
+              <ImageCard key={image.id} image={image} onSelect={onImageSelect} />
             ))}
           </Box>
         </>

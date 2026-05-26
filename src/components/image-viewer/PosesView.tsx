@@ -25,6 +25,7 @@ interface IPosesViewProps {
   onTogglePose: (pose: string) => void;
   onPoseStyleChange: (style: "all" | TStyle) => void;
   onCharacterSearchChange: (value: string) => void;
+  onImageSelect: (image: IImageItem) => void;
 }
 
 export const PosesView = ({
@@ -38,6 +39,7 @@ export const PosesView = ({
   onTogglePose,
   onPoseStyleChange,
   onCharacterSearchChange,
+  onImageSelect,
 }: Readonly<IPosesViewProps>) => {
   const handleOnSearchTextChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,7 +108,7 @@ export const PosesView = ({
 
       <Box sx={GRID}>
         {poseFilteredImages.map((image) => (
-          <ImageCard key={image.id} image={image} />
+          <ImageCard key={image.id} image={image} onSelect={onImageSelect} />
         ))}
       </Box>
     </Stack>

@@ -8,13 +8,14 @@ import { EmptyState } from "@/components/image-viewer/EmptyState";
 import { PosesView } from "@/components/image-viewer/PosesView";
 import { StylesView } from "@/components/image-viewer/StylesView";
 import { buildPoseFilterOptions, buildPoseOptions } from "@/components/image-viewer/utils";
-import type { ILibraryData, TMajorFilter, TStyle } from "@/types/library";
+import type { IImageItem, ILibraryData, TMajorFilter, TStyle } from "@/types/library";
 
 interface IImageViewerBodyProps {
   majorFilter: TMajorFilter;
   selectedCharacter: string | null;
   characterDetailStyle: "all" | TStyle;
   characterDetailPose: string;
+  onImageSelect: (image: IImageItem) => void;
 
   setSelectedCharacter: (characterName: string | null) => void;
   setCharacterDetailStyle: (style: "all" | TStyle) => void;
@@ -33,6 +34,7 @@ export const ImageViewerBody = ({
   selectedCharacter,
   characterDetailStyle,
   characterDetailPose,
+  onImageSelect,
   setSelectedCharacter,
   setCharacterDetailStyle,
   setCharacterDetailPose,
@@ -227,6 +229,7 @@ export const ImageViewerBody = ({
         onSelectCharacter={setSelectedCharacter}
         onCharacterDetailStyleChange={setCharacterDetailStyle}
         onCharacterDetailPoseChange={setCharacterDetailPose}
+        onImageSelect={onImageSelect}
       />
     );
   } else if (majorFilter === "style") {
@@ -238,6 +241,7 @@ export const ImageViewerBody = ({
         styleFilteredImages={styleFilteredImages}
         onStyleSelect={onStyleSelect}
         onStyleSearchTextChange={setStyleViewSearchText}
+        onImageSelect={onImageSelect}
       />
     );
   }
@@ -254,6 +258,7 @@ export const ImageViewerBody = ({
       onTogglePose={togglePoseFilter}
       onPoseStyleChange={setPoseViewStyle}
       onCharacterSearchChange={setPoseViewCharacterSearch}
+      onImageSelect={onImageSelect}
     />
   );
 };

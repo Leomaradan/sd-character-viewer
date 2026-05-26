@@ -15,6 +15,7 @@ interface IStylesViewProps {
   styleFilteredImages: IImageItem[];
   onStyleSelect: (style: TStyle) => void;
   onStyleSearchTextChange: (value: string) => void;
+  onImageSelect: (image: IImageItem) => void;
 }
 
 export const StylesView = ({
@@ -24,6 +25,7 @@ export const StylesView = ({
   styleFilteredImages,
   onStyleSelect,
   onStyleSearchTextChange,
+  onImageSelect,
 }: Readonly<IStylesViewProps>) => {
   const handleOnSearchTextChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,7 +69,7 @@ export const StylesView = ({
 
       <Box sx={GRID}>
         {styleFilteredImages.map((image) => (
-          <ImageCard key={image.id} image={image} />
+          <ImageCard key={image.id} image={image} onSelect={onImageSelect} />
         ))}
       </Box>
     </Stack>

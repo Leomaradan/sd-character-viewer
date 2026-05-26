@@ -1,11 +1,12 @@
 "use client";
 
-import { Card, CardContent, Typography } from "@mui/material";
+import { Card, CardActionArea, CardContent, Typography } from "@mui/material";
 import type { IImageItem } from "@/types/library";
 import { LazyImage } from "@/components/image-viewer/LazyImage";
 
 interface IImageCardProps {
   image: IImageItem;
+  onSelect?: (image: IImageItem) => void;
 }
 
 const IMAGE_CARD = {
@@ -15,22 +16,24 @@ const IMAGE_CARD = {
   borderColor: "divider",
 };
 
-export const ImageCard = ({ image }: Readonly<IImageCardProps>) => {
+export const ImageCard = ({ image, onSelect }: Readonly<IImageCardProps>) => {
   return (
     <Card elevation={1}>
-      <LazyImage
-        relativePath={image.relativePath}
-        alt={`${image.characterName} ${image.poseName}`}
-        sx={IMAGE_CARD}
-      />
-      <CardContent>
-        <Typography variant="subtitle1" noWrap>
-          {image.characterName}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" noWrap>
-          {image.style} - {image.poseName}
-        </Typography>
-      </CardContent>
+      <CardActionArea onClick={() => onSelect?.(image)}>
+        <LazyImage
+          relativePath={image.relativePath}
+          alt={`${image.characterName} ${image.poseName}`}
+          sx={IMAGE_CARD}
+        />
+        <CardContent>
+          <Typography variant="subtitle1" noWrap>
+            {image.characterName}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" noWrap>
+            {image.style} - {image.poseName}
+          </Typography>
+        </CardContent>
+      </CardActionArea>
     </Card>
   );
 };

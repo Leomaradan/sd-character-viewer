@@ -6,8 +6,9 @@ import { useCallback, useState } from "react";
 import { SIDEBAR_WIDTH } from "@/components/image-viewer/constants";
 import { HeroCard } from "@/components/image-viewer/HeroCard";
 import { SideMenu } from "@/components/image-viewer/SideMenu";
-import type { TMajorFilter, TStyle } from "@/types/library";
+import type { IImageItem, TMajorFilter, TStyle } from "@/types/library";
 import { ImageViewerBody } from "./ImageViewerBody";
+import { ImageDetailModal } from "@/components/image-viewer/ImageDetailModal";
 
 const MAIN_STYLES = { minHeight: "100vh", bgcolor: "background.default" };
 const APP_BAR_STYLES = {
@@ -41,6 +42,7 @@ const TOOLBAR_STYLES = { display: { xs: "flex", sm: "none" } };
 
 export const ImageViewerApp = () => {
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [selectedImageForModal, setSelectedImageForModal] = useState<IImageItem | null>(null);
 
   const [majorFilter, setMajorFilter] = useState<TMajorFilter>("character");
 
@@ -115,8 +117,14 @@ export const ImageViewerApp = () => {
           setSelectedCharacter={setSelectedCharacter}
           setCharacterDetailStyle={setCharacterDetailStyle}
           setCharacterDetailPose={setCharacterDetailPose}
+          onImageSelect={setSelectedImageForModal}
         />
       </Box>
+
+      <ImageDetailModal
+        image={selectedImageForModal}
+        onClose={() => setSelectedImageForModal(null)}
+      />
     </Box>
   );
 };
