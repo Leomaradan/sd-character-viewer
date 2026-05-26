@@ -22,9 +22,15 @@ export function ImageDetailModal({
   }
 
   return (
-    <Dialog open={Boolean(image)} onClose={onClose} maxWidth="lg" fullWidth>
-      <DialogContent sx={{ p: 0, bgcolor: "#000" }}>
-        <Box sx={{ display: "flex", height: "600px", position: "relative" }}>
+    <Dialog
+      open={Boolean(image)}
+      onClose={onClose}
+      maxWidth="xl"
+      fullWidth
+      sx={{ "& .MuiDialog-paper": { height: "95vh", m: 1 } }}
+    >
+      <DialogContent sx={{ p: 0, bgcolor: "#000", display: "flex", overflow: "hidden" }}>
+        <Box sx={{ display: "flex", width: "100%", height: "100%", position: "relative" }}>
           {/* Close button */}
           <IconButton
             onClick={onClose}
@@ -42,15 +48,20 @@ export function ImageDetailModal({
           </IconButton>
 
           {/* Image */}
-          <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Box
+            sx={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden",
+            }}
+          >
             <LazyImage
               relativePath={image.relativePath}
               alt={`${image.characterName} ${image.poseName}`}
-              sx={{
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-              }}
+              sx={{ width: "100%", height: "100%" }}
+              imgSx={{ objectFit: "contain" }}
             />
           </Box>
 
