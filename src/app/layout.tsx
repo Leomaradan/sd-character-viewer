@@ -14,11 +14,11 @@ export const metadata: Metadata = {
   description: "Browse Stable Diffusion character images by character, style, and pose.",
 };
 
-export default function RootLayout({
+const RootLayout = ({
   children,
 }: Readonly<{
   children: React.ReactNode;
-}>) {
+}>) => {
   return (
     <html lang="en" className={`${lexend.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
@@ -26,4 +26,6 @@ export default function RootLayout({
       </body>
     </html>
   );
-}
+};
+
+export default RootLayout;

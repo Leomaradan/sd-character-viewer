@@ -1,5 +1,7 @@
-import ImageViewerApp from "@/components/ImageViewerApp";
+import { ImageViewerApp } from "@/components/ImageViewerApp";
 
-export default function Home() {
+const Home = () => {
   return <ImageViewerApp />;
-}
+};
+
+export default Home;

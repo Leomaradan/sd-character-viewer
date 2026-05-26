@@ -3,7 +3,7 @@ import { resolveImageFilePath } from "@/lib/image-library";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
+export const GET = async (request: Request) => {
   const { searchParams } = new URL(request.url);
   const requestedPath = searchParams.get("path")?.trim() ?? "";
 
@@ -26,4 +26,4 @@ export async function GET(request: Request) {
   } catch {
     return new Response("Image not found", { status: 404 });
   }
-}
+};
