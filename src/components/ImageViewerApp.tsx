@@ -22,7 +22,8 @@ import {
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import MenuIcon from "@mui/icons-material/Menu";
-import { useEffect, useMemo, useState } from "react";
+import type { SxProps, Theme } from "@mui/material/styles";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { IImageItem, ILibraryData, TMajorFilter, TStyle } from "@/types/library";
 
 const DEFAULT_LIBRARY: ILibraryData = {
@@ -85,6 +86,59 @@ function buildPoseFilterOptions(poses: string[]): Array<{ value: string; label: 
   return nonWithPoses;
 }
 
+function LazyImage({
+  relativePath,
+  alt,
+  sx,
+}: Readonly<{ relativePath: string; alt: string; sx: SxProps<Theme> }>) {
+  const imageContainerRef = useRef<HTMLDivElement | null>(null);
+  const [shouldLoad, setShouldLoad] = useState(false);
+
+  useEffect(() => {
+    if (shouldLoad) {
+      return;
+    }
+
+    const element = imageContainerRef.current;
+    if (!element) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const isIntersecting = entries.some((entry) => entry.isIntersecting);
+
+        if (isIntersecting) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "300px 0px" },
+    );
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [shouldLoad]);
+
+  return (
+    <Box ref={imageContainerRef} sx={sx}>
+      {shouldLoad ? (
+        <Box
+          component="img"
+          src={getImageUrl(relativePath)}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
+      ) : null}
+    </Box>
+  );
+}
+
 function EmptyState({ title, description }: Readonly<{ title: string; description: string }>) {
   return (
     <Card variant="outlined" sx={{ borderStyle: "dashed" }}>
@@ -101,14 +155,12 @@ function EmptyState({ title, description }: Readonly<{ title: string; descriptio
 function ImageCard({ image }: Readonly<{ image: IImageItem }>) {
   return (
     <Card elevation={1}>
-      <Box
-        component="img"
-        src={getImageUrl(image.relativePath)}
+      <LazyImage
+        relativePath={image.relativePath}
         alt={`${image.characterName} ${image.poseName}`}
         sx={{
           width: "100%",
           aspectRatio: "3 / 4",
-          objectFit: "cover",
           borderBottom: "1px solid",
           borderColor: "divider",
         }}
@@ -426,9 +478,8 @@ export default function ImageViewerApp() {
                     }}
                   >
                     {thumbnailPath ? (
-                      <Box
-                        component="img"
-                        src={getImageUrl(thumbnailPath)}
+                      <LazyImage
+                        relativePath={thumbnailPath}
                         alt={`${character.name} base`}
                         sx={{ width: "100%", height: "100%", objectFit: "cover" }}
                       />
