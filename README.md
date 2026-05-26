@@ -26,10 +26,21 @@ Pose naming rules:
 
 Set `SD_IMAGES_ROOT` to the host directory that contains the `characters` folder.
 
+Priority order used by the app:
+
+1. Runtime environment variable (`process.env`) - recommended for Docker and production.
+2. Local env files loaded automatically (`.env.local`, `.env`) - useful for local development.
+
 Example:
 
 ```bash
 export SD_IMAGES_ROOT=/data/stable-diffusion
+```
+
+Local development example in `.env.local`:
+
+```bash
+SD_IMAGES_ROOT=/absolute/path/to/your/images/root
 ```
 
 ## Run

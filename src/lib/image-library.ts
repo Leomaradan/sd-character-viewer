@@ -8,6 +8,7 @@ import {
   type IPoseSummary,
   type TStyle,
 } from "@/types/library";
+import { ensureLocalEnvLoaded } from "@/lib/env";
 
 const DEFAULT_STYLE: TStyle = "3d";
 const IMAGE_ROOT_ENV_KEY = "SD_IMAGES_ROOT";
@@ -256,6 +257,7 @@ function toLibraryData(rootPath: string, state: ILibraryIndexState): ILibraryDat
 }
 
 export function getImagesRootPathFromEnv(): string | null {
+  ensureLocalEnvLoaded();
   const configuredRoot = process.env[IMAGE_ROOT_ENV_KEY]?.trim();
   return configuredRoot || null;
 }
