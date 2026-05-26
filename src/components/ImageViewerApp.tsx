@@ -11,6 +11,7 @@ import {
   CircularProgress,
   Drawer,
   IconButton,
+  InputAdornment,
   List,
   ListItemButton,
   ListItemText,
@@ -19,6 +20,7 @@ import {
   Toolbar,
   Typography,
 } from "@mui/material";
+import CloseIcon from "@mui/icons-material/Close";
 import MenuIcon from "@mui/icons-material/Menu";
 import { useEffect, useMemo, useState } from "react";
 import type { IImageItem, ILibraryData, TMajorFilter, TStyle } from "@/types/library";
@@ -546,6 +548,22 @@ export default function ImageViewerApp() {
         value={poseViewCharacterSearch}
         onChange={(event) => setPoseViewCharacterSearch(event.target.value)}
         placeholder="Type part of a character name"
+        slotProps={{
+          input: {
+            endAdornment: poseViewCharacterSearch ? (
+              <InputAdornment position="end">
+                <IconButton
+                  edge="end"
+                  size="small"
+                  aria-label="Clear character search"
+                  onClick={() => setPoseViewCharacterSearch("")}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </InputAdornment>
+            ) : undefined,
+          },
+        }}
       />
 
       <Box
