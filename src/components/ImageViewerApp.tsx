@@ -15,8 +15,7 @@ import {
   ListItemButton,
   ListItemText,
   Stack,
-  ToggleButton,
-  ToggleButtonGroup,
+  TextField,
   Toolbar,
   Typography,
 } from "@mui/material";
@@ -36,6 +35,7 @@ const DEFAULT_LIBRARY: ILibraryData = {
 };
 
 const SIDEBAR_WIDTH = 280;
+const WITH_SOMEBODY_FILTER = "__with_somebody__";
 
 function getImageUrl(relativePath: string): string {
   return `/api/image?path=${encodeURIComponent(relativePath)}`;
@@ -61,6 +61,26 @@ function buildPoseOptions(images: IImageItem[]): string[] {
 function buildCharacterOptions(images: IImageItem[]): string[] {
   const uniqueCharacters = new Set(images.map((image) => image.characterName));
   return [...uniqueCharacters].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+function buildPoseFilterOptions(poses: string[]): Array<{ value: string; label: string }> {
+  const nonWithPoses: Array<{ value: string; label: string }> = [];
+  let hasWithPoses = false;
+
+  for (const pose of poses) {
+    if (pose.startsWith("With ")) {
+      hasWithPoses = true;
+      continue;
+    }
+
+    nonWithPoses.push({ value: pose, label: pose });
+  }
+
+  if (hasWithPoses) {
+    nonWithPoses.push({ value: WITH_SOMEBODY_FILTER, label: "With Somebody" });
+  }
+
+  return nonWithPoses;
 }
 
 function EmptyState({ title, description }: Readonly<{ title: string; description: string }>) {
@@ -122,7 +142,7 @@ export default function ImageViewerApp() {
 
   const [poseViewPose, setPoseViewPose] = useState<string>("all");
   const [poseViewStyle, setPoseViewStyle] = useState<"all" | TStyle>("all");
-  const [poseViewCharacter, setPoseViewCharacter] = useState<string>("all");
+  const [poseViewCharacterSearch, setPoseViewCharacterSearch] = useState<string>("");
 
   useEffect(() => {
     let isMounted = true;
@@ -211,22 +231,31 @@ export default function ImageViewerApp() {
   }, [library.images, styleViewStyle]);
 
   const poseFilteredImages = useMemo(() => {
+    const normalizedCharacterSearch = poseViewCharacterSearch.trim().toLowerCase();
+
     return library.images.filter((image) => {
-      const matchesPose = poseViewPose === "all" ? true : image.poseBaseName === poseViewPose;
+      const matchesPose =
+        poseViewPose === "all"
+          ? true
+          : poseViewPose === WITH_SOMEBODY_FILTER
+            ? image.poseBaseName.startsWith("With ")
+            : image.poseBaseName === poseViewPose;
       const matchesStyle = poseViewStyle === "all" ? true : image.style === poseViewStyle;
       const matchesCharacter =
-        poseViewCharacter === "all" ? true : image.characterName === poseViewCharacter;
+        normalizedCharacterSearch.length === 0
+          ? true
+          : image.characterName.toLowerCase().includes(normalizedCharacterSearch);
       return matchesPose && matchesStyle && matchesCharacter;
     });
-  }, [library.images, poseViewPose, poseViewStyle, poseViewCharacter]);
+  }, [library.images, poseViewPose, poseViewStyle, poseViewCharacterSearch]);
 
   const allPoseOptions = useMemo(() => {
     return library.poses.map((pose) => pose.name);
   }, [library.poses]);
 
-  const allCharacterOptions = useMemo(() => {
-    return library.characters.map((character) => character.name);
-  }, [library.characters]);
+  const poseViewPoseOptions = useMemo(() => {
+    return buildPoseFilterOptions(allPoseOptions);
+  }, [allPoseOptions]);
 
   function handleMajorFilterChange(nextFilter: TMajorFilter) {
     setMajorFilter(nextFilter);
@@ -485,12 +514,12 @@ export default function ImageViewerApp() {
           color={poseViewPose === "all" ? "primary" : "default"}
           onClick={() => setPoseViewPose("all")}
         />
-        {allPoseOptions.map((poseName) => (
+        {poseViewPoseOptions.map((poseOption) => (
           <Chip
-            key={poseName}
-            label={poseName}
-            color={poseViewPose === poseName ? "primary" : "default"}
-            onClick={() => setPoseViewPose(poseName)}
+            key={poseOption.value}
+            label={poseOption.label}
+            color={poseViewPose === poseOption.value ? "primary" : "default"}
+            onClick={() => setPoseViewPose(poseOption.value)}
           />
         ))}
       </Stack>
@@ -511,24 +540,13 @@ export default function ImageViewerApp() {
         ))}
       </Stack>
 
-      <ToggleButtonGroup
-        size="small"
-        exclusive
-        value={poseViewCharacter}
-        onChange={(_event, nextValue: string | null) => {
-          if (nextValue) {
-            setPoseViewCharacter(nextValue);
-          }
-        }}
-        sx={{ flexWrap: "wrap" }}
-      >
-        <ToggleButton value="all">All characters</ToggleButton>
-        {allCharacterOptions.map((characterName) => (
-          <ToggleButton key={characterName} value={characterName}>
-            {characterName}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
+      <TextField
+        fullWidth
+        label="Character contains"
+        value={poseViewCharacterSearch}
+        onChange={(event) => setPoseViewCharacterSearch(event.target.value)}
+        placeholder="Type part of a character name"
+      />
 
       <Box
         sx={{
