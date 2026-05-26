@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Stable Diffusion Character Viewer
 
-## Getting Started
+Next.js app to browse Stable Diffusion character PNGs using predefined filters.
 
-First, run the development server:
+## Image Folder Structure
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+The app expects this tree inside your configured root directory:
+
+```text
+characters/{style}/{character_name}/*.png
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Supported styles:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `3d` (default)
+- `realistic`
+- `anime`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Pose naming rules:
 
-## Learn More
+- One file equals one pose image (for example `Base.png`, `Lying Side On Bed.png`).
+- Variant files are supported with numeric suffixes (for example `Full.png`, `Full2.png`).
+- `Base` is treated as the thumbnail pose for each character.
 
-To learn more about Next.js, take a look at the following resources:
+## Environment Variable
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Set `SD_IMAGES_ROOT` to the host directory that contains the `characters` folder.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Example:
 
-## Deploy on Vercel
+```bash
+export SD_IMAGES_ROOT=/data/stable-diffusion
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Run
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+## Filter Flow
+
+The left menu controls the major filter:
+
+- Filter by Character
+- Filter by Style
+- Filter by Pose
+
+Then a horizontal filter bar updates based on the selected major filter.
+
+Example character flow:
+
+1. Open app.
+2. Select `Filter by Character`.
+3. Browse all characters for the selected style (`3d` by default).
+4. Select a character to view all poses and styles for that character.
+5. Use top chips to quickly narrow by style or pose.
+
+## API Endpoints
+
+- `GET /api/library`: Returns computed library index from disk.
+- `GET /api/image?path=characters/...`: Streams a PNG image safely from configured root.
+
+## Test And Lint
+
+```bash
+npm run lint
+npm run test
+npm run test:coverage
+```
