@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { scryptSync, timingSafeEqual } from "node:crypto";
 import { ensureLocalEnvLoaded } from "@/lib/env";
 
 const PASSWORD_ENV_KEY = "SD_PASSWORD";
@@ -8,7 +8,7 @@ export const AUTH_COOKIE_MAX_AGE_SECONDS = 3 * 24 * 60 * 60;
 
 const buildSessionToken = (password: string): string => {
   const salt = getConfiguredSalt();
-  return createHmac("sha256", salt).update(password).digest("hex");
+  return scryptSync(password, salt, 64).toString("hex");
 };
 
 const getConfiguredSalt = (): string => {
