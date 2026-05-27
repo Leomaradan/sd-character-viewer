@@ -2,6 +2,8 @@
 
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
+import InfoIcon from "@mui/icons-material/Info";
+import PhotoIcon from "@mui/icons-material/Photo";
 import {
   Alert,
   Box,
@@ -33,6 +35,16 @@ const CLOSE_BUTTON_SX = {
   zIndex: 10,
   bgcolor: "rgba(0, 0, 0, 0.7)",
   color: "#fff",
+  "&:hover": { bgcolor: "rgba(0, 0, 0, 0.9)" },
+};
+const TOGGLE_BUTTON_SX = {
+  position: "absolute",
+  top: 8,
+  left: 8,
+  zIndex: 10,
+  bgcolor: "rgba(0, 0, 0, 0.7)",
+  color: "#fff",
+  display: { xs: "flex", sm: "none" },
   "&:hover": { bgcolor: "rgba(0, 0, 0, 0.9)" },
 };
 const IMAGE_CONTAINER_SX = {
@@ -96,6 +108,12 @@ export function ImageDetailModal({
 
   const relativePath = image?.relativePath;
 
+  const [mobileViewState, setMobileViewState] = useState<{
+    path: string | null;
+    view: "image" | "meta";
+  }>({ path: null, view: "image" });
+  const mobileView = mobileViewState.path === relativePath ? mobileViewState.view : "image";
+
   useEffect(() => {
     if (!relativePath) return;
 
@@ -157,6 +175,30 @@ export function ImageDetailModal({
     }
   }, [relativePath, onDeleteSuccess]);
 
+  const handleToggleMobileView = useCallback(() => {
+    setMobileViewState((prev) => ({
+      path: relativePath ?? null,
+      view: prev.path === relativePath && prev.view === "image" ? "meta" : "image",
+    }));
+  }, [relativePath]);
+
+  const imageContainerSx = useMemo(
+    () => ({
+      ...IMAGE_CONTAINER_SX,
+      display: { xs: mobileView === "image" ? "flex" : "none", sm: "flex" },
+    }),
+    [mobileView],
+  );
+
+  const sidebarSx = useMemo(
+    () => ({
+      ...SIDEBAR_SX,
+      display: { xs: mobileView === "meta" ? "flex" : "none", sm: "flex" },
+      width: { xs: "100%", sm: 280 },
+    }),
+    [mobileView],
+  );
+
   const isLoadingMetadata = Boolean(image) && metadataState.path !== relativePath;
   const pngMetadata = useMemo(
     () => (metadataState.path === relativePath ? metadataState.data : null),
@@ -177,8 +219,13 @@ export function ImageDetailModal({
               <CloseIcon />
             </IconButton>
 
+            {/* Mobile view toggle */}
+            <IconButton onClick={handleToggleMobileView} sx={TOGGLE_BUTTON_SX}>
+              {mobileView === "image" ? <InfoIcon /> : <PhotoIcon />}
+            </IconButton>
+
             {/* Image */}
-            <Box sx={IMAGE_CONTAINER_SX}>
+            <Box sx={imageContainerSx}>
               <LazyImage
                 relativePath={image.relativePath}
                 alt={`${image.characterName} ${image.poseName}`}
@@ -188,7 +235,7 @@ export function ImageDetailModal({
             </Box>
 
             {/* Metadata sidebar */}
-            <Box sx={SIDEBAR_SX}>
+            <Box sx={sidebarSx}>
               <Box>
                 <Typography variant="caption" sx={CAPTION_SX}>
                   Character
