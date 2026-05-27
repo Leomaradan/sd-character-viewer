@@ -1,5 +1,5 @@
 import { promises as fs } from "node:fs";
-import { isAuthenticatedRequest, isPasswordProtectionEnabled } from "@/lib/auth";
+import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
 import { resolveImageFilePath } from "@/lib/image-library";
 import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
@@ -43,6 +43,10 @@ export const GET = async (request: Request) => {
 };
 
 export const DELETE = async (request: Request) => {
+  if (isMisconfigured()) {
+    return Response.json({ misconfigured: true, required: true, authenticated: false });
+  }
+
   if (isPasswordProtectionEnabled() && !isAuthenticatedRequest(request)) {
     return new Response("Unauthorized", { status: 401 });
   }

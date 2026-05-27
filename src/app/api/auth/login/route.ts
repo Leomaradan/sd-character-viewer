@@ -2,6 +2,7 @@ import {
   AUTH_COOKIE_MAX_AGE_SECONDS,
   AUTH_COOKIE_NAME,
   createAuthCookieValue,
+  isMisconfigured,
   isPasswordProtectionEnabled,
   validatePassword,
 } from "@/lib/auth";
@@ -18,6 +19,10 @@ const buildSetCookieHeader = (cookieValue: string, secure: boolean): string => {
 };
 
 export const POST = async (request: Request) => {
+  if (isMisconfigured()) {
+    return Response.json({ misconfigured: true, required: true, authenticated: false });
+  }
+
   const protectionEnabled = isPasswordProtectionEnabled();
 
   if (!protectionEnabled) {
