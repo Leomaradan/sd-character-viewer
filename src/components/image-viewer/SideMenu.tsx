@@ -108,13 +108,13 @@ export const SideMenu = ({ majorFilter, onMajorFilterChange }: Readonly<ISideMen
           size="small"
           sx={THEME_TOGGLE_SX}
         >
-          <ToggleButton value="system" sx={THEME_BUTTON_SX}>
+          <ToggleButton value="system" sx={THEME_BUTTON_SX} aria-label="use system theme">
             <BrightnessAutoIcon fontSize="small" />
           </ToggleButton>
-          <ToggleButton value="light" sx={THEME_BUTTON_SX}>
+          <ToggleButton value="light" sx={THEME_BUTTON_SX} aria-label="use light theme">
             <LightModeIcon fontSize="small" />
           </ToggleButton>
-          <ToggleButton value="dark" sx={THEME_BUTTON_SX}>
+          <ToggleButton value="dark" sx={THEME_BUTTON_SX} aria-label="use dark theme">
             <DarkModeIcon fontSize="small" />
           </ToggleButton>
         </ToggleButtonGroup>

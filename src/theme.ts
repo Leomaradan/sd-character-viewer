@@ -26,7 +26,7 @@ const theme = createTheme({
   },
   colorSchemes: { light: true, dark: true },
   typography: {
-    fontFamily: '"Lexend", "Segoe UI", sans-serif',
+    fontFamily: '"Roboto", "Segoe UI", sans-serif',
   },
 });
 

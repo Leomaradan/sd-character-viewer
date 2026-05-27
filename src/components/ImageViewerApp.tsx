@@ -372,6 +372,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
           <IconButton
             color="inherit"
             edge="start"
+            aria-label="open drawer"
             onClick={handleOpenMobileDrawer}
             sx={APP_TOOLBAR_STYLES}
           >

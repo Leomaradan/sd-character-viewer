@@ -1,7 +1,7 @@
 :root {
   --background: #f5f7fb;
   --foreground: #0f172a;
-  --font-body: var(--font-lexend);
+  --font-body: var(--font-roboto);
 }
 
 body {
