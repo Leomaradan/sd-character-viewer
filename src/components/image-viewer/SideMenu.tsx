@@ -52,9 +52,9 @@ export const SideMenu = ({ majorFilter, onMajorFilterChange }: Readonly<ISideMen
   }, [onMajorFilterChange]);
 
   const handleModeChange = useCallback(
-    (_: ReactMouseEvent<HTMLElement>, newMode: string | null) => {
+    (_: ReactMouseEvent<HTMLElement>, newMode: "light" | "dark" | "system" | null) => {
       if (newMode) {
-        setMode(newMode as "light" | "dark" | "system");
+        setMode(newMode);
       }
     },
     [setMode],
