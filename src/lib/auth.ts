@@ -6,9 +6,18 @@ const SALT_ENV_KEY = "SD_PASSWORD_SALT";
 export const AUTH_COOKIE_NAME = "sd_auth";
 export const AUTH_COOKIE_MAX_AGE_SECONDS = 3 * 24 * 60 * 60;
 
+const tokenCache = new Map<string, string>();
+
 const buildSessionToken = (password: string): string => {
   const salt = getConfiguredSalt();
-  return scryptSync(password, salt, 64).toString("hex");
+  const cacheKey = `${salt.length}:${salt}:${password}`;
+  const cached = tokenCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const token = scryptSync(password, salt, 64).toString("hex");
+  tokenCache.set(cacheKey, token);
+  return token;
 };
 
 const getConfiguredSalt = (): string => {
