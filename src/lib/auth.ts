@@ -66,6 +66,10 @@ export const isPasswordProtectionEnabled = (): boolean => {
   return getConfiguredPassword() !== null;
 };
 
+export const isMisconfigured = (): boolean => {
+  return getConfiguredPassword() !== null && getConfiguredSalt() === "";
+};
+
 export const validatePassword = (password: string): boolean => {
   const configuredPassword = getConfiguredPassword();
 
