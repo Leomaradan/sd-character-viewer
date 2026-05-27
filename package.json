@@ -14,7 +14,7 @@
     "precommit:check": "pnpm format:check && pnpm lint:ci && pnpm typecheck && pnpm test && pnpm knip",
     "prepush:check": "pnpm build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --coverage",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "prepare": "husky"
