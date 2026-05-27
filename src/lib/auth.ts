@@ -2,11 +2,18 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { ensureLocalEnvLoaded } from "@/lib/env";
 
 const PASSWORD_ENV_KEY = "SD_PASSWORD";
+const SALT_ENV_KEY = "SD_PASSWORD_SALT";
 export const AUTH_COOKIE_NAME = "sd_auth";
 export const AUTH_COOKIE_MAX_AGE_SECONDS = 3 * 24 * 60 * 60;
 
 const buildSessionToken = (password: string): string => {
-  return createHash("sha256").update(password).digest("hex");
+  const salt = getConfiguredSalt();
+  return createHash("sha256").update(salt).update(password).digest("hex");
+};
+
+const getConfiguredSalt = (): string => {
+  ensureLocalEnvLoaded();
+  return process.env[SALT_ENV_KEY]?.trim() ?? "";
 };
 
 const getConfiguredPassword = (): string | null => {
