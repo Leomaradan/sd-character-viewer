@@ -16,9 +16,11 @@ import {
   Typography,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
+import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -26,7 +28,6 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SIDEBAR_WIDTH } from "@/components/image-viewer/constants";
-import { HeroCard } from "@/components/image-viewer/HeroCard";
 import { SideMenu } from "@/components/image-viewer/SideMenu";
 import type { IImageItem, TMajorFilter, TStyle } from "@/types/library";
 import { ImageViewerBody } from "./ImageViewerBody";
@@ -37,9 +38,10 @@ const MAIN_STYLES = { minHeight: "100vh", bgcolor: "background.default" };
 const APP_BAR_STYLES = {
   borderBottom: "1px solid",
   borderColor: "divider",
-  display: { sm: "none" },
 };
-const APP_TOOLBAR_STYLES = { mr: 2 };
+const APP_TOOLBAR_STYLES = { mr: 2, display: { xs: "flex", sm: "none" } };
+const DESKTOP_TOGGLE_SX = { mr: 2, display: { xs: "none", sm: "flex" } };
+const APP_TITLE_SX = { flexGrow: 1, fontWeight: 700 };
 
 const MODAL_PROPS = { keepMounted: true };
 const MODAL_STYLES = {
@@ -57,11 +59,10 @@ const DRAWER_STYLES = {
   [`& .MuiDrawer-paper`]: {
     width: SIDEBAR_WIDTH,
     boxSizing: "border-box",
+    zIndex: 1099,
   },
 };
 
-const MAIN_CONTENT_STYLES = { ml: { sm: `${SIDEBAR_WIDTH}px` }, p: { xs: 2, sm: 3 } };
-const TOOLBAR_STYLES = { display: { xs: "flex", sm: "none" } };
 const AUTH_PAGE_SX = {
   minHeight: "100vh",
   display: "flex",
@@ -105,6 +106,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   const selectedCharacter = majorFilter === "character" ? rawChar : null;
 
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [selectedImageForModal, setSelectedImageForModal] = useState<IImageItem | null>(null);
   const modalHistoryPushed = useRef(false);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
@@ -127,6 +129,19 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   const closeMobileDrawer = useCallback(() => {
     setIsMobileDrawerOpen(false);
   }, []);
+
+  const handleToggleSidebar = useCallback(() => {
+    setIsSidebarCollapsed((prev) => !prev);
+  }, []);
+
+  const mainContentSx = useMemo(
+    () => ({
+      ml: isSidebarCollapsed ? 0 : { sm: `${SIDEBAR_WIDTH}px` },
+      p: { xs: 2, sm: 3 },
+      transition: "margin-left 0.2s ease",
+    }),
+    [isSidebarCollapsed],
+  );
 
   const handleOpenImageModal = useCallback((image: IImageItem) => {
     setSelectedImageForModal(image);
@@ -358,8 +373,18 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap>
-            Image Viewer
+
+          <IconButton
+            color="inherit"
+            edge="start"
+            onClick={handleToggleSidebar}
+            sx={DESKTOP_TOGGLE_SX}
+          >
+            {isSidebarCollapsed ? <MenuIcon /> : <MenuOpenIcon />}
+          </IconButton>
+
+          <Typography variant="h6" noWrap sx={APP_TITLE_SX}>
+            Stable Diffusion Character Viewer
           </Typography>
         </Toolbar>
       </AppBar>
@@ -375,14 +400,15 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
         <SideMenu majorFilter={majorFilter} onMajorFilterChange={handleMajorFilterChange} />
       </Drawer>
 
-      <Drawer variant="permanent" open sx={DRAWER_STYLES}>
-        <Toolbar />
-        <SideMenu majorFilter={majorFilter} onMajorFilterChange={handleMajorFilterChange} />
-      </Drawer>
+      {!isSidebarCollapsed && (
+        <Drawer variant="permanent" open sx={DRAWER_STYLES}>
+          <Toolbar />
+          <SideMenu majorFilter={majorFilter} onMajorFilterChange={handleMajorFilterChange} />
+        </Drawer>
+      )}
 
-      <Box component="main" sx={MAIN_CONTENT_STYLES}>
-        <Toolbar sx={TOOLBAR_STYLES} />
-        <HeroCard />
+      <Box component="main" sx={mainContentSx}>
+        <Toolbar />
         <ImageViewerBody
           majorFilter={majorFilter}
           selectedCharacter={selectedCharacter}

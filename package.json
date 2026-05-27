@@ -25,6 +25,7 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.0.1",
     "@mui/material": "^9.0.1",
+    "@mui/material-nextjs": "^9.0.1",
     "@next/env": "16.2.6",
     "next": "16.2.6",
     "png-chunk-text": "^1.0.0",

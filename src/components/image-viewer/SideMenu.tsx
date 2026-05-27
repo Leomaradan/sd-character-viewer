@@ -1,6 +1,9 @@
 "use client";
 
-import { Box, List, ListItemButton, ListItemText, Typography } from "@mui/material";
+import { Box, List, ListItemButton, ListItemIcon, ListItemText, Typography } from "@mui/material";
+import DirectionsRunIcon from "@mui/icons-material/DirectionsRun";
+import PaletteIcon from "@mui/icons-material/Palette";
+import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import type { TMajorFilter } from "@/types/library";
 import { useCallback } from "react";
 import { PADDING, MARGIN_BOTTOM, BORDER_RADIUS } from "./constants";
@@ -35,6 +38,9 @@ export const SideMenu = ({ majorFilter, onMajorFilterChange }: Readonly<ISideMen
           onClick={onFilterChangeCharacter}
           sx={BORDER_RADIUS}
         >
+          <ListItemIcon>
+            <PeopleAltIcon />
+          </ListItemIcon>
           <ListItemText primary="Characters" />
         </ListItemButton>
         <ListItemButton
@@ -42,6 +48,9 @@ export const SideMenu = ({ majorFilter, onMajorFilterChange }: Readonly<ISideMen
           onClick={onFilterChangeStyle}
           sx={BORDER_RADIUS}
         >
+          <ListItemIcon>
+            <PaletteIcon />
+          </ListItemIcon>
           <ListItemText primary="Styles" />
         </ListItemButton>
         <ListItemButton
@@ -49,6 +58,9 @@ export const SideMenu = ({ majorFilter, onMajorFilterChange }: Readonly<ISideMen
           onClick={onFilterChangePose}
           sx={BORDER_RADIUS}
         >
+          <ListItemIcon>
+            <DirectionsRunIcon />
+          </ListItemIcon>
           <ListItemText primary="Poses" />
         </ListItemButton>
       </List>
