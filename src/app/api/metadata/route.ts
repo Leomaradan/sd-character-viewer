@@ -19,6 +19,10 @@ interface ICacheEntry {
 const cache = new Map<string, ICacheEntry>();
 let lastSweepAt = 0;
 
+export const invalidateMetadataCacheEntry = (requestedPath: string): void => {
+  cache.delete(requestedPath);
+};
+
 function sweepExpiredEntries(): void {
   const now = Date.now();
   if (now - lastSweepAt < SWEEP_INTERVAL_MS) {
