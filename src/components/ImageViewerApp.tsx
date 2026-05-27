@@ -16,13 +16,22 @@ import {
   Typography,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
-import { useCallback, useEffect, useState, type ChangeEvent, type SubmitEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type SubmitEvent,
+} from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { SIDEBAR_WIDTH } from "@/components/image-viewer/constants";
 import { HeroCard } from "@/components/image-viewer/HeroCard";
 import { SideMenu } from "@/components/image-viewer/SideMenu";
 import type { IImageItem, TMajorFilter, TStyle } from "@/types/library";
 import { ImageViewerBody } from "./ImageViewerBody";
 import { ImageDetailModal } from "@/components/image-viewer/ImageDetailModal";
+import { ScrollToTopButton } from "@/components/image-viewer/ScrollToTopButton";
 
 const MAIN_STYLES = { minHeight: "100vh", bgcolor: "background.default" };
 const APP_BAR_STYLES = {
@@ -86,19 +95,30 @@ interface IImageViewerAppProps {
 }
 
 export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps) => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const rawView = searchParams.get("view");
+  const majorFilter: TMajorFilter =
+    rawView === "style" || rawView === "pose" ? rawView : "character";
+  const rawChar = searchParams.get("char");
+  const selectedCharacter = majorFilter === "character" ? rawChar : null;
+
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [selectedImageForModal, setSelectedImageForModal] = useState<IImageItem | null>(null);
+  const modalHistoryPushed = useRef(false);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
   const [authStatus, setAuthStatus] = useState<TAuthStatus>("checking");
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  const [majorFilter, setMajorFilter] = useState<TMajorFilter>("character");
-
-  const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [characterDetailStyle, setCharacterDetailStyle] = useState<"all" | TStyle>("all");
   const [characterDetailPose, setCharacterDetailPose] = useState<string>("all");
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [majorFilter, selectedCharacter]);
 
   const handleOpenMobileDrawer = useCallback(() => {
     setIsMobileDrawerOpen(true);
@@ -108,13 +128,40 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     setIsMobileDrawerOpen(false);
   }, []);
 
+  const handleOpenImageModal = useCallback((image: IImageItem) => {
+    setSelectedImageForModal(image);
+    history.pushState({ sdModal: true }, "");
+    modalHistoryPushed.current = true;
+  }, []);
+
   const handleCloseImageModal = useCallback(() => {
     setSelectedImageForModal(null);
+    if (modalHistoryPushed.current) {
+      modalHistoryPushed.current = false;
+      history.back();
+    }
   }, []);
 
   const handleImageDeleted = useCallback(() => {
     setSelectedImageForModal(null);
+    if (modalHistoryPushed.current) {
+      modalHistoryPushed.current = false;
+      history.back();
+    }
     setLibraryRefreshToken((currentToken) => currentToken + 1);
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (modalHistoryPushed.current) {
+        modalHistoryPushed.current = false;
+        setSelectedImageForModal(null);
+      }
+    };
+    globalThis.addEventListener("popstate", handlePopState);
+    return () => {
+      globalThis.removeEventListener("popstate", handlePopState);
+    };
   }, []);
 
   const storeAuthMarkers = useCallback(() => {
@@ -234,16 +281,25 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
 
   const handleMajorFilterChange = useCallback(
     (nextFilter: TMajorFilter) => {
-      setMajorFilter(nextFilter);
       closeMobileDrawer();
+      setCharacterDetailStyle("all");
+      setCharacterDetailPose("all");
+      router.push(`/?view=${nextFilter}`);
+    },
+    [closeMobileDrawer, router],
+  );
 
-      if (nextFilter !== "character") {
-        setSelectedCharacter(null);
-        setCharacterDetailStyle("all");
-        setCharacterDetailPose("all");
+  const handleSelectCharacter = useCallback(
+    (characterName: string | null) => {
+      setCharacterDetailStyle("all");
+      setCharacterDetailPose("all");
+      if (characterName === null) {
+        router.push("/?view=character");
+      } else {
+        router.push(`/?view=character&char=${encodeURIComponent(characterName)}`);
       }
     },
-    [closeMobileDrawer],
+    [router],
   );
 
   if (authStatus === "checking") {
@@ -333,10 +389,10 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
           characterDetailStyle={characterDetailStyle}
           characterDetailPose={characterDetailPose}
           reloadToken={libraryRefreshToken}
-          setSelectedCharacter={setSelectedCharacter}
+          setSelectedCharacter={handleSelectCharacter}
           setCharacterDetailStyle={setCharacterDetailStyle}
           setCharacterDetailPose={setCharacterDetailPose}
-          onImageSelect={setSelectedImageForModal}
+          onImageSelect={handleOpenImageModal}
         />
       </Box>
 
@@ -346,6 +402,8 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
         onClose={handleCloseImageModal}
         onDeleteSuccess={handleImageDeleted}
       />
+
+      <ScrollToTopButton />
     </Box>
   );
 };

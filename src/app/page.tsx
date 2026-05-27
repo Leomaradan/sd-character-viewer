@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { ImageViewerApp } from "@/components/ImageViewerApp";
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
 
@@ -8,7 +9,11 @@ const Home = () => {
 
   const canDeleteImage = readBooleanEnvFlag(process.env[DELETE_ENV_KEY]);
 
-  return <ImageViewerApp canDeleteImage={canDeleteImage} />;
+  return (
+    <Suspense>
+      <ImageViewerApp canDeleteImage={canDeleteImage} />
+    </Suspense>
+  );
 };
 
 export default Home;
