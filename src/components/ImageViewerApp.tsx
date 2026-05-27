@@ -89,11 +89,12 @@ const AUTH_SESSION_KEY = "sd_auth_session";
 const AUTH_MARKER_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
 interface IAuthSessionResponse {
+  misconfigured?: boolean;
   required: boolean;
   authenticated: boolean;
 }
 
-type TAuthStatus = "checking" | "required" | "authenticated" | "error";
+type TAuthStatus = "checking" | "misconfigured" | "required" | "authenticated" | "error";
 
 interface IImageViewerAppProps {
   canDeleteImage?: boolean;
@@ -221,6 +222,12 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
       }
 
       const data: IAuthSessionResponse = await response.json();
+
+      if (data.misconfigured) {
+        setAuthStatus("misconfigured");
+        return;
+      }
+
       const nextStatus = data.required && !data.authenticated ? "required" : "authenticated";
 
       setAuthStatus(nextStatus);
@@ -325,6 +332,24 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     return (
       <Box sx={AUTH_LOADING_SX}>
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (authStatus === "misconfigured") {
+    return (
+      <Box sx={AUTH_PAGE_SX}>
+        <Card elevation={2} sx={AUTH_CARD_SX}>
+          <CardContent>
+            <Stack spacing={2}>
+              <Typography variant="h5">Configuration error</Typography>
+              <Alert severity="error">
+                <strong>SD_PASSWORD</strong> is set but <strong>SD_PASSWORD_SALT</strong> is
+                missing. Add <code>SD_PASSWORD_SALT</code> to your environment to enable login.
+              </Alert>
+            </Stack>
+          </CardContent>
+        </Card>
       </Box>
     );
   }
