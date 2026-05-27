@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - '*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -15,4 +21,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build the Docker image
-        run: docker build . --file Dockerfile --tag leomaradan/sd-character-viewer:${{ github.ref_name }}
+        run: docker build . --file Dockerfile --tag leomaradan/sd-character-viewer:${{ inputs.tag || github.ref_name }}
