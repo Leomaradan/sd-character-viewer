@@ -111,6 +111,27 @@ Example character flow:
 pnpm format
 pnpm format:check
 pnpm lint
+pnpm knip
 pnpm test
 pnpm test:coverage
 ```
+
+## Pre-commit Hook
+
+This project uses Husky pre-commit hooks. After `pnpm install`, Git commits run:
+
+```bash
+pnpm precommit:check
+```
+
+The hook blocks the commit if any check fails (format check, eslint with zero warnings, typecheck, tests, knip).
+
+## Pre-push Hook
+
+This project uses a Husky pre-push hook to validate production build integrity before pushing:
+
+```bash
+pnpm prepush:check
+```
+
+The push is blocked if the build fails.
