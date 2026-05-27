@@ -158,9 +158,9 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
         setSelectedImageForModal(null);
       }
     };
-    window.addEventListener("popstate", handlePopState);
+    globalThis.addEventListener("popstate", handlePopState);
     return () => {
-      window.removeEventListener("popstate", handlePopState);
+      globalThis.removeEventListener("popstate", handlePopState);
     };
   }, []);
 
