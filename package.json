@@ -9,6 +9,9 @@
     "format": "oxfmt \"src/**/*.{ts,tsx}\" \"*.{ts,mjs}\"",
     "format:check": "oxfmt --check \"src/**/*.{ts,tsx}\" \"*.{ts,mjs}\"",
     "lint": "eslint",
+    "lint:ci": "eslint . --max-warnings=0",
+    "knip": "knip",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -42,6 +45,7 @@
     "eslint-plugin-react-perf": "^3.3.3",
     "eslint-plugin-react-refresh": "^0.5.2",
     "jsdom": "^29.1.1",
+    "knip": "^6.14.2",
     "oxfmt": "^0.52.0",
     "typescript": "^5",
     "vitest": "^4.1.7"
