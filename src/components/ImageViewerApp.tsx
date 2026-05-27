@@ -49,6 +49,8 @@ const MODAL_STYLES = {
   [`& .MuiDrawer-paper`]: {
     width: SIDEBAR_WIDTH,
     boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
   },
 };
 
@@ -60,6 +62,8 @@ const DRAWER_STYLES = {
     width: SIDEBAR_WIDTH,
     boxSizing: "border-box",
     zIndex: 1099,
+    display: "flex",
+    flexDirection: "column",
   },
 };
 

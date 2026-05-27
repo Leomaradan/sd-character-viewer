@@ -18,13 +18,13 @@ const APP_THEME = {
 
 const theme = createTheme({
   ...APP_THEME,
-  cssVariables: true,
+  cssVariables: {
+    colorSchemeSelector: "class",
+  },
   shape: {
     borderRadius: 12,
   },
-  colorSchemes: {
-    dark: true,
-  },
+  colorSchemes: { light: true, dark: true },
   typography: {
     fontFamily: '"Lexend", "Segoe UI", sans-serif',
   },

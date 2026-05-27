@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Roboto } from "next/font/google";
 import { AppProviders } from "@/components/AppProviders";
+import InitColorSchemeScript from "@mui/material/InitColorSchemeScript";
 
 import "./globals.css";
 
@@ -25,6 +26,7 @@ const RootLayout = ({
   return (
     <html lang="en" className={`${roboto.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
+        <InitColorSchemeScript attribute="class" defaultMode="system" />
         <AppProviders>{children}</AppProviders>
       </body>
     </html>
