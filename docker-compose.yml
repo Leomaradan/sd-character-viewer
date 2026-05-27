@@ -11,7 +11,7 @@ services:
       PORT: 3000
       SD_IMAGES_ROOT: /data
       SD_PASSWORD: ${SD_PASSWORD:-}
-      # SD_PASSWORD_SALT: ${SD_PASSWORD_SALT:-}
+      SD_PASSWORD_SALT: ${SD_PASSWORD_SALT}
     volumes:
       - ${SD_IMAGES_HOST_PATH:-./images}:/data:ro
     restart: unless-stopped
