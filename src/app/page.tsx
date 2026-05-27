@@ -1,7 +1,14 @@
 import { ImageViewerApp } from "@/components/ImageViewerApp";
+import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
+
+const DELETE_ENV_KEY = "SD_ALLOW_DELETE";
 
 const Home = () => {
-  return <ImageViewerApp />;
+  ensureLocalEnvLoaded();
+
+  const canDeleteImage = readBooleanEnvFlag(process.env[DELETE_ENV_KEY]);
+
+  return <ImageViewerApp canDeleteImage={canDeleteImage} />;
 };
 
 export default Home;

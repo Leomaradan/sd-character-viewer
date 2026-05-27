@@ -81,9 +81,14 @@ interface IAuthSessionResponse {
 
 type TAuthStatus = "checking" | "required" | "authenticated" | "error";
 
-export const ImageViewerApp = () => {
+interface IImageViewerAppProps {
+  canDeleteImage?: boolean;
+}
+
+export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps) => {
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [selectedImageForModal, setSelectedImageForModal] = useState<IImageItem | null>(null);
+  const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
   const [authStatus, setAuthStatus] = useState<TAuthStatus>("checking");
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -105,6 +110,11 @@ export const ImageViewerApp = () => {
 
   const handleCloseImageModal = useCallback(() => {
     setSelectedImageForModal(null);
+  }, []);
+
+  const handleImageDeleted = useCallback(() => {
+    setSelectedImageForModal(null);
+    setLibraryRefreshToken((currentToken) => currentToken + 1);
   }, []);
 
   const storeAuthMarkers = useCallback(() => {
@@ -322,6 +332,7 @@ export const ImageViewerApp = () => {
           selectedCharacter={selectedCharacter}
           characterDetailStyle={characterDetailStyle}
           characterDetailPose={characterDetailPose}
+          reloadToken={libraryRefreshToken}
           setSelectedCharacter={setSelectedCharacter}
           setCharacterDetailStyle={setCharacterDetailStyle}
           setCharacterDetailPose={setCharacterDetailPose}
@@ -329,7 +340,12 @@ export const ImageViewerApp = () => {
         />
       </Box>
 
-      <ImageDetailModal image={selectedImageForModal} onClose={handleCloseImageModal} />
+      <ImageDetailModal
+        image={selectedImageForModal}
+        canDeleteImage={canDeleteImage}
+        onClose={handleCloseImageModal}
+        onDeleteSuccess={handleImageDeleted}
+      />
     </Box>
   );
 };

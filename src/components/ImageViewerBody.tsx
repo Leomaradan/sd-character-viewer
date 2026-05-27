@@ -15,6 +15,7 @@ interface IImageViewerBodyProps {
   selectedCharacter: string | null;
   characterDetailStyle: "all" | TStyle;
   characterDetailPose: string;
+  reloadToken: number;
   onImageSelect: (image: IImageItem) => void;
 
   setSelectedCharacter: (characterName: string | null) => void;
@@ -34,6 +35,7 @@ export const ImageViewerBody = ({
   selectedCharacter,
   characterDetailStyle,
   characterDetailPose,
+  reloadToken,
   onImageSelect,
   setSelectedCharacter,
   setCharacterDetailStyle,
@@ -98,7 +100,7 @@ export const ImageViewerBody = ({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [reloadToken]);
 
   const charactersForBrowseStyle = useMemo(() => {
     return library.characters.filter((character) =>
