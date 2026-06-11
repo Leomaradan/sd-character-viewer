@@ -2,7 +2,7 @@
 
 import { Box, Chip, type SelectChangeEvent, Stack, Typography } from "@mui/material";
 import { ImageCard } from "@/components/image-viewer/ImageCard";
-import type { ICharacterSummary, IImageItem, TStyle } from "@/types/library";
+import type { ICharacterSummary, IImageItem, IMetadataFilterOption, TStyle } from "@/types/library";
 import { FLEXWRAP, GRID, STACK_SPACING } from "./constants";
 import { useCallback, useMemo, useState } from "react";
 import { StyleView } from "./StyleView";
@@ -69,14 +69,6 @@ const LetterChip = ({ letter }: Readonly<ILetterChipProps>) => {
     <Chip label={letter} size="small" variant="outlined" onClick={handleClick} sx={AZ_CHIP_SX} />
   );
 };
-
-interface IMetadataFilterOption {
-  id: string;
-  type: "category" | "serie";
-  value: string;
-  label: string;
-}
-
 export const CharactersView = ({
   styles,
   defaultStyle,
@@ -254,7 +246,7 @@ export const CharactersView = ({
         <>
           <CategoryFilter
             metadataFilterOptions={metadataFilterOptions}
-            selectedMetadataFilterId={selectedMetadataFilterId}
+            selectedMetadataFilterId={effectiveSelectedMetadataFilterId}
             onMetadataFilterChange={onMetadataFilterChange}
             onClearMetadataFilter={onClearMetadataFilter}
             prefix="character"

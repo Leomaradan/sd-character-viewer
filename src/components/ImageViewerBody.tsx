@@ -10,6 +10,7 @@ import { PosesView } from "@/components/image-viewer/PosesView";
 import { StylesView } from "@/components/image-viewer/StylesView";
 import { buildPoseFilterOptions, buildPoseOptions } from "@/components/image-viewer/utils";
 import type {
+  ICharacterSummary,
   IImageItem,
   ILibraryData,
   IMetadataFilterOption,
@@ -39,6 +40,34 @@ const PROGRESS_CONTAINER = {
 
 const compareNatural = (a: string, b: string): number => {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+};
+
+const buildMetadataFilterOptions = (characters: ICharacterSummary[]): IMetadataFilterOption[] => {
+  const categories = new Set(
+    characters
+      .map((character) => character.category)
+      .filter((category): category is string => Boolean(category?.trim())),
+  );
+  const series = new Set(
+    characters
+      .map((character) => character.serie)
+      .filter((serie): serie is string => Boolean(serie?.trim())),
+  );
+
+  const categoryFilters = [...categories].map((category) => ({
+    id: `category::${category}`,
+    type: "category" as const,
+    value: category,
+    label: category,
+  }));
+  const serieFilters = [...series].map((serie) => ({
+    id: `serie::${serie}`,
+    type: "serie" as const,
+    value: serie,
+    label: serie,
+  }));
+
+  return [...categoryFilters, ...serieFilters].sort((a, b) => compareNatural(a.label, b.label));
 };
 
 export const ImageViewerBody = ({
@@ -92,9 +121,19 @@ export const ImageViewerBody = ({
           return;
         }
 
+        const validMetadataFilterIds = new Set(
+          buildMetadataFilterOptions(data.characters).map((option) => option.id),
+        );
+
         setLibrary(data);
         setRequestError(null);
         setStyleViewStyle(data.defaultStyle);
+        setStyleViewMetadataFilterId((previousId) =>
+          validMetadataFilterIds.has(previousId) ? previousId : "",
+        );
+        setPoseViewMetadataFilterId((previousId) =>
+          validMetadataFilterIds.has(previousId) ? previousId : "",
+        );
       } catch (error) {
         if (!isMounted) {
           return;
@@ -122,31 +161,7 @@ export const ImageViewerBody = ({
   }, [library.characters, library.defaultStyle]);
 
   const metadataFilterOptions = useMemo((): IMetadataFilterOption[] => {
-    const categories = new Set(
-      library.characters
-        .map((character) => character.category)
-        .filter((category): category is string => Boolean(category?.trim())),
-    );
-    const series = new Set(
-      library.characters
-        .map((character) => character.serie)
-        .filter((serie): serie is string => Boolean(serie?.trim())),
-    );
-
-    const categoryFilters = [...categories].map((category) => ({
-      id: `category::${category}`,
-      type: "category" as const,
-      value: category,
-      label: category,
-    }));
-    const serieFilters = [...series].map((serie) => ({
-      id: `serie::${serie}`,
-      type: "serie" as const,
-      value: serie,
-      label: serie,
-    }));
-
-    return [...categoryFilters, ...serieFilters].sort((a, b) => compareNatural(a.label, b.label));
+    return buildMetadataFilterOptions(library.characters);
   }, [library.characters]);
 
   const metadataFilterById = useMemo(() => {
