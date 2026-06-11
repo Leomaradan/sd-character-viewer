@@ -90,7 +90,7 @@ describe("readImageLibrary with characters metadata", () => {
     await fs.mkdir(characterDir, { recursive: true });
     await fs.writeFile(path.join(characterDir, "Base.png"), "");
     await fs.writeFile(
-      path.join(tempRoot, "characters.json"),
+      path.join(tempRoot, "characters", "characters.json"),
       JSON.stringify([
         {
           name: "Bea",
