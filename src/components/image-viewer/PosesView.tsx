@@ -1,13 +1,14 @@
 "use client";
 
-import { Box, Chip, Stack, TextField } from "@mui/material";
+import { Box, Chip, type SelectChangeEvent, Stack, TextField } from "@mui/material";
 import { ImageCard } from "@/components/image-viewer/ImageCard";
-import type { IImageItem, TStyle } from "@/types/library";
+import type { IImageItem, IMetadataFilterOption, TStyle } from "@/types/library";
 import { FLEXWRAP, GRID, STACK_SPACING } from "./constants";
 import { useCallback, useMemo } from "react";
 import { SearchField } from "./SearchField";
 import { PoseView } from "./PoseView";
 import { StyleView } from "./StyleView";
+import { CategoryFilter } from "./CategoryFilter";
 
 interface IPoseOption {
   value: string;
@@ -20,10 +21,14 @@ interface IPosesViewProps {
   poseViewSelectedPoses: string[];
   poseViewStyle: "all" | TStyle;
   poseViewCharacterSearch: string;
+  metadataFilterOptions: IMetadataFilterOption[];
+  selectedMetadataFilterId: string;
   poseFilteredImages: IImageItem[];
   onClearPoses: () => void;
   onTogglePose: (pose: string) => void;
   onPoseStyleChange: (style: "all" | TStyle) => void;
+  onMetadataFilterChange: (event: SelectChangeEvent<string>) => void;
+  onClearMetadataFilter: () => void;
   onCharacterSearchChange: (value: string) => void;
   onImageSelect: (image: IImageItem) => void;
 }
@@ -34,10 +39,14 @@ export const PosesView = ({
   poseViewSelectedPoses,
   poseViewStyle,
   poseViewCharacterSearch,
+  metadataFilterOptions,
+  selectedMetadataFilterId,
   poseFilteredImages,
   onClearPoses,
   onTogglePose,
   onPoseStyleChange,
+  onMetadataFilterChange,
+  onClearMetadataFilter,
   onCharacterSearchChange,
   onImageSelect,
 }: Readonly<IPosesViewProps>) => {
@@ -104,6 +113,14 @@ export const PosesView = ({
         onChange={handleOnSearchTextChange}
         placeholder="Type part of a character name"
         slotProps={textFieldSlotProps}
+      />
+
+      <CategoryFilter
+        metadataFilterOptions={metadataFilterOptions}
+        selectedMetadataFilterId={selectedMetadataFilterId}
+        onMetadataFilterChange={onMetadataFilterChange}
+        onClearMetadataFilter={onClearMetadataFilter}
+        prefix="pose"
       />
 
       <Box sx={GRID}>

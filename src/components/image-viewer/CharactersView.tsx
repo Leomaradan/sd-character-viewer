@@ -1,13 +1,14 @@
 "use client";
 
-import { Box, Chip, Stack, Typography } from "@mui/material";
+import { Box, Chip, type SelectChangeEvent, Stack, Typography } from "@mui/material";
 import { ImageCard } from "@/components/image-viewer/ImageCard";
-import type { ICharacterSummary, IImageItem, TStyle } from "@/types/library";
+import type { ICharacterSummary, IImageItem, IMetadataFilterOption, TStyle } from "@/types/library";
 import { FLEXWRAP, GRID, STACK_SPACING } from "./constants";
 import { useCallback, useMemo, useState } from "react";
 import { StyleView } from "./StyleView";
 import { PoseView } from "./PoseView";
 import { CharacterView } from "./CharacterView";
+import { CategoryFilter } from "./CategoryFilter";
 
 interface ICharactersViewProps {
   styles: TStyle[];
@@ -36,11 +37,6 @@ const SECTION_LETTER_SX = {
   letterSpacing: 2,
   mb: 1,
 };
-const FILTERS_SX = { display: "flex", flexWrap: "wrap", gap: 1, mb: 2 };
-const FILTER_TITLE_SX = { color: "text.secondary", fontWeight: 700, mb: 0.5 };
-const QUICK_FILTERS_CONTAINER_SX = { mb: 2 };
-const QUICK_FILTERS_HEADER_SX = { ...FLEXWRAP, alignItems: "center" };
-const FILTER_SECTION_SX = { mt: 1 };
 
 const compareNatural = (a: string, b: string): number => {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
@@ -73,27 +69,6 @@ const LetterChip = ({ letter }: Readonly<ILetterChipProps>) => {
     <Chip label={letter} size="small" variant="outlined" onClick={handleClick} sx={AZ_CHIP_SX} />
   );
 };
-
-interface IToggleFilterChipProps {
-  label: string;
-  selected: boolean;
-  color: "primary" | "secondary";
-  onToggle: (value: string) => void;
-}
-
-const ToggleFilterChip = ({
-  label,
-  selected,
-  color,
-  onToggle,
-}: Readonly<IToggleFilterChipProps>) => {
-  const handleClick = useCallback(() => {
-    onToggle(label);
-  }, [label, onToggle]);
-
-  return <Chip label={label} color={selected ? color : "default"} onClick={handleClick} />;
-};
-
 export const CharactersView = ({
   styles,
   defaultStyle,
@@ -109,8 +84,7 @@ export const CharactersView = ({
   onCharacterDetailPoseChange,
   onImageSelect,
 }: Readonly<ICharactersViewProps>) => {
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedSerie, setSelectedSerie] = useState<string | null>(null);
+  const [selectedMetadataFilterId, setSelectedMetadataFilterId] = useState<string>("");
 
   const onCharacterDetailStyleChangeHandlerAll = useCallback(() => {
     onCharacterDetailStyleChange("all");
@@ -142,48 +116,58 @@ export const CharactersView = ({
     return [...series].sort((a, b) => compareNatural(a, b));
   }, [charactersForBrowseStyle]);
 
-  const effectiveSelectedCategory = useMemo(() => {
-    if (!selectedCategory) {
-      return null;
+  const metadataFilterOptions = useMemo((): IMetadataFilterOption[] => {
+    const categoryFilters = categoryOptions.map((category) => ({
+      id: `category::${category}`,
+      type: "category" as const,
+      value: category,
+      label: category,
+    }));
+    const serieFilters = serieOptions.map((serie) => ({
+      id: `serie::${serie}`,
+      type: "serie" as const,
+      value: serie,
+      label: serie,
+    }));
+
+    return [...categoryFilters, ...serieFilters].sort((a, b) => compareNatural(a.label, b.label));
+  }, [categoryOptions, serieOptions]);
+
+  const metadataFilterById = useMemo(() => {
+    return new Map(metadataFilterOptions.map((option) => [option.id, option]));
+  }, [metadataFilterOptions]);
+
+  const effectiveSelectedMetadataFilterId = useMemo(() => {
+    if (!selectedMetadataFilterId) {
+      return "";
     }
 
-    return categoryOptions.includes(selectedCategory) ? selectedCategory : null;
-  }, [selectedCategory, categoryOptions]);
+    return metadataFilterById.has(selectedMetadataFilterId) ? selectedMetadataFilterId : "";
+  }, [selectedMetadataFilterId, metadataFilterById]);
 
-  const effectiveSelectedSerie = useMemo(() => {
-    if (!selectedSerie) {
-      return null;
-    }
-
-    return serieOptions.includes(selectedSerie) ? selectedSerie : null;
-  }, [selectedSerie, serieOptions]);
-
-  const onCategoryToggle = useCallback((category: string) => {
-    setSelectedCategory((previousCategory) => (previousCategory === category ? null : category));
-  }, []);
-
-  const onSerieToggle = useCallback((serie: string) => {
-    setSelectedSerie((previousSerie) => (previousSerie === serie ? null : serie));
+  const onMetadataFilterChange = useCallback((event: SelectChangeEvent<string>) => {
+    setSelectedMetadataFilterId(event.target.value);
   }, []);
 
   const filteredCharacters = useMemo(() => {
+    const selectedOption = metadataFilterById.get(effectiveSelectedMetadataFilterId);
+
+    if (!selectedOption) {
+      return charactersForBrowseStyle;
+    }
+
     return charactersForBrowseStyle.filter((character) => {
-      const matchesCategory = effectiveSelectedCategory
-        ? character.category === effectiveSelectedCategory
-        : true;
-      const matchesSerie = effectiveSelectedSerie
-        ? character.serie === effectiveSelectedSerie
-        : true;
-      return matchesCategory && matchesSerie;
+      if (selectedOption.type === "category") {
+        return character.category === selectedOption.value;
+      }
+
+      return character.serie === selectedOption.value;
     });
-  }, [charactersForBrowseStyle, effectiveSelectedCategory, effectiveSelectedSerie]);
+  }, [charactersForBrowseStyle, effectiveSelectedMetadataFilterId, metadataFilterById]);
 
-  const clearCharacterMetadataFilters = useCallback(() => {
-    setSelectedCategory(null);
-    setSelectedSerie(null);
+  const onClearMetadataFilter = useCallback(() => {
+    setSelectedMetadataFilterId("");
   }, []);
-
-  const hasMetadataFilters = categoryOptions.length > 0 || serieOptions.length > 0;
 
   const groupedCharacters = useMemo((): ICharacterGroup[] => {
     const map = new Map<string, ICharacterSummary[]>();
@@ -205,6 +189,7 @@ export const CharactersView = ({
   }, [filteredCharacters]);
 
   const showAzBar = groupedCharacters.length > 1;
+  const hasActiveMetadataFilters = Boolean(effectiveSelectedMetadataFilterId);
 
   return (
     <Stack spacing={2}>
@@ -259,91 +244,58 @@ export const CharactersView = ({
         </>
       ) : (
         <>
-          {hasMetadataFilters && (
-            <Box sx={QUICK_FILTERS_CONTAINER_SX}>
-              <Stack direction="row" spacing={1} useFlexGap sx={QUICK_FILTERS_HEADER_SX}>
-                <Typography variant="subtitle2" sx={FILTER_TITLE_SX}>
-                  Quick filters
-                </Typography>
-                <Chip
-                  label="All"
-                  color={
-                    !effectiveSelectedCategory && !effectiveSelectedSerie ? "primary" : "default"
-                  }
-                  onClick={clearCharacterMetadataFilters}
-                />
-              </Stack>
+          <CategoryFilter
+            metadataFilterOptions={metadataFilterOptions}
+            selectedMetadataFilterId={effectiveSelectedMetadataFilterId}
+            onMetadataFilterChange={onMetadataFilterChange}
+            onClearMetadataFilter={onClearMetadataFilter}
+            prefix="character"
+          />
 
-              {categoryOptions.length > 0 && (
-                <Box sx={FILTER_SECTION_SX}>
-                  <Typography variant="caption" sx={FILTER_TITLE_SX}>
-                    Category
-                  </Typography>
-                  <Box sx={FILTERS_SX}>
-                    {categoryOptions.map((category) => (
-                      <ToggleFilterChip
-                        key={category}
-                        label={category}
-                        selected={effectiveSelectedCategory === category}
-                        color="primary"
-                        onToggle={onCategoryToggle}
-                      />
-                    ))}
-                  </Box>
-                </Box>
-              )}
-
-              {serieOptions.length > 0 && (
-                <Box sx={FILTER_SECTION_SX}>
-                  <Typography variant="caption" sx={FILTER_TITLE_SX}>
-                    Serie
-                  </Typography>
-                  <Box sx={FILTERS_SX}>
-                    {serieOptions.map((serie) => (
-                      <ToggleFilterChip
-                        key={serie}
-                        label={serie}
-                        selected={effectiveSelectedSerie === serie}
-                        color="secondary"
-                        onToggle={onSerieToggle}
-                      />
-                    ))}
-                  </Box>
-                </Box>
-              )}
-            </Box>
-          )}
-
-          {showAzBar && (
+          {!hasActiveMetadataFilters && showAzBar && (
             <Box sx={AZ_BAR_SX}>
               {groupedCharacters.map(({ letter }) => (
                 <LetterChip key={letter} letter={letter} />
               ))}
             </Box>
           )}
-          {groupedCharacters.map(({ letter, characters }) => (
-            <Box key={letter} id={`section-${letter}`} sx={SECTION_SX}>
-              {showAzBar && (
-                <Typography variant="overline" sx={SECTION_LETTER_SX}>
-                  {letter}
-                </Typography>
-              )}
-              <Box sx={GRID}>
-                {characters.map((character) => (
-                  <CharacterView
-                    key={character.name}
-                    defaultStyle={defaultStyle}
-                    browseStyle={browseStyle}
-                    character={character}
-                    onSelectCharacter={onSelectCharacter}
-                  />
-                ))}
-              </Box>
+          {hasActiveMetadataFilters ? (
+            <Box sx={GRID}>
+              {filteredCharacters.map((character) => (
+                <CharacterView
+                  key={character.name}
+                  defaultStyle={defaultStyle}
+                  browseStyle={browseStyle}
+                  character={character}
+                  onSelectCharacter={onSelectCharacter}
+                />
+              ))}
             </Box>
-          ))}
+          ) : (
+            groupedCharacters.map(({ letter, characters }) => (
+              <Box key={letter} id={`section-${letter}`} sx={SECTION_SX}>
+                {showAzBar && (
+                  <Typography variant="overline" sx={SECTION_LETTER_SX}>
+                    {letter}
+                  </Typography>
+                )}
+                <Box sx={GRID}>
+                  {characters.map((character) => (
+                    <CharacterView
+                      key={character.name}
+                      defaultStyle={defaultStyle}
+                      browseStyle={browseStyle}
+                      character={character}
+                      onSelectCharacter={onSelectCharacter}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            ))
+          )}
           {groupedCharacters.length === 0 && (
             <Typography variant="body2" color="text.secondary">
-              No characters match the selected category/serie filters.
+              No characters match the selected metadata filters.
             </Typography>
           )}
         </>
