@@ -9,9 +9,9 @@ import {
   type TStyle,
 } from "@/types/library";
 import { ensureLocalEnvLoaded } from "@/lib/env";
+import { SD_IMAGES_ROOT_ENV_KEY } from "@/lib/env-keys";
 
 const DEFAULT_STYLE: TStyle = "3d";
-const IMAGE_ROOT_ENV_KEY = "SD_IMAGES_ROOT";
 const PNG_EXTENSION = ".png";
 
 interface ICharacterAccumulator {
@@ -20,6 +20,17 @@ interface ICharacterAccumulator {
   styles: Set<TStyle>;
   poses: Set<string>;
   thumbnailsByStyle: Partial<Record<TStyle, string>>;
+}
+
+interface ICharacterMetadata {
+  name: string;
+  category: string;
+  serie?: string;
+}
+
+interface ICharacterMetadataSummary {
+  category: string;
+  serie: string | null;
 }
 
 interface ILibraryIndexState {
@@ -38,6 +49,78 @@ const compareNatural = (a: string, b: string): number => {
 
 const sanitizePoseName = (rawPoseName: string): string => {
   return rawPoseName.replace(/[_-]+/g, " ").trim();
+};
+
+const normalizeCharacterNameKey = (characterName: string): string => {
+  return characterName.trim().toLowerCase();
+};
+
+const isCharacterMetadata = (value: unknown): value is ICharacterMetadata => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+
+  if (!keys.includes("name") || !keys.includes("category")) {
+    return false;
+  }
+
+  const hasOnlyAllowedKeys = keys.every((key) => ["name", "category", "serie"].includes(key));
+
+  if (!hasOnlyAllowedKeys) {
+    return false;
+  }
+
+  if (typeof record.name !== "string" || typeof record.category !== "string") {
+    return false;
+  }
+
+  if (record.serie !== undefined && typeof record.serie !== "string") {
+    return false;
+  }
+
+  return true;
+};
+
+const readCharactersMetadata = async (
+  rootPath: string,
+): Promise<Map<string, ICharacterMetadataSummary>> => {
+  const metadataPath = path.join(rootPath, "characters", "characters.json");
+
+  let fileContent = "";
+  try {
+    fileContent = await fs.readFile(metadataPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return new Map();
+    }
+
+    throw error;
+  }
+
+  const parsedContent: unknown = JSON.parse(fileContent);
+  const items = Array.isArray(parsedContent) ? parsedContent : [parsedContent];
+  const metadataByCharacter = new Map<string, ICharacterMetadataSummary>();
+
+  for (const item of items) {
+    if (!isCharacterMetadata(item)) {
+      continue;
+    }
+
+    const normalizedName = normalizeCharacterNameKey(item.name);
+    if (!normalizedName) {
+      continue;
+    }
+
+    metadataByCharacter.set(normalizedName, {
+      category: item.category,
+      serie: item.serie ?? null,
+    });
+  }
+
+  return metadataByCharacter;
 };
 
 export const parsePoseName = (
@@ -95,6 +178,8 @@ const toCharacterSummary = (accumulator: ICharacterAccumulator): ICharacterSumma
     poseCount: accumulator.poses.size,
     styles: [...accumulator.styles].sort(compareNatural),
     thumbnailsByStyle: accumulator.thumbnailsByStyle,
+    category: null,
+    serie: null,
   };
 };
 
@@ -241,9 +326,26 @@ const sortImageItems = (imageItems: IImageItem[]): void => {
   });
 };
 
-const toLibraryData = (rootPath: string, state: ILibraryIndexState): ILibraryData => {
+const toLibraryData = (
+  rootPath: string,
+  state: ILibraryIndexState,
+  metadataByCharacter: Map<string, ICharacterMetadataSummary>,
+): ILibraryData => {
   const characters = [...state.characterMap.values()]
-    .map(toCharacterSummary)
+    .map((accumulator) => {
+      const summary = toCharacterSummary(accumulator);
+      const metadata = metadataByCharacter.get(normalizeCharacterNameKey(summary.name));
+
+      if (!metadata) {
+        return summary;
+      }
+
+      return {
+        ...summary,
+        category: metadata.category,
+        serie: metadata.serie,
+      };
+    })
     .sort((a, b) => compareNatural(a.name, b.name));
 
   const poses = toPoseSummaries(state.poseCounter);
@@ -262,7 +364,7 @@ const toLibraryData = (rootPath: string, state: ILibraryIndexState): ILibraryDat
 
 const getImagesRootPathFromEnv = (): string | null => {
   ensureLocalEnvLoaded();
-  const configuredRoot = process.env[IMAGE_ROOT_ENV_KEY]?.trim();
+  const configuredRoot = process.env[SD_IMAGES_ROOT_ENV_KEY]?.trim();
   return configuredRoot || null;
 };
 
@@ -273,11 +375,18 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
     return createEmptyLibraryData(
       false,
       null,
-      `Set ${IMAGE_ROOT_ENV_KEY} to the folder that contains characters/{style}/{character}/*.png`,
+      `Set ${SD_IMAGES_ROOT_ENV_KEY} to the folder that contains characters/{style}/{character}/*.png`,
     );
   }
 
   const charactersRootPath = path.join(rootPath, "characters");
+  let metadataByCharacter = new Map<string, ICharacterMetadataSummary>();
+
+  try {
+    metadataByCharacter = await readCharactersMetadata(rootPath);
+  } catch {
+    metadataByCharacter = new Map<string, ICharacterMetadataSummary>();
+  }
 
   let availableStyles: TStyle[] = [];
   try {
@@ -306,7 +415,7 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
 
   sortImageItems(indexState.imageItems);
 
-  return toLibraryData(rootPath, indexState);
+  return toLibraryData(rootPath, indexState, metadataByCharacter);
 };
 
 export const resolveImageFilePath = (relativePath: string): string | null => {

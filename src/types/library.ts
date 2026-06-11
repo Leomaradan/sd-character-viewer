@@ -20,6 +20,8 @@ export interface ICharacterSummary {
   poseCount: number;
   styles: TStyle[];
   thumbnailsByStyle: Partial<Record<TStyle, string>>;
+  category: string | null;
+  serie: string | null;
 }
 
 export interface IPoseSummary {

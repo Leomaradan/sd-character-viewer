@@ -3,14 +3,13 @@ import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } 
 import { resolveImageFilePath } from "@/lib/image-library";
 import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
+import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 
 export const dynamic = "force-dynamic";
 
-const DELETE_ENV_KEY = "SD_ALLOW_DELETE";
-
 const isDeleteAllowed = (): boolean => {
   ensureLocalEnvLoaded();
-  return readBooleanEnvFlag(process.env[DELETE_ENV_KEY]);
+  return readBooleanEnvFlag(process.env[SD_ALLOW_DELETE_ENV_KEY]);
 };
 
 export const GET = async (request: Request) => {
