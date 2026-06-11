@@ -1,19 +1,24 @@
 "use client";
 
-import { Box, Stack, TextField } from "@mui/material";
+import { Box, type SelectChangeEvent, Stack, TextField } from "@mui/material";
 import { ImageCard } from "@/components/image-viewer/ImageCard";
-import type { IImageItem, TStyle } from "@/types/library";
+import type { IImageItem, IMetadataFilterOption, TStyle } from "@/types/library";
 import { FLEXWRAP, GRID, STACK_SPACING } from "./constants";
 import { StyleView } from "./StyleView";
 import { useCallback, useMemo } from "react";
 import { SearchField } from "./SearchField";
+import { CategoryFilter } from "./CategoryFilter";
 
 interface IStylesViewProps {
   styles: TStyle[];
   styleViewStyle: TStyle;
   styleViewSearchText: string;
+  metadataFilterOptions: IMetadataFilterOption[];
+  selectedMetadataFilterId: string;
   styleFilteredImages: IImageItem[];
   onStyleSelect: (style: TStyle) => void;
+  onMetadataFilterChange: (event: SelectChangeEvent<string>) => void;
+  onClearMetadataFilter: () => void;
   onStyleSearchTextChange: (value: string) => void;
   onImageSelect: (image: IImageItem) => void;
 }
@@ -22,8 +27,12 @@ export const StylesView = ({
   styles,
   styleViewStyle,
   styleViewSearchText,
+  metadataFilterOptions,
+  selectedMetadataFilterId,
   styleFilteredImages,
   onStyleSelect,
+  onMetadataFilterChange,
+  onClearMetadataFilter,
   onStyleSearchTextChange,
   onImageSelect,
 }: Readonly<IStylesViewProps>) => {
@@ -65,6 +74,14 @@ export const StylesView = ({
         onChange={handleOnSearchTextChange}
         placeholder="Type part of a character or pose name"
         slotProps={textFieldSlotProps}
+      />
+
+      <CategoryFilter
+        metadataFilterOptions={metadataFilterOptions}
+        selectedMetadataFilterId={selectedMetadataFilterId}
+        onMetadataFilterChange={onMetadataFilterChange}
+        onClearMetadataFilter={onClearMetadataFilter}
+        prefix="style"
       />
 
       <Box sx={GRID}>

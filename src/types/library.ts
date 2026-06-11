@@ -24,6 +24,13 @@ export interface ICharacterSummary {
   serie: string | null;
 }
 
+export interface IMetadataFilterOption {
+  id: string;
+  type: "category" | "serie";
+  value: string;
+  label: string;
+}
+
 export interface IPoseSummary {
   name: string;
   imageCount: number;
