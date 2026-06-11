@@ -2,8 +2,9 @@ import { loadEnvConfig } from "@next/env";
 
 let hasLoadedEnvFiles = false;
 
-export const readBooleanEnvFlag = (value: string | undefined): boolean => {
-  const normalizedValue = value?.trim().toLowerCase();
+export const readBooleanEnvFlag = (value: boolean | string | undefined): boolean => {
+  const normalizedValue = value?.toString().trim().toLowerCase();
+  console.log({ value, normalizedValue });
   return normalizedValue === "true" || normalizedValue === "1" || normalizedValue === "yes";
 };
 

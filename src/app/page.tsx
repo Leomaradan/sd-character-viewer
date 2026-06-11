@@ -1,13 +1,12 @@
 import { Suspense } from "react";
 import { ImageViewerApp } from "@/components/ImageViewerApp";
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
-
-const DELETE_ENV_KEY = "SD_ALLOW_DELETE";
+import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 
 const Home = () => {
   ensureLocalEnvLoaded();
 
-  const canDeleteImage = readBooleanEnvFlag(process.env[DELETE_ENV_KEY]);
+  const canDeleteImage = readBooleanEnvFlag(process.env[SD_ALLOW_DELETE_ENV_KEY]);
 
   return (
     <Suspense>
