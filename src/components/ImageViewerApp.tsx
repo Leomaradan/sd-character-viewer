@@ -109,6 +109,19 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     rawView === "style" || rawView === "pose" ? rawView : "character";
   const rawChar = searchParams.get("char");
   const selectedCharacter = majorFilter === "character" ? rawChar : null;
+  const selectedPoseFilters = searchParams
+    .getAll("pose")
+    .map((pose) => pose.trim())
+    .filter((pose) => pose !== "");
+  const rawCategoryFilter = searchParams.get("category")?.trim() ?? "";
+  const rawSerieFilter = searchParams.get("serie")?.trim() ?? "";
+  let selectedMetadataFilterId = "";
+
+  if (rawCategoryFilter) {
+    selectedMetadataFilterId = `category::${rawCategoryFilter}`;
+  } else if (rawSerieFilter) {
+    selectedMetadataFilterId = `serie::${rawSerieFilter}`;
+  }
 
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -126,6 +139,36 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [majorFilter, selectedCharacter]);
+
+  const updateQueryParams = useCallback(
+    (changes: Record<string, string | string[] | null>) => {
+      const nextParams = new URLSearchParams(searchParams.toString());
+
+      for (const [key, value] of Object.entries(changes)) {
+        if (Array.isArray(value)) {
+          nextParams.delete(key);
+
+          for (const item of value) {
+            const normalizedItem = item.trim();
+            if (normalizedItem !== "") {
+              nextParams.append(key, normalizedItem);
+            }
+          }
+          continue;
+        }
+
+        if (value === null || value.trim() === "") {
+          nextParams.delete(key);
+        } else {
+          nextParams.set(key, value);
+        }
+      }
+
+      const nextQuery = nextParams.toString();
+      router.replace(nextQuery ? `/?${nextQuery}` : "/");
+    },
+    [router, searchParams],
+  );
 
   const handleOpenMobileDrawer = useCallback(() => {
     setIsMobileDrawerOpen(true);
@@ -310,9 +353,9 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
       closeMobileDrawer();
       setCharacterDetailStyle("all");
       setCharacterDetailPose("all");
-      router.push(`/?view=${nextFilter}`);
+      updateQueryParams({ view: nextFilter, char: null });
     },
-    [closeMobileDrawer, router],
+    [closeMobileDrawer, updateQueryParams],
   );
 
   const handleSelectCharacter = useCallback(
@@ -320,12 +363,50 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
       setCharacterDetailStyle("all");
       setCharacterDetailPose("all");
       if (characterName === null) {
-        router.push("/?view=character");
+        updateQueryParams({ view: "character", char: null });
       } else {
-        router.push(`/?view=character&char=${encodeURIComponent(characterName)}`);
+        updateQueryParams({ view: "character", char: characterName });
       }
     },
-    [router],
+    [updateQueryParams],
+  );
+
+  const handleMetadataFilterChange = useCallback(
+    (metadataFilterId: string) => {
+      if (!metadataFilterId) {
+        updateQueryParams({ category: null, serie: null });
+        return;
+      }
+
+      const [type, ...valueParts] = metadataFilterId.split("::");
+      const value = valueParts.join("::").trim();
+
+      if (!value) {
+        updateQueryParams({ category: null, serie: null });
+        return;
+      }
+
+      if (type === "category") {
+        updateQueryParams({ category: value, serie: null });
+        return;
+      }
+
+      if (type === "serie") {
+        updateQueryParams({ serie: value, category: null });
+      }
+    },
+    [updateQueryParams],
+  );
+
+  const handlePoseFiltersChange = useCallback(
+    (nextPoseFilters: string[]) => {
+      const uniquePoseFilters = [...new Set(nextPoseFilters.map((pose) => pose.trim()))].filter(
+        (pose) => pose !== "",
+      );
+
+      updateQueryParams({ pose: uniquePoseFilters });
+    },
+    [updateQueryParams],
   );
 
   if (authStatus === "checking") {
@@ -442,10 +523,14 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
         <ImageViewerBody
           majorFilter={majorFilter}
           selectedCharacter={selectedCharacter}
+          selectedPoseFilters={selectedPoseFilters}
+          selectedMetadataFilterId={selectedMetadataFilterId}
           characterDetailStyle={characterDetailStyle}
           characterDetailPose={characterDetailPose}
           reloadToken={libraryRefreshToken}
           setSelectedCharacter={handleSelectCharacter}
+          setSelectedPoseFilters={handlePoseFiltersChange}
+          setSelectedMetadataFilterId={handleMetadataFilterChange}
           setCharacterDetailStyle={setCharacterDetailStyle}
           setCharacterDetailPose={setCharacterDetailPose}
           onImageSelect={handleOpenImageModal}
