@@ -21,12 +21,16 @@ import type {
 interface IImageViewerBodyProps {
   majorFilter: TMajorFilter;
   selectedCharacter: string | null;
+  selectedPoseFilters: string[];
+  selectedMetadataFilterId: string;
   characterDetailStyle: "all" | TStyle;
   characterDetailPose: string;
   reloadToken: number;
   onImageSelect: (image: IImageItem) => void;
 
   setSelectedCharacter: (characterName: string | null) => void;
+  setSelectedPoseFilters: (poses: string[]) => void;
+  setSelectedMetadataFilterId: (metadataFilterId: string) => void;
   setCharacterDetailStyle: (style: "all" | TStyle) => void;
   setCharacterDetailPose: (pose: string) => void;
 }
@@ -73,11 +77,15 @@ const buildMetadataFilterOptions = (characters: ICharacterSummary[]): IMetadataF
 export const ImageViewerBody = ({
   majorFilter,
   selectedCharacter,
+  selectedPoseFilters,
+  selectedMetadataFilterId,
   characterDetailStyle,
   characterDetailPose,
   reloadToken,
   onImageSelect,
   setSelectedCharacter,
+  setSelectedPoseFilters,
+  setSelectedMetadataFilterId,
   setCharacterDetailStyle,
   setCharacterDetailPose,
 }: Readonly<IImageViewerBodyProps>) => {
@@ -87,12 +95,9 @@ export const ImageViewerBody = ({
 
   const [styleViewStyle, setStyleViewStyle] = useState<TStyle>("3d");
   const [styleViewSearchText, setStyleViewSearchText] = useState<string>("");
-  const [styleViewMetadataFilterId, setStyleViewMetadataFilterId] = useState<string>("");
 
-  const [poseViewSelectedPoses, setPoseViewSelectedPoses] = useState<string[]>([]);
   const [poseViewStyle, setPoseViewStyle] = useState<"all" | TStyle>("all");
   const [poseViewCharacterSearch, setPoseViewCharacterSearch] = useState<string>("");
-  const [poseViewMetadataFilterId, setPoseViewMetadataFilterId] = useState<string>("");
 
   const onStyleSelect = useCallback((style: TStyle) => {
     setStyleViewStyle(style);
@@ -100,8 +105,8 @@ export const ImageViewerBody = ({
   }, []);
 
   const onClearPoses = useCallback(() => {
-    setPoseViewSelectedPoses([]);
-  }, []);
+    setSelectedPoseFilters([]);
+  }, [setSelectedPoseFilters]);
 
   useEffect(() => {
     let isMounted = true;
@@ -128,12 +133,18 @@ export const ImageViewerBody = ({
         setLibrary(data);
         setRequestError(null);
         setStyleViewStyle(data.defaultStyle);
-        setStyleViewMetadataFilterId((previousId) =>
-          validMetadataFilterIds.has(previousId) ? previousId : "",
-        );
-        setPoseViewMetadataFilterId((previousId) =>
-          validMetadataFilterIds.has(previousId) ? previousId : "",
-        );
+
+        if (!validMetadataFilterIds.has(selectedMetadataFilterId)) {
+          setSelectedMetadataFilterId("");
+        }
+
+        const validPoseOptions = new Set(data.poses.map((pose) => pose.name));
+        validPoseOptions.add(WITH_SOMEBODY_FILTER);
+
+        const validSelectedPoses = selectedPoseFilters.filter((pose) => validPoseOptions.has(pose));
+        if (validSelectedPoses.length !== selectedPoseFilters.length) {
+          setSelectedPoseFilters(validSelectedPoses);
+        }
       } catch (error) {
         if (!isMounted) {
           return;
@@ -152,7 +163,13 @@ export const ImageViewerBody = ({
     return () => {
       isMounted = false;
     };
-  }, [reloadToken]);
+  }, [
+    reloadToken,
+    selectedMetadataFilterId,
+    selectedPoseFilters,
+    setSelectedMetadataFilterId,
+    setSelectedPoseFilters,
+  ]);
 
   const charactersForBrowseStyle = useMemo(() => {
     return library.characters.filter((character) =>
@@ -178,20 +195,20 @@ export const ImageViewerBody = ({
   }, [library.characters]);
 
   const effectiveStyleMetadataFilterId = useMemo(() => {
-    if (!styleViewMetadataFilterId) {
+    if (!selectedMetadataFilterId) {
       return "";
     }
 
-    return metadataFilterById.has(styleViewMetadataFilterId) ? styleViewMetadataFilterId : "";
-  }, [styleViewMetadataFilterId, metadataFilterById]);
+    return metadataFilterById.has(selectedMetadataFilterId) ? selectedMetadataFilterId : "";
+  }, [selectedMetadataFilterId, metadataFilterById]);
 
   const effectivePoseMetadataFilterId = useMemo(() => {
-    if (!poseViewMetadataFilterId) {
+    if (!selectedMetadataFilterId) {
       return "";
     }
 
-    return metadataFilterById.has(poseViewMetadataFilterId) ? poseViewMetadataFilterId : "";
-  }, [poseViewMetadataFilterId, metadataFilterById]);
+    return metadataFilterById.has(selectedMetadataFilterId) ? selectedMetadataFilterId : "";
+  }, [selectedMetadataFilterId, metadataFilterById]);
 
   const selectedCharacterImages = useMemo(() => {
     if (!selectedCharacter) {
@@ -250,7 +267,7 @@ export const ImageViewerBody = ({
 
   const poseFilteredImages = useMemo(() => {
     const normalizedCharacterSearch = poseViewCharacterSearch.trim().toLowerCase();
-    const selectedPoses = new Set(poseViewSelectedPoses);
+    const selectedPoses = new Set(selectedPoseFilters);
     const isAllPosesSelected = selectedPoses.size === 0;
     const selectedMetadataFilter = metadataFilterById.get(effectivePoseMetadataFilterId);
 
@@ -279,7 +296,7 @@ export const ImageViewerBody = ({
     });
   }, [
     library.images,
-    poseViewSelectedPoses,
+    selectedPoseFilters,
     poseViewStyle,
     poseViewCharacterSearch,
     effectivePoseMetadataFilterId,
@@ -295,31 +312,39 @@ export const ImageViewerBody = ({
     return buildPoseFilterOptions(allPoseOptions);
   }, [allPoseOptions]);
 
-  const togglePoseFilter = useCallback((poseValue: string) => {
-    setPoseViewSelectedPoses((previousSelectedPoses) => {
-      if (previousSelectedPoses.includes(poseValue)) {
-        return previousSelectedPoses.filter((value) => value !== poseValue);
+  const togglePoseFilter = useCallback(
+    (poseValue: string) => {
+      if (selectedPoseFilters.includes(poseValue)) {
+        setSelectedPoseFilters(selectedPoseFilters.filter((value) => value !== poseValue));
+        return;
       }
 
-      return [...previousSelectedPoses, poseValue];
-    });
-  }, []);
+      setSelectedPoseFilters([...selectedPoseFilters, poseValue]);
+    },
+    [selectedPoseFilters, setSelectedPoseFilters],
+  );
 
-  const onStyleMetadataFilterChange = useCallback((event: SelectChangeEvent<string>) => {
-    setStyleViewMetadataFilterId(event.target.value);
-  }, []);
+  const onStyleMetadataFilterChange = useCallback(
+    (event: SelectChangeEvent<string>) => {
+      setSelectedMetadataFilterId(event.target.value);
+    },
+    [setSelectedMetadataFilterId],
+  );
 
-  const onPoseMetadataFilterChange = useCallback((event: SelectChangeEvent<string>) => {
-    setPoseViewMetadataFilterId(event.target.value);
-  }, []);
+  const onPoseMetadataFilterChange = useCallback(
+    (event: SelectChangeEvent<string>) => {
+      setSelectedMetadataFilterId(event.target.value);
+    },
+    [setSelectedMetadataFilterId],
+  );
 
   const onClearStyleMetadataFilter = useCallback(() => {
-    setStyleViewMetadataFilterId("");
-  }, []);
+    setSelectedMetadataFilterId("");
+  }, [setSelectedMetadataFilterId]);
 
   const onClearPoseMetadataFilter = useCallback(() => {
-    setPoseViewMetadataFilterId("");
-  }, []);
+    setSelectedMetadataFilterId("");
+  }, [setSelectedMetadataFilterId]);
 
   if (isLoading) {
     return (
@@ -362,12 +387,14 @@ export const ImageViewerBody = ({
         defaultStyle={library.defaultStyle}
         browseStyle={library.defaultStyle}
         selectedCharacter={selectedCharacter}
+        selectedMetadataFilterId={effectiveStyleMetadataFilterId}
         characterDetailStyle={characterDetailStyle}
         characterDetailPose={characterDetailPose}
         characterDetailPoseOptions={characterDetailPoseOptions}
         charactersForBrowseStyle={charactersForBrowseStyle}
         visibleCharacterDetailImages={visibleCharacterDetailImages}
         onSelectCharacter={setSelectedCharacter}
+        onMetadataFilterIdChange={setSelectedMetadataFilterId}
         onCharacterDetailStyleChange={setCharacterDetailStyle}
         onCharacterDetailPoseChange={setCharacterDetailPose}
         onImageSelect={onImageSelect}
@@ -395,7 +422,7 @@ export const ImageViewerBody = ({
     <PosesView
       styles={library.styles}
       poseViewPoseOptions={poseViewPoseOptions}
-      poseViewSelectedPoses={poseViewSelectedPoses}
+      poseViewSelectedPoses={selectedPoseFilters}
       poseViewStyle={poseViewStyle}
       poseViewCharacterSearch={poseViewCharacterSearch}
       metadataFilterOptions={metadataFilterOptions}

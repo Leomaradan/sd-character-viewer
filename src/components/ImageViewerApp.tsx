@@ -29,6 +29,13 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { SIDEBAR_WIDTH } from "@/components/image-viewer/constants";
 import { SideMenu } from "@/components/image-viewer/SideMenu";
+import {
+  buildNextQueryString,
+  metadataFilterIdToQueryChanges,
+  normalizePoseFilters,
+  parseSelectedMetadataFilterId,
+  parseSelectedPoseFilters,
+} from "@/components/image-viewer/persistent-filters";
 import type { IImageItem, TMajorFilter, TStyle } from "@/types/library";
 import { ImageViewerBody } from "./ImageViewerBody";
 import { ImageDetailModal } from "@/components/image-viewer/ImageDetailModal";
@@ -109,6 +116,8 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     rawView === "style" || rawView === "pose" ? rawView : "character";
   const rawChar = searchParams.get("char");
   const selectedCharacter = majorFilter === "character" ? rawChar : null;
+  const selectedPoseFilters = parseSelectedPoseFilters(searchParams);
+  const selectedMetadataFilterId = parseSelectedMetadataFilterId(searchParams);
 
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -126,6 +135,14 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [majorFilter, selectedCharacter]);
+
+  const updateQueryParams = useCallback(
+    (changes: Record<string, string | string[] | null>) => {
+      const nextQuery = buildNextQueryString(searchParams, changes);
+      router.replace(nextQuery ? `/?${nextQuery}` : "/");
+    },
+    [router, searchParams],
+  );
 
   const handleOpenMobileDrawer = useCallback(() => {
     setIsMobileDrawerOpen(true);
@@ -310,9 +327,9 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
       closeMobileDrawer();
       setCharacterDetailStyle("all");
       setCharacterDetailPose("all");
-      router.push(`/?view=${nextFilter}`);
+      updateQueryParams({ view: nextFilter, char: null });
     },
-    [closeMobileDrawer, router],
+    [closeMobileDrawer, updateQueryParams],
   );
 
   const handleSelectCharacter = useCallback(
@@ -320,12 +337,26 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
       setCharacterDetailStyle("all");
       setCharacterDetailPose("all");
       if (characterName === null) {
-        router.push("/?view=character");
+        updateQueryParams({ view: "character", char: null });
       } else {
-        router.push(`/?view=character&char=${encodeURIComponent(characterName)}`);
+        updateQueryParams({ view: "character", char: characterName });
       }
     },
-    [router],
+    [updateQueryParams],
+  );
+
+  const handleMetadataFilterChange = useCallback(
+    (metadataFilterId: string) => {
+      updateQueryParams(metadataFilterIdToQueryChanges(metadataFilterId));
+    },
+    [updateQueryParams],
+  );
+
+  const handlePoseFiltersChange = useCallback(
+    (nextPoseFilters: string[]) => {
+      updateQueryParams({ pose: normalizePoseFilters(nextPoseFilters) });
+    },
+    [updateQueryParams],
   );
 
   if (authStatus === "checking") {
@@ -442,10 +473,14 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
         <ImageViewerBody
           majorFilter={majorFilter}
           selectedCharacter={selectedCharacter}
+          selectedPoseFilters={selectedPoseFilters}
+          selectedMetadataFilterId={selectedMetadataFilterId}
           characterDetailStyle={characterDetailStyle}
           characterDetailPose={characterDetailPose}
           reloadToken={libraryRefreshToken}
           setSelectedCharacter={handleSelectCharacter}
+          setSelectedPoseFilters={handlePoseFiltersChange}
+          setSelectedMetadataFilterId={handleMetadataFilterChange}
           setCharacterDetailStyle={setCharacterDetailStyle}
           setCharacterDetailPose={setCharacterDetailPose}
           onImageSelect={handleOpenImageModal}

@@ -4,7 +4,7 @@ import { Box, Chip, type SelectChangeEvent, Stack, Typography } from "@mui/mater
 import { ImageCard } from "@/components/image-viewer/ImageCard";
 import type { ICharacterSummary, IImageItem, IMetadataFilterOption, TStyle } from "@/types/library";
 import { FLEXWRAP, GRID, STACK_SPACING } from "./constants";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { StyleView } from "./StyleView";
 import { PoseView } from "./PoseView";
 import { CharacterView } from "./CharacterView";
@@ -15,12 +15,14 @@ interface ICharactersViewProps {
   defaultStyle: TStyle;
   browseStyle: TStyle;
   selectedCharacter: string | null;
+  selectedMetadataFilterId: string;
   characterDetailStyle: "all" | TStyle;
   characterDetailPose: string;
   characterDetailPoseOptions: string[];
   charactersForBrowseStyle: ICharacterSummary[];
   visibleCharacterDetailImages: IImageItem[];
   onSelectCharacter: (characterName: string | null) => void;
+  onMetadataFilterIdChange: (metadataFilterId: string) => void;
   onCharacterDetailStyleChange: (style: "all" | TStyle) => void;
   onCharacterDetailPoseChange: (pose: string) => void;
   onImageSelect: (image: IImageItem) => void;
@@ -74,18 +76,18 @@ export const CharactersView = ({
   defaultStyle,
   browseStyle,
   selectedCharacter,
+  selectedMetadataFilterId,
   characterDetailStyle,
   characterDetailPose,
   characterDetailPoseOptions,
   charactersForBrowseStyle,
   visibleCharacterDetailImages,
   onSelectCharacter,
+  onMetadataFilterIdChange,
   onCharacterDetailStyleChange,
   onCharacterDetailPoseChange,
   onImageSelect,
 }: Readonly<ICharactersViewProps>) => {
-  const [selectedMetadataFilterId, setSelectedMetadataFilterId] = useState<string>("");
-
   const onCharacterDetailStyleChangeHandlerAll = useCallback(() => {
     onCharacterDetailStyleChange("all");
   }, [onCharacterDetailStyleChange]);
@@ -145,9 +147,12 @@ export const CharactersView = ({
     return metadataFilterById.has(selectedMetadataFilterId) ? selectedMetadataFilterId : "";
   }, [selectedMetadataFilterId, metadataFilterById]);
 
-  const onMetadataFilterChange = useCallback((event: SelectChangeEvent<string>) => {
-    setSelectedMetadataFilterId(event.target.value);
-  }, []);
+  const onMetadataFilterChange = useCallback(
+    (event: SelectChangeEvent<string>) => {
+      onMetadataFilterIdChange(event.target.value);
+    },
+    [onMetadataFilterIdChange],
+  );
 
   const filteredCharacters = useMemo(() => {
     const selectedOption = metadataFilterById.get(effectiveSelectedMetadataFilterId);
@@ -166,8 +171,8 @@ export const CharactersView = ({
   }, [charactersForBrowseStyle, effectiveSelectedMetadataFilterId, metadataFilterById]);
 
   const onClearMetadataFilter = useCallback(() => {
-    setSelectedMetadataFilterId("");
-  }, []);
+    onMetadataFilterIdChange("");
+  }, [onMetadataFilterIdChange]);
 
   const groupedCharacters = useMemo((): ICharacterGroup[] => {
     const map = new Map<string, ICharacterSummary[]>();
