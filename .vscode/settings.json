@@ -2,5 +2,8 @@
   "sonarlint.connectedMode.project": {
     "connectionId": "GitHub Leomaradan",
     "projectKey": "Leomaradan_sd-character-viewer"
+  },
+  "chat.tools.terminal.autoApprove": {
+    "pnpm": true
   }
 }
