@@ -29,6 +29,13 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { SIDEBAR_WIDTH } from "@/components/image-viewer/constants";
 import { SideMenu } from "@/components/image-viewer/SideMenu";
+import {
+  buildNextQueryString,
+  metadataFilterIdToQueryChanges,
+  normalizePoseFilters,
+  parseSelectedMetadataFilterId,
+  parseSelectedPoseFilters,
+} from "@/components/image-viewer/persistent-filters";
 import type { IImageItem, TMajorFilter, TStyle } from "@/types/library";
 import { ImageViewerBody } from "./ImageViewerBody";
 import { ImageDetailModal } from "@/components/image-viewer/ImageDetailModal";
@@ -109,19 +116,8 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     rawView === "style" || rawView === "pose" ? rawView : "character";
   const rawChar = searchParams.get("char");
   const selectedCharacter = majorFilter === "character" ? rawChar : null;
-  const selectedPoseFilters = searchParams
-    .getAll("pose")
-    .map((pose) => pose.trim())
-    .filter((pose) => pose !== "");
-  const rawCategoryFilter = searchParams.get("category")?.trim() ?? "";
-  const rawSerieFilter = searchParams.get("serie")?.trim() ?? "";
-  let selectedMetadataFilterId = "";
-
-  if (rawCategoryFilter) {
-    selectedMetadataFilterId = `category::${rawCategoryFilter}`;
-  } else if (rawSerieFilter) {
-    selectedMetadataFilterId = `serie::${rawSerieFilter}`;
-  }
+  const selectedPoseFilters = parseSelectedPoseFilters(searchParams);
+  const selectedMetadataFilterId = parseSelectedMetadataFilterId(searchParams);
 
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -142,29 +138,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
 
   const updateQueryParams = useCallback(
     (changes: Record<string, string | string[] | null>) => {
-      const nextParams = new URLSearchParams(searchParams.toString());
-
-      for (const [key, value] of Object.entries(changes)) {
-        if (Array.isArray(value)) {
-          nextParams.delete(key);
-
-          for (const item of value) {
-            const normalizedItem = item.trim();
-            if (normalizedItem !== "") {
-              nextParams.append(key, normalizedItem);
-            }
-          }
-          continue;
-        }
-
-        if (value === null || value.trim() === "") {
-          nextParams.delete(key);
-        } else {
-          nextParams.set(key, value);
-        }
-      }
-
-      const nextQuery = nextParams.toString();
+      const nextQuery = buildNextQueryString(searchParams, changes);
       router.replace(nextQuery ? `/?${nextQuery}` : "/");
     },
     [router, searchParams],
@@ -373,38 +347,14 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
 
   const handleMetadataFilterChange = useCallback(
     (metadataFilterId: string) => {
-      if (!metadataFilterId) {
-        updateQueryParams({ category: null, serie: null });
-        return;
-      }
-
-      const [type, ...valueParts] = metadataFilterId.split("::");
-      const value = valueParts.join("::").trim();
-
-      if (!value) {
-        updateQueryParams({ category: null, serie: null });
-        return;
-      }
-
-      if (type === "category") {
-        updateQueryParams({ category: value, serie: null });
-        return;
-      }
-
-      if (type === "serie") {
-        updateQueryParams({ serie: value, category: null });
-      }
+      updateQueryParams(metadataFilterIdToQueryChanges(metadataFilterId));
     },
     [updateQueryParams],
   );
 
   const handlePoseFiltersChange = useCallback(
     (nextPoseFilters: string[]) => {
-      const uniquePoseFilters = [...new Set(nextPoseFilters.map((pose) => pose.trim()))].filter(
-        (pose) => pose !== "",
-      );
-
-      updateQueryParams({ pose: uniquePoseFilters });
+      updateQueryParams({ pose: normalizePoseFilters(nextPoseFilters) });
     },
     [updateQueryParams],
   );
