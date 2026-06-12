@@ -116,8 +116,11 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     rawView === "style" || rawView === "pose" ? rawView : "character";
   const rawChar = searchParams.get("char");
   const selectedCharacter = majorFilter === "character" ? rawChar : null;
-  const selectedPoseFilters = parseSelectedPoseFilters(searchParams);
-  const selectedMetadataFilterId = parseSelectedMetadataFilterId(searchParams);
+  const selectedPoseFilters = useMemo(() => parseSelectedPoseFilters(searchParams), [searchParams]);
+  const selectedMetadataFilterId = useMemo(
+    () => parseSelectedMetadataFilterId(searchParams),
+    [searchParams],
+  );
 
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -353,10 +356,14 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   );
 
   const handlePoseFiltersChange = useCallback(
-    (nextPoseFilters: string[]) => {
-      updateQueryParams({ pose: normalizePoseFilters(nextPoseFilters) });
+    (nextPoseFilters: string[] | ((prev: string[]) => string[])) => {
+      const poseFilters =
+        typeof nextPoseFilters === "function"
+          ? nextPoseFilters(selectedPoseFilters)
+          : nextPoseFilters;
+      updateQueryParams({ pose: normalizePoseFilters(poseFilters) });
     },
-    [updateQueryParams],
+    [updateQueryParams, selectedPoseFilters],
   );
 
   if (authStatus === "checking") {

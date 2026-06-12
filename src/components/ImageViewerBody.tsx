@@ -29,7 +29,7 @@ interface IImageViewerBodyProps {
   onImageSelect: (image: IImageItem) => void;
 
   setSelectedCharacter: (characterName: string | null) => void;
-  setSelectedPoseFilters: (poses: string[]) => void;
+  setSelectedPoseFilters: (nextPoseFilters: string[] | ((prev: string[]) => string[])) => void;
   setSelectedMetadataFilterId: (metadataFilterId: string) => void;
   setCharacterDetailStyle: (style: "all" | TStyle) => void;
   setCharacterDetailPose: (pose: string) => void;
@@ -108,6 +108,26 @@ export const ImageViewerBody = ({
     setSelectedPoseFilters([]);
   }, [setSelectedPoseFilters]);
 
+  const validateFilters = useCallback(
+    (lib: ILibraryData, currentMetadataFilterId: string, currentPoseFilters: string[]) => {
+      const validMetadataFilterIds = new Set(
+        buildMetadataFilterOptions(lib.characters).map((option) => option.id),
+      );
+
+      const nextMetadataFilterId = validMetadataFilterIds.has(currentMetadataFilterId)
+        ? currentMetadataFilterId
+        : "";
+
+      const validPoseOptions = new Set(lib.poses.map((pose) => pose.name));
+      validPoseOptions.add(WITH_SOMEBODY_FILTER);
+
+      const nextPoseFilters = currentPoseFilters.filter((pose) => validPoseOptions.has(pose));
+
+      return { nextMetadataFilterId, nextPoseFilters };
+    },
+    [],
+  );
+
   useEffect(() => {
     let isMounted = true;
 
@@ -122,37 +142,33 @@ export const ImageViewerBody = ({
 
         const data: ILibraryData = await response.json();
 
-        if (!isMounted) {
-          return;
-        }
+        if (isMounted) {
+          const { nextMetadataFilterId, nextPoseFilters } = validateFilters(
+            data,
+            selectedMetadataFilterId,
+            selectedPoseFilters,
+          );
 
-        const validMetadataFilterIds = new Set(
-          buildMetadataFilterOptions(data.characters).map((option) => option.id),
-        );
+          setLibrary(data);
+          setRequestError(null);
+          setStyleViewStyle(data.defaultStyle);
 
-        setLibrary(data);
-        setRequestError(null);
-        setStyleViewStyle(data.defaultStyle);
+          if (nextMetadataFilterId !== selectedMetadataFilterId) {
+            setSelectedMetadataFilterId(nextMetadataFilterId);
+          }
 
-        if (!validMetadataFilterIds.has(selectedMetadataFilterId)) {
-          setSelectedMetadataFilterId("");
-        }
+          if (
+            nextPoseFilters.length !== selectedPoseFilters.length ||
+            !nextPoseFilters.every((pose, idx) => pose === selectedPoseFilters[idx])
+          ) {
+            setSelectedPoseFilters(nextPoseFilters);
+          }
 
-        const validPoseOptions = new Set(data.poses.map((pose) => pose.name));
-        validPoseOptions.add(WITH_SOMEBODY_FILTER);
-
-        const validSelectedPoses = selectedPoseFilters.filter((pose) => validPoseOptions.has(pose));
-        if (validSelectedPoses.length !== selectedPoseFilters.length) {
-          setSelectedPoseFilters(validSelectedPoses);
+          setIsLoading(false);
         }
       } catch (error) {
-        if (!isMounted) {
-          return;
-        }
-
-        setRequestError(error instanceof Error ? error.message : "Unknown error");
-      } finally {
         if (isMounted) {
+          setRequestError(error instanceof Error ? error.message : "Unknown error");
           setIsLoading(false);
         }
       }
@@ -165,6 +181,7 @@ export const ImageViewerBody = ({
     };
   }, [
     reloadToken,
+    validateFilters,
     selectedMetadataFilterId,
     selectedPoseFilters,
     setSelectedMetadataFilterId,
@@ -314,14 +331,14 @@ export const ImageViewerBody = ({
 
   const togglePoseFilter = useCallback(
     (poseValue: string) => {
-      if (selectedPoseFilters.includes(poseValue)) {
-        setSelectedPoseFilters(selectedPoseFilters.filter((value) => value !== poseValue));
-        return;
-      }
-
-      setSelectedPoseFilters([...selectedPoseFilters, poseValue]);
+      setSelectedPoseFilters((current) => {
+        if (current.includes(poseValue)) {
+          return current.filter((value) => value !== poseValue);
+        }
+        return [...current, poseValue];
+      });
     },
-    [selectedPoseFilters, setSelectedPoseFilters],
+    [setSelectedPoseFilters],
   );
 
   const onStyleMetadataFilterChange = useCallback(

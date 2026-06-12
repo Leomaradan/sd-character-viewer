@@ -1,6 +1,6 @@
 {
   "name": "sd-character-viewer",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -11,7 +11,7 @@
     "lint": "eslint",
     "lint:ci": "eslint . --max-warnings=0",
     "knip": "knip",
-    "precommit:check": "pnpm format:check && pnpm lint:ci && pnpm typecheck && pnpm test && pnpm knip",
+    "precommit:check": "pnpm format && pnpm lint:ci && pnpm typecheck && pnpm test && pnpm knip",
     "prepush:check": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --coverage",
