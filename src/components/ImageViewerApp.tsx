@@ -371,13 +371,17 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     [updateQueryParams, selectedPoseFilters],
   );
 
+  const modalImageIndexById = useMemo(() => {
+    return new Map(modalFilteredImages.map((image, index) => [image.id, index]));
+  }, [modalFilteredImages]);
+
   const selectedModalImageIndex = useMemo(() => {
     if (!selectedImageForModal) {
       return -1;
     }
 
-    return modalFilteredImages.findIndex((image) => image.id === selectedImageForModal.id);
-  }, [modalFilteredImages, selectedImageForModal]);
+    return modalImageIndexById.get(selectedImageForModal.id) ?? -1;
+  }, [modalImageIndexById, selectedImageForModal]);
 
   const canNavigateModalPrevious = selectedModalImageIndex > 0;
   const canNavigateModalNext =

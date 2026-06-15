@@ -138,7 +138,7 @@ export function ImageDetailModal({
   const mobileView = mobileViewState.path === relativePath ? mobileViewState.view : "image";
 
   useEffect(() => {
-    if (!image) {
+    if (!image || isConfirmOpen || isDeleting) {
       return;
     }
 
@@ -158,7 +158,15 @@ export function ImageDetailModal({
     return () => {
       globalThis.removeEventListener("keydown", onKeyDown);
     };
-  }, [image, canNavigatePrevious, canNavigateNext, onNavigatePrevious, onNavigateNext]);
+  }, [
+    image,
+    canNavigatePrevious,
+    canNavigateNext,
+    onNavigatePrevious,
+    onNavigateNext,
+    isConfirmOpen,
+    isDeleting,
+  ]);
 
   useEffect(() => {
     if (!relativePath) return;
