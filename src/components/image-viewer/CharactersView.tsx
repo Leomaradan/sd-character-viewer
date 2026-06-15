@@ -21,6 +21,7 @@ interface ICharactersViewProps {
   characterDetailPoseOptions: string[];
   charactersForBrowseStyle: ICharacterSummary[];
   visibleCharacterDetailImages: IImageItem[];
+  showNewBadge: boolean;
   onSelectCharacter: (characterName: string | null) => void;
   onMetadataFilterIdChange: (metadataFilterId: string) => void;
   onCharacterDetailStyleChange: (style: "all" | TStyle) => void;
@@ -82,6 +83,7 @@ export const CharactersView = ({
   characterDetailPoseOptions,
   charactersForBrowseStyle,
   visibleCharacterDetailImages,
+  showNewBadge,
   onSelectCharacter,
   onMetadataFilterIdChange,
   onCharacterDetailStyleChange,
@@ -243,7 +245,12 @@ export const CharactersView = ({
 
           <Box sx={GRID}>
             {visibleCharacterDetailImages.map((image) => (
-              <ImageCard key={image.id} image={image} onSelect={onImageSelect} />
+              <ImageCard
+                key={image.id}
+                image={image}
+                showNewBadge={showNewBadge}
+                onSelect={onImageSelect}
+              />
             ))}
           </Box>
         </>

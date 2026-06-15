@@ -2,6 +2,7 @@ import {
   buildNextQueryString,
   metadataFilterIdToQueryChanges,
   normalizePoseFilters,
+  parseShowOnlyNewImages,
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
 } from "@/components/image-viewer/persistent-filters";
@@ -27,6 +28,19 @@ describe("persistent filters", () => {
       const params = new URLSearchParams("serie=Sample");
 
       expect(parseSelectedMetadataFilterId(params)).toBe("serie::Sample");
+    });
+  });
+
+  describe("parseShowOnlyNewImages", () => {
+    it("returns true for enabled values", () => {
+      expect(parseShowOnlyNewImages(new URLSearchParams("new=1"))).toBe(true);
+      expect(parseShowOnlyNewImages(new URLSearchParams("new=true"))).toBe(true);
+    });
+
+    it("returns false for disabled or missing values", () => {
+      expect(parseShowOnlyNewImages(new URLSearchParams("new=0"))).toBe(false);
+      expect(parseShowOnlyNewImages(new URLSearchParams("new=false"))).toBe(false);
+      expect(parseShowOnlyNewImages(new URLSearchParams(""))).toBe(false);
     });
   });
 

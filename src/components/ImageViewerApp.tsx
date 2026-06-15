@@ -27,16 +27,17 @@ import {
   type SubmitEvent,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { SIDEBAR_WIDTH } from "@/components/image-viewer/constants";
+import { SIDEBAR_WIDTH, DEFAULT_LIBRARY } from "@/components/image-viewer/constants";
 import { SideMenu } from "@/components/image-viewer/SideMenu";
 import {
   buildNextQueryString,
   metadataFilterIdToQueryChanges,
   normalizePoseFilters,
+  parseShowOnlyNewImages,
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
 } from "@/components/image-viewer/persistent-filters";
-import type { IImageItem, TMajorFilter, TStyle } from "@/types/library";
+import type { IImageItem, ILibraryData, TMajorFilter, TStyle } from "@/types/library";
 import { ImageViewerBody } from "./ImageViewerBody";
 import { ImageDetailModal } from "@/components/image-viewer/ImageDetailModal";
 import { ScrollToTopButton } from "@/components/image-viewer/ScrollToTopButton";
@@ -117,6 +118,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   const rawChar = searchParams.get("char");
   const selectedCharacter = majorFilter === "character" ? rawChar : null;
   const selectedPoseFilters = useMemo(() => parseSelectedPoseFilters(searchParams), [searchParams]);
+  const showOnlyNewImages = useMemo(() => parseShowOnlyNewImages(searchParams), [searchParams]);
   const selectedMetadataFilterId = useMemo(
     () => parseSelectedMetadataFilterId(searchParams),
     [searchParams],
@@ -126,6 +128,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [selectedImageForModal, setSelectedImageForModal] = useState<IImageItem | null>(null);
   const [modalFilteredImages, setModalFilteredImages] = useState<IImageItem[]>([]);
+  const [library, setLibrary] = useState<ILibraryData>(DEFAULT_LIBRARY);
   const modalHistoryPushed = useRef(false);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
   const [authStatus, setAuthStatus] = useState<TAuthStatus>("checking");
@@ -371,6 +374,13 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     [updateQueryParams, selectedPoseFilters],
   );
 
+  const handleShowOnlyNewImagesChange = useCallback(
+    (enabled: boolean) => {
+      updateQueryParams({ new: enabled ? "1" : null });
+    },
+    [updateQueryParams],
+  );
+
   const modalImageIndexById = useMemo(() => {
     return new Map(modalFilteredImages.map((image, index) => [image.id, index]));
   }, [modalFilteredImages]);
@@ -402,6 +412,10 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
 
     setSelectedImageForModal(modalFilteredImages[selectedModalImageIndex + 1] ?? null);
   }, [canNavigateModalNext, modalFilteredImages, selectedModalImageIndex]);
+
+  const handleLibraryLoad = useCallback((loadedLibrary: ILibraryData) => {
+    setLibrary(loadedLibrary);
+  }, []);
 
   if (authStatus === "checking") {
     return (
@@ -502,13 +516,25 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
         sx={MODAL_STYLES}
       >
         <Toolbar />
-        <SideMenu majorFilter={majorFilter} onMajorFilterChange={handleMajorFilterChange} />
+        <SideMenu
+          majorFilter={majorFilter}
+          onMajorFilterChange={handleMajorFilterChange}
+          showOnlyNewImages={showOnlyNewImages}
+          onShowOnlyNewImagesChange={handleShowOnlyNewImagesChange}
+          library={library}
+        />
       </Drawer>
 
       {!isSidebarCollapsed && (
         <Drawer variant="permanent" open sx={DRAWER_STYLES}>
           <Toolbar />
-          <SideMenu majorFilter={majorFilter} onMajorFilterChange={handleMajorFilterChange} />
+          <SideMenu
+            majorFilter={majorFilter}
+            onMajorFilterChange={handleMajorFilterChange}
+            showOnlyNewImages={showOnlyNewImages}
+            onShowOnlyNewImagesChange={handleShowOnlyNewImagesChange}
+            library={library}
+          />
         </Drawer>
       )}
 
@@ -519,6 +545,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
           selectedCharacter={selectedCharacter}
           selectedPoseFilters={selectedPoseFilters}
           selectedMetadataFilterId={selectedMetadataFilterId}
+          showOnlyNewImages={showOnlyNewImages}
           characterDetailStyle={characterDetailStyle}
           characterDetailPose={characterDetailPose}
           reloadToken={libraryRefreshToken}
@@ -528,6 +555,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
           setCharacterDetailStyle={setCharacterDetailStyle}
           setCharacterDetailPose={setCharacterDetailPose}
           onImageSelect={handleOpenImageModal}
+          onLibraryLoad={handleLibraryLoad}
         />
       </Box>
 

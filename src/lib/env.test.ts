@@ -18,6 +18,7 @@ describe("env", () => {
   afterEach(() => {
     delete process.env.SD_ALLOW_DELETE;
     delete process.env.SD_IMAGES_ROOT;
+    delete process.env.SD_CACHE_DIR;
     delete process.env.SD_PASSWORD;
     delete process.env.SD_PASSWORD_SALT;
   });
@@ -41,6 +42,7 @@ describe("env", () => {
     expect(logSpy.mock.calls[0]?.[0]).toContain("[env] SD_ environment variables:");
     expect(logSpy.mock.calls[0]?.[1]).toMatchObject({
       SD_IMAGES_ROOT: "(set)",
+      SD_CACHE_DIR: "(not set)",
       SD_ALLOW_DELETE: "(not set)",
     });
 

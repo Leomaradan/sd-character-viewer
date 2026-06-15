@@ -42,4 +42,5 @@ export const DEFAULT_LIBRARY: ILibraryData = {
   characters: [],
   poses: [],
   warning: null,
+  cacheAvailable: false,
 };

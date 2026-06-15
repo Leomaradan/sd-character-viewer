@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@latest/schema.json",
   "entry": ["src/app/**/*.{ts,tsx}"],
-  "project": ["src/**/*.{ts,tsx}", "*.{ts,mjs}"],
-  "ignoreDependencies": ["@testing-library/jest-dom", "@testing-library/react"]
+  "project": ["src/**/*.{ts,tsx}", "*.{ts,mjs,tsx}"],
+  "ignoreDependencies": []
 }

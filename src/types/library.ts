@@ -12,6 +12,7 @@ export interface IImageItem {
   poseBaseName: string;
   poseVariant: number;
   relativePath: string;
+  isNew: boolean;
 }
 
 export interface ICharacterSummary {
@@ -45,4 +46,5 @@ export interface ILibraryData {
   characters: ICharacterSummary[];
   poses: IPoseSummary[];
   warning: string | null;
+  cacheAvailable: boolean;
 }

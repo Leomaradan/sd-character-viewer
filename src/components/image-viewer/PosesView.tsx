@@ -24,6 +24,7 @@ interface IPosesViewProps {
   metadataFilterOptions: IMetadataFilterOption[];
   selectedMetadataFilterId: string;
   poseFilteredImages: IImageItem[];
+  showNewBadge: boolean;
   onClearPoses: () => void;
   onTogglePose: (pose: string) => void;
   onPoseStyleChange: (style: "all" | TStyle) => void;
@@ -42,6 +43,7 @@ export const PosesView = ({
   metadataFilterOptions,
   selectedMetadataFilterId,
   poseFilteredImages,
+  showNewBadge,
   onClearPoses,
   onTogglePose,
   onPoseStyleChange,
@@ -125,7 +127,12 @@ export const PosesView = ({
 
       <Box sx={GRID}>
         {poseFilteredImages.map((image) => (
-          <ImageCard key={image.id} image={image} onSelect={onImageSelect} />
+          <ImageCard
+            key={image.id}
+            image={image}
+            showNewBadge={showNewBadge}
+            onSelect={onImageSelect}
+          />
         ))}
       </Box>
     </Stack>

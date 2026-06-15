@@ -10,8 +10,10 @@ services:
       NODE_ENV: production
       PORT: 3000
       SD_IMAGES_ROOT: /data
+      SD_CACHE_DIR: /cache
       SD_PASSWORD: ${SD_PASSWORD:-}
       #SD_PASSWORD_SALT: ${SD_PASSWORD_SALT}
     volumes:
       - ${SD_IMAGES_HOST_PATH:-./images}:/data:ro
+      - ${SD_CACHE_HOST_PATH:-./cache}:/cache:rw
     restart: unless-stopped

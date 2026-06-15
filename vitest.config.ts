@@ -5,7 +5,12 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    server: {
+      deps: {
+        inline: ["@mui/material", "@mui/icons-material"],
+      },
+    },
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts", "!src/**/*.tsx"],
@@ -13,10 +18,10 @@ export default defineConfig({
       reporter: [["lcovonly"], ["html"], ["cobertura"], ["text-summary"]],
       thresholds: {
         autoUpdate: (newThreshold) => Math.floor(newThreshold),
-        statements: 82,
-        branches: 72,
-        functions: 88,
-        lines: 82,
+        statements: 87,
+        branches: 76,
+        functions: 93,
+        lines: 86,
       },
     },
   },

@@ -1,6 +1,7 @@
 import { loadEnvConfig } from "@next/env";
 import {
   SD_ALLOW_DELETE_ENV_KEY,
+  SD_CACHE_DIR_ENV_KEY,
   SD_IMAGES_ROOT_ENV_KEY,
   SD_PASSWORD_ENV_KEY,
   SD_PASSWORD_SALT_ENV_KEY,
@@ -11,6 +12,7 @@ let hasLoadedEnvFiles = false;
 const SD_ENV_KEYS = [
   SD_ALLOW_DELETE_ENV_KEY,
   SD_IMAGES_ROOT_ENV_KEY,
+  SD_CACHE_DIR_ENV_KEY,
   SD_PASSWORD_ENV_KEY,
   SD_PASSWORD_SALT_ENV_KEY,
 ] as const;
