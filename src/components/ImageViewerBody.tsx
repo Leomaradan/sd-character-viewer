@@ -26,7 +26,7 @@ interface IImageViewerBodyProps {
   characterDetailStyle: "all" | TStyle;
   characterDetailPose: string;
   reloadToken: number;
-  onImageSelect: (image: IImageItem) => void;
+  onImageSelect: (image: IImageItem, filteredImages: IImageItem[]) => void;
 
   setSelectedCharacter: (characterName: string | null) => void;
   setSelectedPoseFilters: (nextPoseFilters: string[] | ((prev: string[]) => string[])) => void;
@@ -363,6 +363,27 @@ export const ImageViewerBody = ({
     setSelectedMetadataFilterId("");
   }, [setSelectedMetadataFilterId]);
 
+  const handleCharacterImageSelect = useCallback(
+    (image: IImageItem) => {
+      onImageSelect(image, visibleCharacterDetailImages);
+    },
+    [onImageSelect, visibleCharacterDetailImages],
+  );
+
+  const handleStyleImageSelect = useCallback(
+    (image: IImageItem) => {
+      onImageSelect(image, styleFilteredImages);
+    },
+    [onImageSelect, styleFilteredImages],
+  );
+
+  const handlePoseImageSelect = useCallback(
+    (image: IImageItem) => {
+      onImageSelect(image, poseFilteredImages);
+    },
+    [onImageSelect, poseFilteredImages],
+  );
+
   if (isLoading) {
     return (
       <Box sx={PROGRESS_CONTAINER}>
@@ -414,7 +435,7 @@ export const ImageViewerBody = ({
         onMetadataFilterIdChange={setSelectedMetadataFilterId}
         onCharacterDetailStyleChange={setCharacterDetailStyle}
         onCharacterDetailPoseChange={setCharacterDetailPose}
-        onImageSelect={onImageSelect}
+        onImageSelect={handleCharacterImageSelect}
       />
     );
   } else if (majorFilter === "style") {
@@ -430,7 +451,7 @@ export const ImageViewerBody = ({
         onMetadataFilterChange={onStyleMetadataFilterChange}
         onClearMetadataFilter={onClearStyleMetadataFilter}
         onStyleSearchTextChange={setStyleViewSearchText}
-        onImageSelect={onImageSelect}
+        onImageSelect={handleStyleImageSelect}
       />
     );
   }
@@ -451,7 +472,7 @@ export const ImageViewerBody = ({
       onMetadataFilterChange={onPoseMetadataFilterChange}
       onClearMetadataFilter={onClearPoseMetadataFilter}
       onCharacterSearchChange={setPoseViewCharacterSearch}
-      onImageSelect={onImageSelect}
+      onImageSelect={handlePoseImageSelect}
     />
   );
 };

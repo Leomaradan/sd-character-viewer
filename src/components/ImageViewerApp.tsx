@@ -125,6 +125,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [selectedImageForModal, setSelectedImageForModal] = useState<IImageItem | null>(null);
+  const [modalFilteredImages, setModalFilteredImages] = useState<IImageItem[]>([]);
   const modalHistoryPushed = useRef(false);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
   const [authStatus, setAuthStatus] = useState<TAuthStatus>("checking");
@@ -168,7 +169,8 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     [isSidebarCollapsed],
   );
 
-  const handleOpenImageModal = useCallback((image: IImageItem) => {
+  const handleOpenImageModal = useCallback((image: IImageItem, filteredImages: IImageItem[]) => {
+    setModalFilteredImages(filteredImages);
     setSelectedImageForModal(image);
     history.pushState({ sdModal: true }, "");
     modalHistoryPushed.current = true;
@@ -176,6 +178,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
 
   const handleCloseImageModal = useCallback(() => {
     setSelectedImageForModal(null);
+    setModalFilteredImages([]);
     if (modalHistoryPushed.current) {
       modalHistoryPushed.current = false;
       history.back();
@@ -184,6 +187,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
 
   const handleImageDeleted = useCallback(() => {
     setSelectedImageForModal(null);
+    setModalFilteredImages([]);
     if (modalHistoryPushed.current) {
       modalHistoryPushed.current = false;
       history.back();
@@ -196,6 +200,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
       if (modalHistoryPushed.current) {
         modalHistoryPushed.current = false;
         setSelectedImageForModal(null);
+        setModalFilteredImages([]);
       }
     };
     globalThis.addEventListener("popstate", handlePopState);
@@ -366,6 +371,38 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     [updateQueryParams, selectedPoseFilters],
   );
 
+  const modalImageIndexById = useMemo(() => {
+    return new Map(modalFilteredImages.map((image, index) => [image.id, index]));
+  }, [modalFilteredImages]);
+
+  const selectedModalImageIndex = useMemo(() => {
+    if (!selectedImageForModal) {
+      return -1;
+    }
+
+    return modalImageIndexById.get(selectedImageForModal.id) ?? -1;
+  }, [modalImageIndexById, selectedImageForModal]);
+
+  const canNavigateModalPrevious = selectedModalImageIndex > 0;
+  const canNavigateModalNext =
+    selectedModalImageIndex >= 0 && selectedModalImageIndex < modalFilteredImages.length - 1;
+
+  const handleModalPrevious = useCallback(() => {
+    if (!canNavigateModalPrevious) {
+      return;
+    }
+
+    setSelectedImageForModal(modalFilteredImages[selectedModalImageIndex - 1] ?? null);
+  }, [canNavigateModalPrevious, modalFilteredImages, selectedModalImageIndex]);
+
+  const handleModalNext = useCallback(() => {
+    if (!canNavigateModalNext) {
+      return;
+    }
+
+    setSelectedImageForModal(modalFilteredImages[selectedModalImageIndex + 1] ?? null);
+  }, [canNavigateModalNext, modalFilteredImages, selectedModalImageIndex]);
+
   if (authStatus === "checking") {
     return (
       <Box sx={AUTH_LOADING_SX}>
@@ -499,6 +536,10 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
         canDeleteImage={canDeleteImage}
         onClose={handleCloseImageModal}
         onDeleteSuccess={handleImageDeleted}
+        canNavigatePrevious={canNavigateModalPrevious}
+        canNavigateNext={canNavigateModalNext}
+        onNavigatePrevious={handleModalPrevious}
+        onNavigateNext={handleModalNext}
       />
 
       <ScrollToTopButton />

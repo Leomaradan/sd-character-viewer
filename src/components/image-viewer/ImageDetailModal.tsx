@@ -1,6 +1,8 @@
 "use client";
 
 import CloseIcon from "@mui/icons-material/Close";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import DeleteIcon from "@mui/icons-material/Delete";
 import InfoIcon from "@mui/icons-material/Info";
 import PhotoIcon from "@mui/icons-material/Photo";
@@ -18,7 +20,7 @@ import {
   IconButton,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IImageItem, TStyle } from "@/types/library";
 import { LazyImage } from "@/components/image-viewer/LazyImage";
 import { formatStyleLabel, getImageUrl } from "@/components/image-viewer/utils";
@@ -47,6 +49,18 @@ const TOGGLE_BUTTON_SX = {
   display: { xs: "flex", sm: "none" },
   "&:hover": { bgcolor: "rgba(0, 0, 0, 0.9)" },
 };
+const NAV_BUTTON_BASE_SX = {
+  position: "absolute",
+  top: "50%",
+  transform: "translateY(-50%)",
+  zIndex: 10,
+  bgcolor: "rgba(0, 0, 0, 0.7)",
+  color: "#fff",
+  "&:hover": { bgcolor: "rgba(0, 0, 0, 0.9)" },
+  "&.Mui-disabled": { bgcolor: "rgba(0, 0, 0, 0.35)", color: "rgba(255,255,255,0.4)" },
+};
+const NAV_BUTTON_LEFT_SX = { ...NAV_BUTTON_BASE_SX, left: 8 };
+const NAV_BUTTON_RIGHT_SX = { ...NAV_BUTTON_BASE_SX, right: 8 };
 const IMAGE_CONTAINER_SX = {
   flex: 1,
   display: "flex",
@@ -86,6 +100,10 @@ interface IImageDetailModalProps {
   canDeleteImage?: boolean;
   onClose: () => void;
   onDeleteSuccess?: () => void;
+  canNavigatePrevious?: boolean;
+  canNavigateNext?: boolean;
+  onNavigatePrevious?: () => void;
+  onNavigateNext?: () => void;
   styleLabel?: (style: TStyle) => string;
 }
 
@@ -99,12 +117,17 @@ export function ImageDetailModal({
   canDeleteImage = false,
   onClose,
   onDeleteSuccess,
+  canNavigatePrevious = false,
+  canNavigateNext = false,
+  onNavigatePrevious,
+  onNavigateNext,
   styleLabel = formatStyleLabel,
 }: Readonly<IImageDetailModalProps>) {
   const [metadataState, setMetadataState] = useState<IMetadataState>({ path: null, data: null });
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const touchStartXRef = useRef(0);
 
   const relativePath = image?.relativePath;
 
@@ -113,6 +136,37 @@ export function ImageDetailModal({
     view: "image" | "meta";
   }>({ path: null, view: "image" });
   const mobileView = mobileViewState.path === relativePath ? mobileViewState.view : "image";
+
+  useEffect(() => {
+    if (!image || isConfirmOpen || isDeleting) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "ArrowLeft" && canNavigatePrevious) {
+        event.preventDefault();
+        onNavigatePrevious?.();
+      }
+
+      if (event.key === "ArrowRight" && canNavigateNext) {
+        event.preventDefault();
+        onNavigateNext?.();
+      }
+    };
+
+    globalThis.addEventListener("keydown", onKeyDown);
+    return () => {
+      globalThis.removeEventListener("keydown", onKeyDown);
+    };
+  }, [
+    image,
+    canNavigatePrevious,
+    canNavigateNext,
+    onNavigatePrevious,
+    onNavigateNext,
+    isConfirmOpen,
+    isDeleting,
+  ]);
 
   useEffect(() => {
     if (!relativePath) return;
@@ -205,6 +259,31 @@ export function ImageDetailModal({
     [metadataState, relativePath],
   );
 
+  const handleTouchStart = useCallback((event: React.TouchEvent) => {
+    touchStartXRef.current = event.changedTouches[0]?.clientX ?? 0;
+  }, []);
+
+  const handleTouchEnd = useCallback(
+    (event: React.TouchEvent) => {
+      const touchEndX = event.changedTouches[0]?.clientX ?? 0;
+      const swipeDistance = touchEndX - touchStartXRef.current;
+
+      if (Math.abs(swipeDistance) < 40) {
+        return;
+      }
+
+      if (swipeDistance < 0 && canNavigateNext) {
+        onNavigateNext?.();
+        return;
+      }
+
+      if (swipeDistance > 0 && canNavigatePrevious) {
+        onNavigatePrevious?.();
+      }
+    },
+    [canNavigateNext, canNavigatePrevious, onNavigateNext, onNavigatePrevious],
+  );
+
   if (!image) {
     return null;
   }
@@ -224,8 +303,26 @@ export function ImageDetailModal({
               {mobileView === "image" ? <InfoIcon /> : <PhotoIcon />}
             </IconButton>
 
+            <IconButton
+              aria-label="Previous image"
+              onClick={onNavigatePrevious}
+              disabled={!canNavigatePrevious}
+              sx={NAV_BUTTON_LEFT_SX}
+            >
+              <ChevronLeftIcon />
+            </IconButton>
+
+            <IconButton
+              aria-label="Next image"
+              onClick={onNavigateNext}
+              disabled={!canNavigateNext}
+              sx={NAV_BUTTON_RIGHT_SX}
+            >
+              <ChevronRightIcon />
+            </IconButton>
+
             {/* Image */}
-            <Box sx={imageContainerSx}>
+            <Box sx={imageContainerSx} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
               <LazyImage
                 relativePath={image.relativePath}
                 alt={`${image.characterName} ${image.poseName}`}
