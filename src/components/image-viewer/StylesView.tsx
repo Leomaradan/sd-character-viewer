@@ -16,6 +16,7 @@ interface IStylesViewProps {
   metadataFilterOptions: IMetadataFilterOption[];
   selectedMetadataFilterId: string;
   styleFilteredImages: IImageItem[];
+  showNewBadge: boolean;
   onStyleSelect: (style: TStyle) => void;
   onMetadataFilterChange: (event: SelectChangeEvent<string>) => void;
   onClearMetadataFilter: () => void;
@@ -30,6 +31,7 @@ export const StylesView = ({
   metadataFilterOptions,
   selectedMetadataFilterId,
   styleFilteredImages,
+  showNewBadge,
   onStyleSelect,
   onMetadataFilterChange,
   onClearMetadataFilter,
@@ -86,7 +88,12 @@ export const StylesView = ({
 
       <Box sx={GRID}>
         {styleFilteredImages.map((image) => (
-          <ImageCard key={image.id} image={image} onSelect={onImageSelect} />
+          <ImageCard
+            key={image.id}
+            image={image}
+            showNewBadge={showNewBadge}
+            onSelect={onImageSelect}
+          />
         ))}
       </Box>
     </Stack>
