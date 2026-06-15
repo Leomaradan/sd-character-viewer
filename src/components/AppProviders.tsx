@@ -38,18 +38,38 @@ const cookieStorageManager = ({ key }: IStorageManagerParams): IStorageManager =
       }
 
       const value = entry.slice(key.length + 1);
-      return decodeURIComponent(value);
+
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return defaultValue;
+      }
     },
     set: (value) => {
       if (typeof document === "undefined") {
         return;
       }
 
-      const encodedValue = encodeURIComponent(String(value));
+      const stringValue = String(value);
+      const encodedValue = encodeURIComponent(stringValue);
       document.cookie = `${key}=${encodedValue}; Path=/; Max-Age=${ONE_YEAR_IN_SECONDS}; SameSite=Lax`;
+      localStorage.setItem(key, stringValue);
     },
-    subscribe: () => {
-      return () => {};
+    subscribe: (handler) => {
+      if (globalThis.window === undefined) {
+        return () => {};
+      }
+
+      const onStorageEvent = (event: StorageEvent) => {
+        if (event.key === key) {
+          handler(event.newValue);
+        }
+      };
+
+      globalThis.addEventListener("storage", onStorageEvent);
+      return () => {
+        globalThis.removeEventListener("storage", onStorageEvent);
+      };
     },
   };
 };

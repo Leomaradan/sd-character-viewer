@@ -31,7 +31,7 @@ const RootLayout = async ({
 }>) => {
   const cookieStore = await cookies();
   const colorMode =
-    parseColorMode(cookieStore.get(MODE_STORAGE_KEY)?.value ?? undefined) ?? "light";
+    parseColorMode(cookieStore.get(MODE_STORAGE_KEY)?.value ?? undefined) ?? "system";
   const colorScheme =
     parseColorScheme(cookieStore.get(COLOR_SCHEME_STORAGE_KEY)?.value ?? undefined) ?? "light";
   const rootClassName = `${roboto.variable} h-full antialiased${
