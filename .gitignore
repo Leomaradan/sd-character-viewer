@@ -40,3 +40,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 TODO.md
+.cache/sd-character-viewer/

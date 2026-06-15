@@ -26,6 +26,8 @@ Pose naming rules:
 
 Set `SD_IMAGES_ROOT` to the host directory that contains the `characters` folder.
 
+Set `SD_CACHE_DIR` to a writable directory used to persist discovery cache files (for the `new` image filter). If not set, the app defaults to `.cache/sd-character-viewer` under the working directory.
+
 Priority order used by the app:
 
 1. Runtime environment variable (`process.env`) - recommended for Docker and production.
@@ -35,12 +37,14 @@ Example:
 
 ```bash
 export SD_IMAGES_ROOT=/data/stable-diffusion
+export SD_CACHE_DIR=/var/lib/sd-character-viewer/cache
 ```
 
 Local development example in `.env.local`:
 
 ```bash
 SD_IMAGES_ROOT=/absolute/path/to/your/images/root
+SD_CACHE_DIR=/absolute/path/to/your/cache/dir
 ```
 
 ## Run
@@ -60,8 +64,10 @@ Build and run directly with Docker:
 docker build -t sd-character-viewer .
 docker run --rm -p 3000:3000 \
 	-e SD_IMAGES_ROOT=/data \
+	-e SD_CACHE_DIR=/cache \
 	-e SD_PASSWORD=your-password \
 	-v /absolute/path/to/your/images/root:/data:ro \
+	-v /absolute/path/to/your/cache/dir:/cache:rw \
 	sd-character-viewer
 ```
 
@@ -71,6 +77,7 @@ Run with Docker Compose:
 
 ```bash
 SD_IMAGES_HOST_PATH=/absolute/path/to/your/images/root
+SD_CACHE_HOST_PATH=/absolute/path/to/your/cache/dir
 SD_PASSWORD=your-password
 ```
 

@@ -9,10 +9,13 @@ import {
   type TStyle,
 } from "@/types/library";
 import { ensureLocalEnvLoaded } from "@/lib/env";
-import { SD_IMAGES_ROOT_ENV_KEY } from "@/lib/env-keys";
+import { SD_CACHE_DIR_ENV_KEY, SD_IMAGES_ROOT_ENV_KEY } from "@/lib/env-keys";
 
 const DEFAULT_STYLE: TStyle = "3d";
 const PNG_EXTENSION = ".png";
+const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
+const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
 
 interface ICharacterAccumulator {
   name: string;
@@ -193,6 +196,7 @@ const createEmptyLibraryData = (
   rootConfigured: boolean,
   rootPath: string | null,
   warning: string | null,
+  cacheAvailable: boolean = false,
 ): ILibraryData => {
   return {
     rootConfigured,
@@ -203,6 +207,7 @@ const createEmptyLibraryData = (
     characters: [],
     poses: [],
     warning,
+    cacheAvailable,
   };
 };
 
@@ -228,7 +233,112 @@ const buildImageItem = (style: TStyle, characterName: string, pngFile: string): 
     poseBaseName: parsedPose.poseBaseName,
     poseVariant: parsedPose.poseVariant,
     relativePath,
+    isNew: false,
   };
+};
+
+const toCacheFileNameForRoot = (rootPath: string): string => {
+  const rootHash = Buffer.from(path.resolve(rootPath)).toString("base64url");
+  return `${rootHash}${FIRST_SEEN_CACHE_FILE_SUFFIX}`;
+};
+
+const getCacheDirectoryPath = (): string => {
+  const configuredCacheDir = process.env[SD_CACHE_DIR_ENV_KEY]?.trim();
+
+  if (configuredCacheDir) {
+    return path.resolve(configuredCacheDir);
+  }
+
+  return path.resolve(process.cwd(), DEFAULT_CACHE_DIR_RELATIVE_PATH);
+};
+
+const getFirstSeenCachePath = (rootPath: string): string => {
+  return path.join(getCacheDirectoryPath(), toCacheFileNameForRoot(rootPath));
+};
+
+const loadFirstSeenCache = async (
+  rootPath: string,
+): Promise<{ cache: Map<string, number>; available: boolean }> => {
+  const cachePath = getFirstSeenCachePath(rootPath);
+
+  try {
+    const rawContent = await fs.readFile(cachePath, "utf8");
+    const parsedContent = JSON.parse(rawContent) as Record<string, unknown>;
+    const cacheMap = new Map<string, number>();
+
+    for (const [relativePath, firstSeenAt] of Object.entries(parsedContent)) {
+      if (typeof relativePath !== "string") {
+        continue;
+      }
+
+      if (typeof firstSeenAt !== "number" || !Number.isFinite(firstSeenAt) || firstSeenAt < 0) {
+        continue;
+      }
+
+      cacheMap.set(relativePath, firstSeenAt);
+    }
+
+    return { cache: cacheMap, available: true };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { cache: new Map<string, number>(), available: true };
+    }
+
+    return { cache: new Map<string, number>(), available: false };
+  }
+};
+
+const persistFirstSeenCache = async (
+  rootPath: string,
+  firstSeenByRelativePath: Map<string, number>,
+): Promise<boolean> => {
+  const cachePath = getFirstSeenCachePath(rootPath);
+  const cacheDirPath = path.dirname(cachePath);
+  const serializable = Object.fromEntries(
+    [...firstSeenByRelativePath.entries()].sort((a, b) => compareNatural(a[0], b[0])),
+  );
+
+  try {
+    await fs.mkdir(cacheDirPath, { recursive: true });
+    await fs.writeFile(cachePath, `${JSON.stringify(serializable, null, 2)}\n`, "utf8");
+    return true;
+  } catch {
+    // Ignore persistence failures to keep the library endpoint resilient.
+    return false;
+  }
+};
+
+const markNewImages = (
+  imageItems: IImageItem[],
+  now: number,
+  firstSeenByRelativePath: Map<string, number>,
+): boolean => {
+  let hasChanges = false;
+  const activeRelativePaths = new Set<string>();
+
+  for (const imageItem of imageItems) {
+    const cacheKey = imageItem.relativePath;
+    activeRelativePaths.add(cacheKey);
+
+    const firstSeenAt = firstSeenByRelativePath.get(cacheKey) ?? now;
+    if (!firstSeenByRelativePath.has(cacheKey)) {
+      firstSeenByRelativePath.set(cacheKey, firstSeenAt);
+      hasChanges = true;
+    }
+
+    imageItem.isNew = now - firstSeenAt <= NEW_IMAGE_WINDOW_MS;
+  }
+
+  for (const [cacheKey, firstSeenAt] of firstSeenByRelativePath.entries()) {
+    const isStaleAndNotActive =
+      !activeRelativePaths.has(cacheKey) && now - firstSeenAt > NEW_IMAGE_WINDOW_MS;
+    if (isStaleAndNotActive) {
+      firstSeenByRelativePath.delete(cacheKey);
+      hasChanges = true;
+    }
+  }
+
+  return hasChanges;
 };
 
 const updateCharacterAccumulator = (
@@ -330,6 +440,7 @@ const toLibraryData = (
   rootPath: string,
   state: ILibraryIndexState,
   metadataByCharacter: Map<string, ICharacterMetadataSummary>,
+  cacheAvailable: boolean,
 ): ILibraryData => {
   const characters = [...state.characterMap.values()]
     .map((accumulator) => {
@@ -359,6 +470,7 @@ const toLibraryData = (
     characters,
     poses,
     warning: null,
+    cacheAvailable,
   };
 };
 
@@ -414,8 +526,17 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
   }
 
   sortImageItems(indexState.imageItems);
+  const { cache: firstSeenCache, available: cacheReadable } = await loadFirstSeenCache(rootPath);
+  const hasCacheChanges = markNewImages(indexState.imageItems, Date.now(), firstSeenCache);
 
-  return toLibraryData(rootPath, indexState, metadataByCharacter);
+  let cacheWritable = true;
+  if (hasCacheChanges) {
+    cacheWritable = await persistFirstSeenCache(rootPath, firstSeenCache);
+  }
+
+  const cacheAvailable = cacheReadable && cacheWritable;
+
+  return toLibraryData(rootPath, indexState, metadataByCharacter, cacheAvailable);
 };
 
 export const resolveImageFilePath = (relativePath: string): string | null => {

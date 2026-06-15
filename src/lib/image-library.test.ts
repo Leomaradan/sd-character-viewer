@@ -1,7 +1,7 @@
 import path from "node:path";
 import os from "node:os";
 import { promises as fs } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parsePoseName, readImageLibrary, resolveImageFilePath } from "@/lib/image-library";
 
 describe("parsePoseName", () => {
@@ -108,5 +108,118 @@ describe("readImageLibrary with characters metadata", () => {
 
     expect(bea?.category).toBeNull();
     expect(bea?.serie).toBeNull();
+  });
+
+  it("marks images as new only within 3 days from first discovery", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sd-library-"));
+    const tempCacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "sd-cache-"));
+    const characterDir = path.join(tempRoot, "characters", "3d", "Nia");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    const firstRead = await readImageLibrary();
+    const initialImage = firstRead.images.find((image) => image.relativePath.endsWith("Base.png"));
+    expect(initialImage?.isNew).toBe(true);
+
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const firstSeenCachePath = path.join(tempCacheDir, `${rootHash}.first-seen.json`);
+    const persistedCacheRaw = await fs.readFile(firstSeenCachePath, "utf8");
+    expect(JSON.parse(persistedCacheRaw)).toHaveProperty("characters/3d/Nia/Base.png");
+
+    vi.setSystemTime(new Date("2026-01-05T00:00:00.000Z"));
+
+    const secondRead = await readImageLibrary();
+    const oldImage = secondRead.images.find((image) => image.relativePath.endsWith("Base.png"));
+    expect(oldImage?.isNew).toBe(false);
+
+    await fs.writeFile(path.join(characterDir, "Jump.png"), "");
+
+    const thirdRead = await readImageLibrary();
+    const discoveredLaterImage = thirdRead.images.find((image) =>
+      image.relativePath.endsWith("Jump.png"),
+    );
+    expect(discoveredLaterImage?.isNew).toBe(true);
+
+    delete process.env.SD_CACHE_DIR;
+    vi.useRealTimers();
+  });
+
+  it("sets cacheAvailable to false when cache persistence fails", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sd-library-"));
+    const tempCacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "sd-cache-"));
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    const writeFileSpy = vi.spyOn(fs, "writeFile").mockRejectedValueOnce(new Error("disk full"));
+
+    const library = await readImageLibrary();
+
+    expect(library.cacheAvailable).toBe(false);
+    expect(library.images).toHaveLength(1);
+
+    writeFileSpy.mockRestore();
+
+    delete process.env.SD_CACHE_DIR;
+  });
+
+  it("sets cacheAvailable to false when cache content is unreadable", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sd-library-"));
+    const tempCacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "sd-cache-"));
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const cacheFilePath = path.join(tempCacheDir, `${rootHash}.first-seen.json`);
+
+    await fs.writeFile(cacheFilePath, "{invalid-json");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    const library = await readImageLibrary();
+
+    expect(library.cacheAvailable).toBe(false);
+
+    delete process.env.SD_CACHE_DIR;
+  });
+
+  it("sets cacheAvailable to true with successful cache operations", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sd-library-"));
+    const tempCacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "sd-cache-"));
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    const library = await readImageLibrary();
+
+    expect(library.cacheAvailable).toBe(true);
+
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const cacheFilePath = path.join(tempCacheDir, `${rootHash}.first-seen.json`);
+    const cacheExists = await fs
+      .stat(cacheFilePath)
+      .then(() => true)
+      .catch(() => false);
+
+    expect(cacheExists).toBe(true);
+
+    delete process.env.SD_CACHE_DIR;
   });
 });

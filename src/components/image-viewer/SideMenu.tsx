@@ -2,10 +2,12 @@
 
 import {
   Box,
+  FormControlLabel,
   List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Switch,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
@@ -17,8 +19,8 @@ import LightModeIcon from "@mui/icons-material/LightMode";
 import PaletteIcon from "@mui/icons-material/Palette";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import { useColorScheme } from "@mui/material/styles";
-import type { TMajorFilter } from "@/types/library";
-import { useCallback, type MouseEvent as ReactMouseEvent } from "react";
+import type { ILibraryData, TMajorFilter } from "@/types/library";
+import { useCallback, type ChangeEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { PADDING, MARGIN_BOTTOM, BORDER_RADIUS } from "./constants";
 
 const SIDEBAR_BOX_SX = { ...PADDING, display: "flex", flexDirection: "column", flex: 1 };
@@ -30,13 +32,30 @@ const THEME_SECTION_SX = {
 };
 const THEME_TOGGLE_SX = { mt: 0.5, width: "100%" };
 const THEME_BUTTON_SX = { flex: 1 };
+const NEW_FILTER_SECTION_SX = {
+  mt: 2,
+  pt: 2,
+  borderTop: "1px solid",
+  borderColor: "divider",
+};
+const NEW_FILTER_LABEL_SX = { ml: 0 };
+const CACHE_UNAVAILABLE_TEXT_SX = { display: "block", mt: 1, opacity: 0.6 };
 
 interface ISideMenuProps {
   majorFilter: TMajorFilter;
   onMajorFilterChange: (nextFilter: TMajorFilter) => void;
+  showOnlyNewImages: boolean;
+  onShowOnlyNewImagesChange: (enabled: boolean) => void;
+  library: ILibraryData;
 }
 
-export const SideMenu = ({ majorFilter, onMajorFilterChange }: Readonly<ISideMenuProps>) => {
+export const SideMenu = ({
+  majorFilter,
+  onMajorFilterChange,
+  showOnlyNewImages,
+  onShowOnlyNewImagesChange,
+  library,
+}: Readonly<ISideMenuProps>) => {
   const { mode, setMode } = useColorScheme();
 
   const onFilterChangeCharacter = useCallback(() => {
@@ -58,6 +77,13 @@ export const SideMenu = ({ majorFilter, onMajorFilterChange }: Readonly<ISideMen
       }
     },
     [setMode],
+  );
+
+  const handleNewImagesToggle = useCallback(
+    (_event: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+      onShowOnlyNewImagesChange(checked);
+    },
+    [onShowOnlyNewImagesChange],
   );
 
   return (
@@ -98,6 +124,21 @@ export const SideMenu = ({ majorFilter, onMajorFilterChange }: Readonly<ISideMen
           <ListItemText primary="Poses" />
         </ListItemButton>
       </List>
+
+      <Box sx={NEW_FILTER_SECTION_SX}>
+        <Typography variant="overline">Filters</Typography>
+        {library.cacheAvailable ? (
+          <FormControlLabel
+            sx={NEW_FILTER_LABEL_SX}
+            control={<Switch checked={showOnlyNewImages} onChange={handleNewImagesToggle} />}
+            label="Show new only"
+          />
+        ) : (
+          <Typography variant="caption" sx={CACHE_UNAVAILABLE_TEXT_SX}>
+            Cache unavailable - refresh disabled
+          </Typography>
+        )}
+      </Box>
 
       <Box sx={THEME_SECTION_SX}>
         <Typography variant="overline">Theme</Typography>

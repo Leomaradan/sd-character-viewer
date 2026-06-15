@@ -23,10 +23,12 @@ interface IImageViewerBodyProps {
   selectedCharacter: string | null;
   selectedPoseFilters: string[];
   selectedMetadataFilterId: string;
+  showOnlyNewImages: boolean;
   characterDetailStyle: "all" | TStyle;
   characterDetailPose: string;
   reloadToken: number;
   onImageSelect: (image: IImageItem, filteredImages: IImageItem[]) => void;
+  onLibraryLoad: (library: ILibraryData) => void;
 
   setSelectedCharacter: (characterName: string | null) => void;
   setSelectedPoseFilters: (nextPoseFilters: string[] | ((prev: string[]) => string[])) => void;
@@ -79,10 +81,12 @@ export const ImageViewerBody = ({
   selectedCharacter,
   selectedPoseFilters,
   selectedMetadataFilterId,
+  showOnlyNewImages,
   characterDetailStyle,
   characterDetailPose,
   reloadToken,
   onImageSelect,
+  onLibraryLoad,
   setSelectedCharacter,
   setSelectedPoseFilters,
   setSelectedMetadataFilterId,
@@ -150,6 +154,7 @@ export const ImageViewerBody = ({
           );
 
           setLibrary(data);
+          onLibraryLoad(data);
           setRequestError(null);
           setStyleViewStyle(data.defaultStyle);
 
@@ -186,13 +191,26 @@ export const ImageViewerBody = ({
     selectedPoseFilters,
     setSelectedMetadataFilterId,
     setSelectedPoseFilters,
+    onLibraryLoad,
   ]);
 
+  const filteredImages = useMemo(() => {
+    if (!showOnlyNewImages) {
+      return library.images;
+    }
+
+    return library.images.filter((image) => image.isNew);
+  }, [library.images, showOnlyNewImages]);
+
   const charactersForBrowseStyle = useMemo(() => {
-    return library.characters.filter((character) =>
-      character.styles.includes(library.defaultStyle),
+    const visibleCharacterNames = new Set(filteredImages.map((image) => image.characterName));
+
+    return library.characters.filter(
+      (character) =>
+        character.styles.includes(library.defaultStyle) &&
+        visibleCharacterNames.has(character.name),
     );
-  }, [library.characters, library.defaultStyle]);
+  }, [library.characters, library.defaultStyle, filteredImages]);
 
   const metadataFilterOptions = useMemo((): IMetadataFilterOption[] => {
     return buildMetadataFilterOptions(library.characters);
@@ -232,8 +250,8 @@ export const ImageViewerBody = ({
       return [];
     }
 
-    return library.images.filter((image) => image.characterName === selectedCharacter);
-  }, [library.images, selectedCharacter]);
+    return filteredImages.filter((image) => image.characterName === selectedCharacter);
+  }, [filteredImages, selectedCharacter]);
 
   const characterDetailPoseOptions = useMemo(() => {
     return buildPoseOptions(selectedCharacterImages);
@@ -253,7 +271,7 @@ export const ImageViewerBody = ({
     const normalizedSearchText = styleViewSearchText.trim().toLowerCase();
     const selectedMetadataFilter = metadataFilterById.get(effectiveStyleMetadataFilterId);
 
-    return library.images.filter((image) => {
+    return filteredImages.filter((image) => {
       const matchesStyle = image.style === styleViewStyle;
       const matchesSearchText =
         normalizedSearchText.length === 0
@@ -274,7 +292,7 @@ export const ImageViewerBody = ({
       return matchesStyle && matchesSearchText && matchesMetadata;
     });
   }, [
-    library.images,
+    filteredImages,
     styleViewStyle,
     styleViewSearchText,
     effectiveStyleMetadataFilterId,
@@ -288,7 +306,7 @@ export const ImageViewerBody = ({
     const isAllPosesSelected = selectedPoses.size === 0;
     const selectedMetadataFilter = metadataFilterById.get(effectivePoseMetadataFilterId);
 
-    return library.images.filter((image) => {
+    return filteredImages.filter((image) => {
       const matchesPose =
         isAllPosesSelected ||
         selectedPoses.has(image.poseBaseName) ||
@@ -312,7 +330,7 @@ export const ImageViewerBody = ({
       return matchesPose && matchesStyle && matchesCharacter && matchesMetadata;
     });
   }, [
-    library.images,
+    filteredImages,
     selectedPoseFilters,
     poseViewStyle,
     poseViewCharacterSearch,
@@ -322,8 +340,9 @@ export const ImageViewerBody = ({
   ]);
 
   const allPoseOptions = useMemo(() => {
-    return library.poses.map((pose) => pose.name);
-  }, [library.poses]);
+    const poseNames = new Set(filteredImages.map((image) => image.poseBaseName));
+    return [...poseNames].sort(compareNatural);
+  }, [filteredImages]);
 
   const poseViewPoseOptions = useMemo(() => {
     return buildPoseFilterOptions(allPoseOptions);
@@ -409,11 +428,15 @@ export const ImageViewerBody = ({
     return <Alert severity="warning">{library.warning}</Alert>;
   }
 
-  if (library.images.length === 0) {
+  if (filteredImages.length === 0) {
     return (
       <EmptyState
-        title="No PNG files found"
-        description="Check the folder pattern characters/{style}/{character}/*.png and ensure styles use realistic, 3d, or anime."
+        title={showOnlyNewImages ? "No new images found" : "No PNG files found"}
+        description={
+          showOnlyNewImages
+            ? "No images discovered in the last 3 days are currently available."
+            : "Check the folder pattern characters/{style}/{character}/*.png and ensure styles use realistic, 3d, or anime."
+        }
       />
     );
   }

@@ -28,6 +28,11 @@ export const parseSelectedMetadataFilterId = (queryParams: IQueryParamsReader): 
   return "";
 };
 
+export const parseShowOnlyNewImages = (queryParams: IQueryParamsReader): boolean => {
+  const rawValue = queryParams.get("new")?.trim().toLowerCase();
+  return rawValue === "1" || rawValue === "true";
+};
+
 export const normalizePoseFilters = (poses: string[]): string[] => {
   return [...new Set(poses.map((pose) => pose.trim()))].filter((pose) => pose !== "");
 };
