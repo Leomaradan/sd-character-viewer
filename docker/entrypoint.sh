@@ -58,5 +58,5 @@ else
 fi
 
 "$@" &
- "$@" &
- APP_PID=$!
+APP_PID=$!
+wait "$APP_PID"
