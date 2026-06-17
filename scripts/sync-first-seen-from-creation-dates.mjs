@@ -47,6 +47,12 @@ const resolveCreationTimestampMs = (fileStat) => {
     }
   });
 
+  if (times.length === 0) {
+    const fallback =
+      Number.isFinite(fileStat.mtimeMs) && fileStat.mtimeMs > 0 ? fileStat.mtimeMs : Date.now();
+    return Math.trunc(fallback);
+  }
+
   return Math.trunc(Math.min(...times));
 };
 
