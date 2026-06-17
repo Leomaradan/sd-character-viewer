@@ -4,6 +4,8 @@ vi.mock("node:fs", () => ({
   promises: {
     readFile: vi.fn(),
     unlink: vi.fn(),
+    rename: vi.fn(),
+    readdir: vi.fn(),
   },
 }));
 
@@ -32,7 +34,7 @@ import * as auth from "@/lib/auth";
 import { resolveImageFilePath, removeFirstSeenCacheEntry } from "@/lib/image-library";
 import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
 import * as env from "@/lib/env";
-import { DELETE, GET } from "./route";
+import { DELETE, GET, PATCH } from "./route";
 
 describe("/api/image", () => {
   it("GET returns unauthorized when auth fails", async () => {
@@ -179,5 +181,82 @@ describe("/api/image", () => {
     const response = await DELETE(new Request("http://localhost/api/image?path=missing.png"));
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe("/api/image PATCH", () => {
+  it("PATCH returns misconfigured payload", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    isMisconfiguredMock.mockReturnValue(true);
+
+    const response = await PATCH(new Request("http://localhost/api/image?path=a.png"));
+
+    expect(response.status).toBe(200);
+  });
+
+  it("PATCH returns unauthorized when auth fails", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const isAuthenticatedRequestMock = vi.mocked(auth.isAuthenticatedRequest);
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(true);
+    isAuthenticatedRequestMock.mockReturnValue(false);
+
+    const response = await PATCH(new Request("http://localhost/api/image?path=a.png"));
+
+    expect(response.status).toBe(401);
+  });
+
+  it("PATCH returns 403 when rename is disabled", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const readBooleanEnvFlagMock = vi.mocked(env.readBooleanEnvFlag);
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    readBooleanEnvFlagMock.mockReturnValue(false);
+
+    const response = await PATCH(new Request("http://localhost/api/image?path=a.png"));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("PATCH returns 400 when path is invalid", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const readBooleanEnvFlagMock = vi.mocked(env.readBooleanEnvFlag);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    readBooleanEnvFlagMock.mockReturnValue(true);
+    resolveImageFilePathMock.mockReturnValue(null);
+
+    const response = await PATCH(new Request("http://localhost/api/image?path=bad"));
+
+    expect(response.status).toBe(400);
+  });
+
+  it("PATCH renames file with next available number", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const readBooleanEnvFlagMock = vi.mocked(env.readBooleanEnvFlag);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const renameMock = vi.mocked(fs.rename);
+    const readdirMock = vi.mocked(fs.readdir);
+
+    const removeFirstSeenCacheEntryMock = vi.mocked(removeFirstSeenCacheEntry);
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    readBooleanEnvFlagMock.mockReturnValue(true);
+    resolveImageFilePathMock.mockReturnValue("/tmp/ImageA.png");
+    renameMock.mockResolvedValue(undefined);
+    readdirMock.mockResolvedValue([]);
+    removeFirstSeenCacheEntryMock.mockResolvedValue(undefined);
+
+    const response = await PATCH(new Request("http://localhost/api/image?path=ImageA.png"));
+
+    expect(response.status).toBe(200);
+    expect(renameMock).toHaveBeenCalledWith("/tmp/ImageA.png", "/tmp/ImageA 2.png");
+    const data = (await response.json()) as { newPath: string };
+    expect(data.newPath).toBe("ImageA 2.png");
   });
 });
