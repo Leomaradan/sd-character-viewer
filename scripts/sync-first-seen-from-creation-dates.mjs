@@ -145,7 +145,9 @@ const run = async () => {
   console.log(`Updated ${cacheFilePath} with ${sortedEntries.length} image timestamps.`);
 };
 
-run().catch((error) => {
+try {
+  await run();
+} catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
-});
+}
