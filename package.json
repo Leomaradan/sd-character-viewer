@@ -12,12 +12,12 @@
     "lint": "eslint",
     "lint:ci": "eslint . --max-warnings=0",
     "knip": "knip",
-    "precommit:check": "pnpm format && pnpm lint:ci && pnpm typecheck && pnpm test && pnpm knip",
+    "precommit:check": "pnpm format && pnpm lint:ci && pnpm typecheck && pnpm test:hook && pnpm knip",
     "prepush:check": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test:hook": "vitest run --coverage=false",
     "prepare": "husky || true"
   },
   "dependencies": {

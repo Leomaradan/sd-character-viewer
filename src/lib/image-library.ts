@@ -567,3 +567,19 @@ export const resolveImageFilePath = (relativePath: string): string | null => {
 
   return fullPath;
 };
+
+export const removeFirstSeenCacheEntry = async (relativePath: string): Promise<void> => {
+  const rootPath = getImagesRootPathFromEnv();
+
+  if (!rootPath) {
+    return;
+  }
+
+  const normalizedPath = normalizeRelativePath(relativePath);
+  const { cache: firstSeenCache } = await loadFirstSeenCache(rootPath);
+
+  if (firstSeenCache.has(normalizedPath)) {
+    firstSeenCache.delete(normalizedPath);
+    await persistFirstSeenCache(rootPath, firstSeenCache);
+  }
+};

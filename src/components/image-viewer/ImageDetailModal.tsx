@@ -4,6 +4,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import DeleteIcon from "@mui/icons-material/Delete";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import InfoIcon from "@mui/icons-material/Info";
 import PhotoIcon from "@mui/icons-material/Photo";
 import {
@@ -84,6 +85,7 @@ const SIDEBAR_SX = {
 const META_BODY_SX = { mt: 0.5, opacity: 0.8 };
 
 const METADATA_LOADING_SX = { display: "flex", justifyContent: "center", pt: 1 };
+const BUTTON_CONTAINER_SX = { display: "flex", gap: 1 };
 
 const DIVIDER_SX = { borderColor: "rgba(255,255,255,0.1)" };
 const SPINNER_SX = { color: "rgba(255,255,255,0.5)" };
@@ -94,6 +96,11 @@ const DELETE_BUTTON_SX = {
   "&:hover": { borderColor: "#f44336", bgcolor: "rgba(244,67,54,0.08)" },
 };
 const DELETE_ERROR_SX = { fontSize: "0.75rem" };
+const REDRAW_BUTTON_SX = {
+  borderColor: "rgba(255,255,255,0.3)",
+  color: "#2196f3",
+  "&:hover": { borderColor: "#2196f3", bgcolor: "rgba(33,150,243,0.08)" },
+};
 
 interface IImageDetailModalProps {
   image: IImageItem | null;
@@ -127,6 +134,8 @@ export function ImageDetailModal({
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isRedrawing, setIsRedrawing] = useState(false);
+  const [redrawError, setRedrawError] = useState<string | null>(null);
   const touchStartXRef = useRef(0);
 
   const relativePath = image?.relativePath;
@@ -226,6 +235,31 @@ export function ImageDetailModal({
       setIsConfirmOpen(false);
     } finally {
       setIsDeleting(false);
+    }
+  }, [relativePath, onDeleteSuccess]);
+
+  const handleRedrawClick = useCallback(async () => {
+    if (!relativePath) return;
+
+    setIsRedrawing(true);
+    setRedrawError(null);
+
+    try {
+      const response = await fetch(`/api/image?path=${encodeURIComponent(relativePath)}`, {
+        method: "PATCH",
+      });
+
+      if (!response.ok) {
+        setRedrawError("Could not rename the image. Try again.");
+        return;
+      }
+
+      (await response.json()) as { newPath: string };
+      onDeleteSuccess?.();
+    } catch {
+      setRedrawError("Could not rename the image. Try again.");
+    } finally {
+      setIsRedrawing(false);
     }
   }, [relativePath, onDeleteSuccess]);
 
@@ -392,15 +426,33 @@ export function ImageDetailModal({
                       {deleteError}
                     </Alert>
                   )}
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<DeleteIcon />}
-                    onClick={handleDeleteClick}
-                    sx={DELETE_BUTTON_SX}
-                  >
-                    Delete image
-                  </Button>
+                  {redrawError && (
+                    <Alert severity="error" sx={DELETE_ERROR_SX}>
+                      {redrawError}
+                    </Alert>
+                  )}
+                  <Box sx={BUTTON_CONTAINER_SX}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<RefreshIcon />}
+                      onClick={handleRedrawClick}
+                      disabled={isRedrawing}
+                      sx={REDRAW_BUTTON_SX}
+                    >
+                      {isRedrawing ? <CircularProgress size={18} /> : "Redraw"}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<DeleteIcon />}
+                      onClick={handleDeleteClick}
+                      disabled={isDeleting}
+                      sx={DELETE_BUTTON_SX}
+                    >
+                      {isDeleting ? <CircularProgress size={18} /> : "Delete image"}
+                    </Button>
+                  </Box>
                 </>
               )}
             </Box>
