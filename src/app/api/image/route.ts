@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
-import { resolveImageFilePath } from "@/lib/image-library";
+import { resolveImageFilePath, removeFirstSeenCacheEntry } from "@/lib/image-library";
 import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
 import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
@@ -66,6 +66,7 @@ export const DELETE = async (request: Request) => {
   try {
     await fs.unlink(filePath);
     invalidateMetadataCacheEntry(requestedPath);
+    await removeFirstSeenCacheEntry(requestedPath);
 
     return new Response(null, { status: 204 });
   } catch {

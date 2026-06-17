@@ -15,6 +15,7 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/image-library", () => ({
   resolveImageFilePath: vi.fn(),
+  removeFirstSeenCacheEntry: vi.fn(),
 }));
 
 vi.mock("@/app/api/metadata/route", () => ({
@@ -28,7 +29,7 @@ vi.mock("@/lib/env", () => ({
 
 import { promises as fs } from "node:fs";
 import * as auth from "@/lib/auth";
-import { resolveImageFilePath } from "@/lib/image-library";
+import { resolveImageFilePath, removeFirstSeenCacheEntry } from "@/lib/image-library";
 import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
 import * as env from "@/lib/env";
 import { DELETE, GET } from "./route";
@@ -147,16 +148,19 @@ describe("/api/image", () => {
     const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
     const unlinkMock = vi.mocked(fs.unlink);
     const invalidateMetadataCacheEntryMock = vi.mocked(invalidateMetadataCacheEntry);
+    const removeFirstSeenCacheEntryMock = vi.mocked(removeFirstSeenCacheEntry);
     isMisconfiguredMock.mockReturnValue(false);
     isPasswordProtectionEnabledMock.mockReturnValue(false);
     readBooleanEnvFlagMock.mockReturnValue(true);
     resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
     unlinkMock.mockResolvedValue(undefined);
+    removeFirstSeenCacheEntryMock.mockResolvedValue(undefined);
 
     const response = await DELETE(new Request("http://localhost/api/image?path=ok.png"));
 
     expect(unlinkMock).toHaveBeenCalledWith("/tmp/a.png");
     expect(invalidateMetadataCacheEntryMock).toHaveBeenCalledWith("ok.png");
+    expect(removeFirstSeenCacheEntryMock).toHaveBeenCalledWith("ok.png");
     expect(response.status).toBe(204);
   });
 
