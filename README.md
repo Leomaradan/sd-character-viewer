@@ -120,7 +120,6 @@ pnpm format:check
 pnpm lint
 pnpm knip
 pnpm test
-pnpm test:coverage
 ```
 
 ## Pre-commit Hook
