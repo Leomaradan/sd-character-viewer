@@ -1,8 +1,4 @@
-import path from "node:path";
-import { promises as fs } from "node:fs";
-import { vol } from "memfs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { parsePoseName, readImageLibrary, resolveImageFilePath } from "@/lib/image-library";
 
 vi.mock("node:fs", async () => {
   const mockedFsModule = await import("../../__mocks__/fs.cjs");
@@ -13,6 +9,12 @@ vi.mock("node:fs/promises", async () => {
   const mockedFsPromisesModule = await import("../../__mocks__/fs/promises.cjs");
   return mockedFsPromisesModule.default ?? mockedFsPromisesModule;
 });
+
+import path from "node:path";
+import { promises as fs } from "node:fs";
+import { vol } from "memfs";
+
+import { parsePoseName, readImageLibrary, resolveImageFilePath } from "@/lib/image-library";
 
 beforeEach(() => {
   vol.reset();
