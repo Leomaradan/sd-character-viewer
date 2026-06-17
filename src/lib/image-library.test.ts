@@ -1,8 +1,32 @@
 import path from "node:path";
-import os from "node:os";
 import { promises as fs } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { vol } from "memfs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parsePoseName, readImageLibrary, resolveImageFilePath } from "@/lib/image-library";
+
+vi.mock("node:fs", async () => {
+  const mockedFsModule = await import("../../__mocks__/fs.cjs");
+  return mockedFsModule.default ?? mockedFsModule;
+});
+
+vi.mock("node:fs/promises", async () => {
+  const mockedFsPromisesModule = await import("../../__mocks__/fs/promises.cjs");
+  return mockedFsPromisesModule.default ?? mockedFsPromisesModule;
+});
+
+beforeEach(() => {
+  vol.reset();
+  vi.useRealTimers();
+  delete process.env.SD_IMAGES_ROOT;
+  delete process.env.SD_CACHE_DIR;
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+  delete process.env.SD_IMAGES_ROOT;
+  delete process.env.SD_CACHE_DIR;
+});
 
 describe("parsePoseName", () => {
   it("parses base pose without variant", () => {
@@ -58,7 +82,7 @@ describe("resolveImageFilePath", () => {
 
 describe("readImageLibrary with characters metadata", () => {
   it("loads category and serie from characters.json", async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sd-library-"));
+    const tempRoot = "/tmp/sd-library-read-metadata";
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
 
     await fs.mkdir(characterDir, { recursive: true });
@@ -84,7 +108,7 @@ describe("readImageLibrary with characters metadata", () => {
   });
 
   it("ignores invalid entries that do not follow the schema", async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sd-library-"));
+    const tempRoot = "/tmp/sd-library-invalid-metadata";
     const characterDir = path.join(tempRoot, "characters", "3d", "Bea");
 
     await fs.mkdir(characterDir, { recursive: true });
@@ -114,8 +138,8 @@ describe("readImageLibrary with characters metadata", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
 
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sd-library-"));
-    const tempCacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "sd-cache-"));
+    const tempRoot = "/tmp/sd-library-new-window";
+    const tempCacheDir = "/tmp/sd-cache-new-window";
     const characterDir = path.join(tempRoot, "characters", "3d", "Nia");
 
     await fs.mkdir(characterDir, { recursive: true });
@@ -147,12 +171,11 @@ describe("readImageLibrary with characters metadata", () => {
     expect(discoveredLaterImage?.isNew).toBe(true);
 
     delete process.env.SD_CACHE_DIR;
-    vi.useRealTimers();
   });
 
   it("sets cacheAvailable to false when cache persistence fails", async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sd-library-"));
-    const tempCacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "sd-cache-"));
+    const tempRoot = "/tmp/sd-library-cache-write-fail";
+    const tempCacheDir = "/tmp/sd-cache-write-fail";
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
 
     await fs.mkdir(characterDir, { recursive: true });
@@ -174,8 +197,8 @@ describe("readImageLibrary with characters metadata", () => {
   });
 
   it("sets cacheAvailable to false when cache content is unreadable", async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sd-library-"));
-    const tempCacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "sd-cache-"));
+    const tempRoot = "/tmp/sd-library-cache-unreadable";
+    const tempCacheDir = "/tmp/sd-cache-unreadable";
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
 
     await fs.mkdir(characterDir, { recursive: true });
@@ -184,6 +207,7 @@ describe("readImageLibrary with characters metadata", () => {
     const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
     const cacheFilePath = path.join(tempCacheDir, `${rootHash}.first-seen.json`);
 
+    await fs.mkdir(tempCacheDir, { recursive: true });
     await fs.writeFile(cacheFilePath, "{invalid-json");
 
     process.env.SD_IMAGES_ROOT = tempRoot;
@@ -197,8 +221,8 @@ describe("readImageLibrary with characters metadata", () => {
   });
 
   it("sets cacheAvailable to true with successful cache operations", async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sd-library-"));
-    const tempCacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "sd-cache-"));
+    const tempRoot = "/tmp/sd-library-cache-ok";
+    const tempCacheDir = "/tmp/sd-cache-ok";
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
 
     await fs.mkdir(characterDir, { recursive: true });
