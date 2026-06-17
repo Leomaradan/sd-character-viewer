@@ -32,10 +32,13 @@ COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/next.config.ts ./next.config.ts
+COPY docker/entrypoint.sh /entrypoint.sh
 
-RUN mkdir -p /cache && chmod 754 /cache
+RUN mkdir -p /cache && chmod 754 /cache && chmod +x /entrypoint.sh
 
 EXPOSE 3000
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["pnpm", "start"]
