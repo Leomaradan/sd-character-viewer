@@ -39,7 +39,7 @@ export const CategoryFilter: React.FC<ICategoryFilterProps> = ({
   return (
     <Box>
       <Typography variant="subtitle2" sx={FILTER_TITLE_SX}>
-        Category & Serie Filters
+        Category, Serie & Tag Filters
       </Typography>
       <Box sx={FILTER_INPUT_ROW_SX}>
         <FormControl size="small" sx={FILTER_DROPDOWN_SX}>

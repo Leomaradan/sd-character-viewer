@@ -5,6 +5,7 @@ import {
   type ICharacterSummary,
   type IImageItem,
   type ILibraryData,
+  type IPosePatternFilter,
   type IPoseSummary,
   type TStyle,
 } from "@/types/library";
@@ -16,6 +17,8 @@ const PNG_EXTENSION = ".png";
 const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
+const POSE_FILTERS_FILE_NAME = "pose-filters.json";
+const DEFAULT_POSE_PATTERN_FILTER_CONFIGS = [{ label: "With Somebody", pattern: "^With " }];
 
 interface ICharacterAccumulator {
   name: string;
@@ -29,17 +32,25 @@ interface ICharacterMetadata {
   name: string;
   category: string;
   serie?: string;
+  tags?: string[];
 }
 
 interface ICharacterMetadataSummary {
   category: string;
   serie: string | null;
+  tags: string[];
 }
 
 interface ILibraryIndexState {
   imageItems: IImageItem[];
   characterMap: Map<string, ICharacterAccumulator>;
   poseCounter: Map<string, number>;
+}
+
+interface IPosePatternFilterConfig {
+  label: string;
+  pattern: string;
+  flags?: string;
 }
 
 const normalizeRelativePath = (filePath: string): string => {
@@ -70,7 +81,9 @@ const isCharacterMetadata = (value: unknown): value is ICharacterMetadata => {
     return false;
   }
 
-  const hasOnlyAllowedKeys = keys.every((key) => ["name", "category", "serie"].includes(key));
+  const hasOnlyAllowedKeys = keys.every((key) =>
+    ["name", "category", "serie", "tags"].includes(key),
+  );
 
   if (!hasOnlyAllowedKeys) {
     return false;
@@ -84,7 +97,105 @@ const isCharacterMetadata = (value: unknown): value is ICharacterMetadata => {
     return false;
   }
 
+  if (
+    record.tags !== undefined &&
+    (!Array.isArray(record.tags) || !record.tags.every((tag) => typeof tag === "string"))
+  ) {
+    return false;
+  }
+
   return true;
+};
+
+const normalizeMetadataTags = (tags: string[] | undefined): string[] => {
+  if (!tags) {
+    return [];
+  }
+
+  return [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag !== ""))].sort(
+    compareNatural,
+  );
+};
+
+const isPosePatternFilterConfig = (value: unknown): value is IPosePatternFilterConfig => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (typeof record.label !== "string" || typeof record.pattern !== "string") {
+    return false;
+  }
+
+  return record.flags === undefined || typeof record.flags === "string";
+};
+
+const createPosePatternFilterId = (label: string, pattern: string, flags: string): string => {
+  const rawKey = `${label}\u0000${pattern}\u0000${flags}`;
+  return `pose-pattern::${Buffer.from(rawKey).toString("base64url")}`;
+};
+
+const normalizePosePatternFilters = (
+  filterConfigs: IPosePatternFilterConfig[],
+): IPosePatternFilter[] => {
+  const uniqueFilters = new Map<string, IPosePatternFilter>();
+
+  for (const filterConfig of filterConfigs) {
+    const label = filterConfig.label.trim();
+    const pattern = filterConfig.pattern;
+    const flags = filterConfig.flags?.trim() ?? "";
+
+    if (!label || pattern.trim() === "") {
+      continue;
+    }
+
+    try {
+      // Validate patterns at load time to avoid runtime regex failures in the UI.
+      new RegExp(pattern, flags);
+    } catch {
+      continue;
+    }
+
+    const filterId = createPosePatternFilterId(label, pattern, flags);
+    uniqueFilters.set(filterId, {
+      id: filterId,
+      label,
+      pattern,
+      flags: flags || undefined,
+    });
+  }
+
+  return [...uniqueFilters.values()];
+};
+
+const readPosePatternFilters = async (rootPath: string): Promise<IPosePatternFilter[]> => {
+  const filtersPath = path.join(rootPath, POSE_FILTERS_FILE_NAME);
+
+  let fileContent = "";
+  try {
+    fileContent = await fs.readFile(filtersPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return normalizePosePatternFilters(DEFAULT_POSE_PATTERN_FILTER_CONFIGS);
+    }
+
+    return normalizePosePatternFilters(DEFAULT_POSE_PATTERN_FILTER_CONFIGS);
+  }
+
+  try {
+    const parsedContent: unknown = JSON.parse(fileContent);
+    const items = Array.isArray(parsedContent) ? parsedContent : [parsedContent];
+    const validConfigs = items.filter(isPosePatternFilterConfig);
+    const posePatternFilters = normalizePosePatternFilters(validConfigs);
+
+    if (posePatternFilters.length > 0) {
+      return posePatternFilters;
+    }
+  } catch {
+    // Fallback to defaults when the file is malformed.
+  }
+
+  return normalizePosePatternFilters(DEFAULT_POSE_PATTERN_FILTER_CONFIGS);
 };
 
 const readCharactersMetadata = async (
@@ -120,6 +231,7 @@ const readCharactersMetadata = async (
     metadataByCharacter.set(normalizedName, {
       category: item.category,
       serie: item.serie ?? null,
+      tags: normalizeMetadataTags(item.tags),
     });
   }
 
@@ -183,6 +295,7 @@ const toCharacterSummary = (accumulator: ICharacterAccumulator): ICharacterSumma
     thumbnailsByStyle: accumulator.thumbnailsByStyle,
     category: null,
     serie: null,
+    tags: [],
   };
 };
 
@@ -206,6 +319,7 @@ const createEmptyLibraryData = (
     images: [],
     characters: [],
     poses: [],
+    posePatternFilters: normalizePosePatternFilters(DEFAULT_POSE_PATTERN_FILTER_CONFIGS),
     warning,
     cacheAvailable,
   };
@@ -440,6 +554,7 @@ const toLibraryData = (
   rootPath: string,
   state: ILibraryIndexState,
   metadataByCharacter: Map<string, ICharacterMetadataSummary>,
+  posePatternFilters: IPosePatternFilter[],
   cacheAvailable: boolean,
 ): ILibraryData => {
   const characters = [...state.characterMap.values()]
@@ -455,6 +570,7 @@ const toLibraryData = (
         ...summary,
         category: metadata.category,
         serie: metadata.serie,
+        tags: metadata.tags,
       };
     })
     .sort((a, b) => compareNatural(a.name, b.name));
@@ -469,6 +585,7 @@ const toLibraryData = (
     images: state.imageItems,
     characters,
     poses,
+    posePatternFilters,
     warning: null,
     cacheAvailable,
   };
@@ -493,6 +610,7 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
 
   const charactersRootPath = path.join(rootPath, "characters");
   let metadataByCharacter = new Map<string, ICharacterMetadataSummary>();
+  const posePatternFilters = await readPosePatternFilters(rootPath);
 
   try {
     metadataByCharacter = await readCharactersMetadata(rootPath);
@@ -536,7 +654,13 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
 
   const cacheAvailable = cacheReadable && cacheWritable;
 
-  return toLibraryData(rootPath, indexState, metadataByCharacter, cacheAvailable);
+  return toLibraryData(
+    rootPath,
+    indexState,
+    metadataByCharacter,
+    posePatternFilters,
+    cacheAvailable,
+  );
 };
 
 export const resolveImageFilePath = (relativePath: string): string | null => {

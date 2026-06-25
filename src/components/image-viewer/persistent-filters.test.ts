@@ -29,6 +29,12 @@ describe("persistent filters", () => {
 
       expect(parseSelectedMetadataFilterId(params)).toBe("serie::Sample");
     });
+
+    it("reads tag when category and serie are absent", () => {
+      const params = new URLSearchParams("tag=Action");
+
+      expect(parseSelectedMetadataFilterId(params)).toBe("tag::Action");
+    });
   });
 
   describe("parseShowOnlyNewImages", () => {
@@ -58,6 +64,7 @@ describe("persistent filters", () => {
       expect(metadataFilterIdToQueryChanges("category::Hero")).toEqual({
         category: "Hero",
         serie: null,
+        tag: null,
       });
     });
 
@@ -65,14 +72,28 @@ describe("persistent filters", () => {
       expect(metadataFilterIdToQueryChanges("serie::Sample")).toEqual({
         category: null,
         serie: "Sample",
+        tag: null,
+      });
+    });
+
+    it("maps tag filter id to query changes", () => {
+      expect(metadataFilterIdToQueryChanges("tag::Action")).toEqual({
+        category: null,
+        serie: null,
+        tag: "Action",
       });
     });
 
     it("clears metadata query params for empty filter ids", () => {
-      expect(metadataFilterIdToQueryChanges("")).toEqual({ category: null, serie: null });
+      expect(metadataFilterIdToQueryChanges("")).toEqual({
+        category: null,
+        serie: null,
+        tag: null,
+      });
       expect(metadataFilterIdToQueryChanges("category:: ")).toEqual({
         category: null,
         serie: null,
+        tag: null,
       });
     });
   });

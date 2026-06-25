@@ -23,11 +23,12 @@ export interface ICharacterSummary {
   thumbnailsByStyle: Partial<Record<TStyle, string>>;
   category: string | null;
   serie: string | null;
+  tags: string[];
 }
 
 export interface IMetadataFilterOption {
   id: string;
-  type: "category" | "serie";
+  type: "category" | "serie" | "tag";
   value: string;
   label: string;
 }
@@ -35,6 +36,13 @@ export interface IMetadataFilterOption {
 export interface IPoseSummary {
   name: string;
   imageCount: number;
+}
+
+export interface IPosePatternFilter {
+  id: string;
+  label: string;
+  pattern: string;
+  flags?: string;
 }
 
 export interface ILibraryData {
@@ -45,6 +53,7 @@ export interface ILibraryData {
   images: IImageItem[];
   characters: ICharacterSummary[];
   poses: IPoseSummary[];
+  posePatternFilters: IPosePatternFilter[];
   warning: string | null;
   cacheAvailable: boolean;
 }

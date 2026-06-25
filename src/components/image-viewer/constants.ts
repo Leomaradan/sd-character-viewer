@@ -1,7 +1,6 @@
 import type { ILibraryData } from "@/types/library";
 
 export const SIDEBAR_WIDTH = 280;
-export const WITH_SOMEBODY_FILTER = "__with_somebody__";
 export const BORDER_RADIUS = { borderRadius: 1 };
 export const BORDER_STYLE_DASHED = { borderStyle: "dashed" };
 export const PADDING = { p: 2 };
@@ -41,6 +40,7 @@ export const DEFAULT_LIBRARY: ILibraryData = {
   images: [],
   characters: [],
   poses: [],
+  posePatternFilters: [],
   warning: null,
   cacheAvailable: false,
 };

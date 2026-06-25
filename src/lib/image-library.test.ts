@@ -83,6 +83,51 @@ describe("resolveImageFilePath", () => {
 });
 
 describe("readImageLibrary with characters metadata", () => {
+  it("loads pose pattern filters from pose-filters.json", async () => {
+    const tempRoot = "/tmp/sd-library-pose-filters";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "With Bob.png"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "pose-filters.json"),
+      JSON.stringify([
+        { label: "With Somebody", pattern: "^With " },
+        { label: "Duo", pattern: "^Duo " },
+        { label: "With Somebody CI", pattern: "^with ", flags: "i" },
+      ]),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.posePatternFilters).toHaveLength(3);
+    expect(library.posePatternFilters).toEqual([
+      expect.objectContaining({ label: "With Somebody", pattern: "^With " }),
+      expect.objectContaining({ label: "Duo", pattern: "^Duo " }),
+      expect.objectContaining({ label: "With Somebody CI", pattern: "^with ", flags: "i" }),
+    ]);
+  });
+
+  it("falls back to default pose pattern filter when pose-filters.json is invalid", async () => {
+    const tempRoot = "/tmp/sd-library-invalid-pose-filters";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "With Bob.png"), "");
+    await fs.writeFile(path.join(tempRoot, "pose-filters.json"), "{invalid-json");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.posePatternFilters).toHaveLength(1);
+    expect(library.posePatternFilters[0]).toEqual(
+      expect.objectContaining({ label: "With Somebody", pattern: "^With " }),
+    );
+  });
+
   it("loads category and serie from characters.json", async () => {
     const tempRoot = "/tmp/sd-library-read-metadata";
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
@@ -96,6 +141,7 @@ describe("readImageLibrary with characters metadata", () => {
           name: "Anna",
           category: "Hero",
           serie: "Sample",
+          tags: ["Main", "Action"],
         },
       ]),
     );
@@ -107,6 +153,7 @@ describe("readImageLibrary with characters metadata", () => {
 
     expect(anna?.category).toBe("Hero");
     expect(anna?.serie).toBe("Sample");
+    expect(anna?.tags).toEqual(["Action", "Main"]);
   });
 
   it("ignores invalid entries that do not follow the schema", async () => {
@@ -134,6 +181,35 @@ describe("readImageLibrary with characters metadata", () => {
 
     expect(bea?.category).toBeNull();
     expect(bea?.serie).toBeNull();
+    expect(bea?.tags).toEqual([]);
+  });
+
+  it("ignores metadata entry when tags is not a string array", async () => {
+    const tempRoot = "/tmp/sd-library-invalid-metadata-tags";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Nora");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "characters", "characters.json"),
+      JSON.stringify([
+        {
+          name: "Nora",
+          category: "Support",
+          serie: "Sample",
+          tags: ["Valid", 123],
+        },
+      ]),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+    const nora = library.characters.find((character) => character.name === "Nora");
+
+    expect(nora?.category).toBeNull();
+    expect(nora?.serie).toBeNull();
+    expect(nora?.tags).toEqual([]);
   });
 
   it("marks images as new only within 3 days from first discovery", async () => {

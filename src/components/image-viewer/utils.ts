@@ -1,5 +1,4 @@
-import type { IImageItem, TStyle } from "@/types/library";
-import { WITH_SOMEBODY_FILTER } from "@/components/image-viewer/constants";
+import type { IImageItem, IPosePatternFilter, TStyle } from "@/types/library";
 
 export const getImageUrl = (relativePath: string): string => {
   return `/api/image?path=${encodeURIComponent(relativePath)}`;
@@ -24,22 +23,36 @@ export const buildPoseOptions = (images: IImageItem[]): string[] => {
 
 export const buildPoseFilterOptions = (
   poses: string[],
+  posePatternFilters: IPosePatternFilter[],
 ): Array<{ value: string; label: string }> => {
-  const nonWithPoses: Array<{ value: string; label: string }> = [];
-  let hasWithPoses = false;
+  const nonPatternPoses: Array<{ value: string; label: string }> = [];
+  const matchingPatternFilterIds = new Set<string>();
+
+  const compiledPatternFilters = posePatternFilters
+    .map((filter) => {
+      try {
+        return { ...filter, regex: new RegExp(filter.pattern, filter.flags) };
+      } catch {
+        return null;
+      }
+    })
+    .filter((filter): filter is IPosePatternFilter & { regex: RegExp } => filter !== null);
 
   for (const pose of poses) {
-    if (pose.startsWith("With ")) {
-      hasWithPoses = true;
-      continue;
+    const matchedFilters = compiledPatternFilters.filter((filter) => filter.regex.test(pose));
+
+    if (matchedFilters.length > 0) {
+      for (const matchedFilter of matchedFilters) {
+        matchingPatternFilterIds.add(matchedFilter.id);
+      }
+    } else {
+      nonPatternPoses.push({ value: pose, label: pose });
     }
-
-    nonWithPoses.push({ value: pose, label: pose });
   }
 
-  if (hasWithPoses) {
-    nonWithPoses.push({ value: WITH_SOMEBODY_FILTER, label: "With Somebody" });
-  }
+  const matchingPatternFilters = posePatternFilters
+    .filter((filter) => matchingPatternFilterIds.has(filter.id))
+    .map((filter) => ({ value: filter.id, label: filter.label }));
 
-  return nonWithPoses;
+  return [...nonPatternPoses, ...matchingPatternFilters];
 };
