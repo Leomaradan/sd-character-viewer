@@ -48,6 +48,11 @@ const compareNatural = (a: string, b: string): number => {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 };
 
+const ucFirst = (str: string): string => {
+  if (!str) return str;
+  return str.charAt(0).toUpperCase() + str.slice(1);
+};
+
 const buildMetadataFilterOptions = (characters: ICharacterSummary[]): IMetadataFilterOption[] => {
   const categories = new Set(
     characters
@@ -79,7 +84,7 @@ const buildMetadataFilterOptions = (characters: ICharacterSummary[]): IMetadataF
     id: `tag::${tag}`,
     type: "tag" as const,
     value: tag,
-    label: tag,
+    label: ucFirst(tag),
   }));
 
   return [...categoryFilters, ...serieFilters, ...tagFilters].sort((a, b) =>
@@ -399,25 +404,14 @@ export const ImageViewerBody = ({
     [setSelectedPoseFilters],
   );
 
-  const onStyleMetadataFilterChange = useCallback(
+  const onMetadataFilterChange = useCallback(
     (event: SelectChangeEvent<string>) => {
       setSelectedMetadataFilterId(event.target.value);
     },
     [setSelectedMetadataFilterId],
   );
 
-  const onPoseMetadataFilterChange = useCallback(
-    (event: SelectChangeEvent<string>) => {
-      setSelectedMetadataFilterId(event.target.value);
-    },
-    [setSelectedMetadataFilterId],
-  );
-
-  const onClearStyleMetadataFilter = useCallback(() => {
-    setSelectedMetadataFilterId("");
-  }, [setSelectedMetadataFilterId]);
-
-  const onClearPoseMetadataFilter = useCallback(() => {
+  const onClearMetadataFilter = useCallback(() => {
     setSelectedMetadataFilterId("");
   }, [setSelectedMetadataFilterId]);
 
@@ -486,6 +480,9 @@ export const ImageViewerBody = ({
         styles={library.styles}
         defaultStyle={library.defaultStyle}
         browseStyle={library.defaultStyle}
+        metadataFilterOptions={metadataFilterOptions}
+        onClearMetadataFilter={onClearMetadataFilter}
+        onMetadataFilterChange={onMetadataFilterChange}
         selectedCharacter={selectedCharacter}
         selectedMetadataFilterId={effectiveStyleMetadataFilterId}
         characterDetailStyle={characterDetailStyle}
@@ -495,7 +492,6 @@ export const ImageViewerBody = ({
         visibleCharacterDetailImages={visibleCharacterDetailImages}
         showNewBadge={!showOnlyNewImages}
         onSelectCharacter={setSelectedCharacter}
-        onMetadataFilterIdChange={setSelectedMetadataFilterId}
         onCharacterDetailStyleChange={setCharacterDetailStyle}
         onCharacterDetailPoseChange={setCharacterDetailPose}
         onImageSelect={handleCharacterImageSelect}
@@ -512,8 +508,8 @@ export const ImageViewerBody = ({
         styleFilteredImages={styleFilteredImages}
         showNewBadge={!showOnlyNewImages}
         onStyleSelect={onStyleSelect}
-        onMetadataFilterChange={onStyleMetadataFilterChange}
-        onClearMetadataFilter={onClearStyleMetadataFilter}
+        onMetadataFilterChange={onMetadataFilterChange}
+        onClearMetadataFilter={onClearMetadataFilter}
         onStyleSearchTextChange={setStyleViewSearchText}
         onImageSelect={handleStyleImageSelect}
       />
@@ -534,8 +530,8 @@ export const ImageViewerBody = ({
       onClearPoses={onClearPoses}
       onTogglePose={togglePoseFilter}
       onPoseStyleChange={setPoseViewStyle}
-      onMetadataFilterChange={onPoseMetadataFilterChange}
-      onClearMetadataFilter={onClearPoseMetadataFilter}
+      onMetadataFilterChange={onMetadataFilterChange}
+      onClearMetadataFilter={onClearMetadataFilter}
       onCharacterSearchChange={setPoseViewCharacterSearch}
       onImageSelect={handlePoseImageSelect}
     />

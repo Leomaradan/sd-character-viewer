@@ -15,7 +15,10 @@ interface ICharactersViewProps {
   defaultStyle: TStyle;
   browseStyle: TStyle;
   selectedCharacter: string | null;
+  onMetadataFilterChange: (event: SelectChangeEvent<string>) => void;
+  onClearMetadataFilter: () => void;
   selectedMetadataFilterId: string;
+  metadataFilterOptions: IMetadataFilterOption[];
   characterDetailStyle: "all" | TStyle;
   characterDetailPose: string;
   characterDetailPoseOptions: string[];
@@ -23,7 +26,6 @@ interface ICharactersViewProps {
   visibleCharacterDetailImages: IImageItem[];
   showNewBadge: boolean;
   onSelectCharacter: (characterName: string | null) => void;
-  onMetadataFilterIdChange: (metadataFilterId: string) => void;
   onCharacterDetailStyleChange: (style: "all" | TStyle) => void;
   onCharacterDetailPoseChange: (pose: string) => void;
   onImageSelect: (image: IImageItem) => void;
@@ -39,10 +41,6 @@ const SECTION_LETTER_SX = {
   fontWeight: 700,
   letterSpacing: 2,
   mb: 1,
-};
-
-const compareNatural = (a: string, b: string): number => {
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 };
 
 interface ICharacterGroup {
@@ -85,10 +83,12 @@ export const CharactersView = ({
   visibleCharacterDetailImages,
   showNewBadge,
   onSelectCharacter,
-  onMetadataFilterIdChange,
+  onMetadataFilterChange,
+  onClearMetadataFilter,
   onCharacterDetailStyleChange,
   onCharacterDetailPoseChange,
   onImageSelect,
+  metadataFilterOptions,
 }: Readonly<ICharactersViewProps>) => {
   const onCharacterDetailStyleChangeHandlerAll = useCallback(() => {
     onCharacterDetailStyleChange("all");
@@ -102,41 +102,6 @@ export const CharactersView = ({
     onSelectCharacter(null);
   }, [onSelectCharacter]);
 
-  const categoryOptions = useMemo(() => {
-    const categories = new Set(
-      charactersForBrowseStyle
-        .map((character) => character.category)
-        .filter((category): category is string => Boolean(category?.trim())),
-    );
-    return [...categories].sort((a, b) => compareNatural(a, b));
-  }, [charactersForBrowseStyle]);
-
-  const serieOptions = useMemo(() => {
-    const series = new Set(
-      charactersForBrowseStyle
-        .map((character) => character.serie)
-        .filter((serie): serie is string => Boolean(serie?.trim())),
-    );
-    return [...series].sort((a, b) => compareNatural(a, b));
-  }, [charactersForBrowseStyle]);
-
-  const metadataFilterOptions = useMemo((): IMetadataFilterOption[] => {
-    const categoryFilters = categoryOptions.map((category) => ({
-      id: `category::${category}`,
-      type: "category" as const,
-      value: category,
-      label: category,
-    }));
-    const serieFilters = serieOptions.map((serie) => ({
-      id: `serie::${serie}`,
-      type: "serie" as const,
-      value: serie,
-      label: serie,
-    }));
-
-    return [...categoryFilters, ...serieFilters].sort((a, b) => compareNatural(a.label, b.label));
-  }, [categoryOptions, serieOptions]);
-
   const metadataFilterById = useMemo(() => {
     return new Map(metadataFilterOptions.map((option) => [option.id, option]));
   }, [metadataFilterOptions]);
@@ -148,13 +113,6 @@ export const CharactersView = ({
 
     return metadataFilterById.has(selectedMetadataFilterId) ? selectedMetadataFilterId : "";
   }, [selectedMetadataFilterId, metadataFilterById]);
-
-  const onMetadataFilterChange = useCallback(
-    (event: SelectChangeEvent<string>) => {
-      onMetadataFilterIdChange(event.target.value);
-    },
-    [onMetadataFilterIdChange],
-  );
 
   const filteredCharacters = useMemo(() => {
     const selectedOption = metadataFilterById.get(effectiveSelectedMetadataFilterId);
@@ -168,13 +126,13 @@ export const CharactersView = ({
         return character.category === selectedOption.value;
       }
 
+      if (selectedOption.type === "tag") {
+        return character.tags.includes(selectedOption.value);
+      }
+
       return character.serie === selectedOption.value;
     });
   }, [charactersForBrowseStyle, effectiveSelectedMetadataFilterId, metadataFilterById]);
-
-  const onClearMetadataFilter = useCallback(() => {
-    onMetadataFilterIdChange("");
-  }, [onMetadataFilterIdChange]);
 
   const groupedCharacters = useMemo((): ICharacterGroup[] => {
     const map = new Map<string, ICharacterSummary[]>();
