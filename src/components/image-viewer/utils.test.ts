@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { WITH_SOMEBODY_FILTER } from "@/components/image-viewer/constants";
+import type { IPosePatternFilter } from "@/types/library";
 import { buildPoseFilterOptions, buildPoseOptions, formatStyleLabel, getImageUrl } from "./utils";
+
+const POSE_PATTERN_FILTERS: IPosePatternFilter[] = [
+  { id: "pose-pattern::with-somebody", label: "With Somebody", pattern: "^With " },
+  { id: "pose-pattern::duo", label: "Duo", pattern: "^Duo " },
+  {
+    id: "pose-pattern::with-somebody-ci",
+    label: "With Somebody (CI)",
+    pattern: "^with ",
+    flags: "i",
+  },
+];
 
 describe("image-viewer utils", () => {
   it("builds encoded image URL", () => {
@@ -25,22 +36,55 @@ describe("image-viewer utils", () => {
     expect(options).toEqual(["Pose2", "Pose10"]);
   });
 
-  it("builds pose filter options with With Somebody synthetic option", () => {
-    const options = buildPoseFilterOptions(["Base", "With Alice", "With Bob", "Jump"]);
+  it("builds pose filter options with matching configured pattern filters", () => {
+    const options = buildPoseFilterOptions(
+      ["Base", "With Alice", "With Bob", "Jump", "Duo Pose"],
+      POSE_PATTERN_FILTERS,
+    );
 
     expect(options).toEqual([
       { value: "Base", label: "Base" },
       { value: "Jump", label: "Jump" },
-      { value: WITH_SOMEBODY_FILTER, label: "With Somebody" },
+      { value: "pose-pattern::with-somebody", label: "With Somebody" },
+      { value: "pose-pattern::duo", label: "Duo" },
+      { value: "pose-pattern::with-somebody-ci", label: "With Somebody (CI)" },
     ]);
   });
 
-  it("does not add synthetic option when no 'With ' poses are present", () => {
-    const options = buildPoseFilterOptions(["Base", "Jump"]);
+  it("matches configured filters using regex flags", () => {
+    const options = buildPoseFilterOptions(
+      ["with marie", "Base"],
+      [
+        {
+          id: "pose-pattern::with-somebody-ci",
+          label: "With Somebody",
+          pattern: "^with ",
+          flags: "i",
+        },
+      ],
+    );
+
+    expect(options).toEqual([
+      { value: "Base", label: "Base" },
+      { value: "pose-pattern::with-somebody-ci", label: "With Somebody" },
+    ]);
+  });
+
+  it("does not add pattern filters when poses do not match their pattern", () => {
+    const options = buildPoseFilterOptions(["Base", "Jump"], POSE_PATTERN_FILTERS);
 
     expect(options).toEqual([
       { value: "Base", label: "Base" },
       { value: "Jump", label: "Jump" },
+    ]);
+  });
+
+  it("keeps all poses unchanged when no pattern filters are configured", () => {
+    const options = buildPoseFilterOptions(["Base", "With Alice"], []);
+
+    expect(options).toEqual([
+      { value: "Base", label: "Base" },
+      { value: "With Alice", label: "With Alice" },
     ]);
   });
 });

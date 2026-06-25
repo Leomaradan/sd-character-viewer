@@ -27,6 +27,7 @@ const createMockLibrary = (overrides?: Partial<ILibraryData>): ILibraryData => {
     images: [],
     characters: [],
     poses: [],
+    posePatternFilters: [],
     warning: null,
     cacheAvailable: true,
     ...overrides,

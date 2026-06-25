@@ -4,7 +4,7 @@ import { Alert, Box, CircularProgress } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CharactersView } from "@/components/image-viewer/CharactersView";
-import { DEFAULT_LIBRARY, WITH_SOMEBODY_FILTER } from "@/components/image-viewer/constants";
+import { DEFAULT_LIBRARY } from "@/components/image-viewer/constants";
 import { EmptyState } from "@/components/image-viewer/EmptyState";
 import { PosesView } from "@/components/image-viewer/PosesView";
 import { StylesView } from "@/components/image-viewer/StylesView";
@@ -123,7 +123,9 @@ export const ImageViewerBody = ({
         : "";
 
       const validPoseOptions = new Set(lib.poses.map((pose) => pose.name));
-      validPoseOptions.add(WITH_SOMEBODY_FILTER);
+      for (const posePatternFilter of lib.posePatternFilters) {
+        validPoseOptions.add(posePatternFilter.id);
+      }
 
       const nextPoseFilters = currentPoseFilters.filter((pose) => validPoseOptions.has(pose));
 
@@ -300,17 +302,38 @@ export const ImageViewerBody = ({
     characterMetadataByName,
   ]);
 
+  const posePatternFiltersById = useMemo(() => {
+    const filtersById = new Map<string, { label: string; regex: RegExp }>();
+
+    for (const filter of library.posePatternFilters) {
+      try {
+        filtersById.set(filter.id, {
+          label: filter.label,
+          regex: new RegExp(filter.pattern, filter.flags),
+        });
+      } catch {
+        // Ignore invalid patterns to keep filtering resilient.
+      }
+    }
+
+    return filtersById;
+  }, [library.posePatternFilters]);
+
   const poseFilteredImages = useMemo(() => {
     const normalizedCharacterSearch = poseViewCharacterSearch.trim().toLowerCase();
     const selectedPoses = new Set(selectedPoseFilters);
     const isAllPosesSelected = selectedPoses.size === 0;
+    const selectedPatternFilters = [...selectedPoses]
+      .map((selectedPose) => posePatternFiltersById.get(selectedPose))
+      .filter((filter): filter is { label: string; regex: RegExp } => Boolean(filter));
     const selectedMetadataFilter = metadataFilterById.get(effectivePoseMetadataFilterId);
 
     return filteredImages.filter((image) => {
+      const matchesPatternPose = selectedPatternFilters.some((filter) => {
+        return filter.regex.test(image.poseBaseName);
+      });
       const matchesPose =
-        isAllPosesSelected ||
-        selectedPoses.has(image.poseBaseName) ||
-        (selectedPoses.has(WITH_SOMEBODY_FILTER) && image.poseBaseName.startsWith("With "));
+        isAllPosesSelected || selectedPoses.has(image.poseBaseName) || matchesPatternPose;
       const matchesStyle = poseViewStyle === "all" ? true : image.style === poseViewStyle;
       const matchesCharacter =
         normalizedCharacterSearch.length === 0
@@ -334,6 +357,7 @@ export const ImageViewerBody = ({
     selectedPoseFilters,
     poseViewStyle,
     poseViewCharacterSearch,
+    posePatternFiltersById,
     effectivePoseMetadataFilterId,
     metadataFilterById,
     characterMetadataByName,
@@ -345,8 +369,8 @@ export const ImageViewerBody = ({
   }, [filteredImages]);
 
   const poseViewPoseOptions = useMemo(() => {
-    return buildPoseFilterOptions(allPoseOptions);
-  }, [allPoseOptions]);
+    return buildPoseFilterOptions(allPoseOptions, library.posePatternFilters);
+  }, [allPoseOptions, library.posePatternFilters]);
 
   const togglePoseFilter = useCallback(
     (poseValue: string) => {

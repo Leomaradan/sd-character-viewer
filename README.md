@@ -22,6 +22,21 @@ Pose naming rules:
 - Variant files are supported with numeric suffixes (for example `Full.png`, `Full2.png`).
 - `Base` is treated as the thumbnail pose for each character.
 
+Optional pose pattern filters:
+
+- Add `pose-filters.json` in the image root folder (`SD_IMAGES_ROOT`).
+- Each item defines a synthetic filter chip with a `label`, a regex `pattern`, and optional regex `flags`.
+- A synthetic filter is shown only when at least one pose name matches its pattern.
+
+Example `pose-filters.json`:
+
+```json
+[
+	{ "label": "With Somebody", "pattern": "^With " },
+	{ "label": "With Somebody (CI)", "pattern": "^with ", "flags": "i" }
+]
+```
+
 ## Environment Variable
 
 Set `SD_IMAGES_ROOT` to the host directory that contains the `characters` folder.

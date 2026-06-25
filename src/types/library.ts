@@ -37,6 +37,13 @@ export interface IPoseSummary {
   imageCount: number;
 }
 
+export interface IPosePatternFilter {
+  id: string;
+  label: string;
+  pattern: string;
+  flags?: string;
+}
+
 export interface ILibraryData {
   rootConfigured: boolean;
   rootPath: string | null;
@@ -45,6 +52,7 @@ export interface ILibraryData {
   images: IImageItem[];
   characters: ICharacterSummary[];
   poses: IPoseSummary[];
+  posePatternFilters: IPosePatternFilter[];
   warning: string | null;
   cacheAvailable: boolean;
 }
