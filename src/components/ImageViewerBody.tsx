@@ -348,6 +348,7 @@ export const ImageViewerBody = ({
 
     return filteredImages.filter((image) => {
       const matchesPatternPose = selectedPatternFilters.some((filter) => {
+        filter.regex.lastIndex = 0;
         return filter.regex.test(image.poseBaseName);
       });
       const matchesPose =
