@@ -23,11 +23,12 @@ export interface ICharacterSummary {
   thumbnailsByStyle: Partial<Record<TStyle, string>>;
   category: string | null;
   serie: string | null;
+  tags: string[];
 }
 
 export interface IMetadataFilterOption {
   id: string;
-  type: "category" | "serie";
+  type: "category" | "serie" | "tag";
   value: string;
   label: string;
 }

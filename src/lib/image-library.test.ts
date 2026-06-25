@@ -141,6 +141,7 @@ describe("readImageLibrary with characters metadata", () => {
           name: "Anna",
           category: "Hero",
           serie: "Sample",
+          tags: ["Main", "Action"],
         },
       ]),
     );
@@ -152,6 +153,7 @@ describe("readImageLibrary with characters metadata", () => {
 
     expect(anna?.category).toBe("Hero");
     expect(anna?.serie).toBe("Sample");
+    expect(anna?.tags).toEqual(["Action", "Main"]);
   });
 
   it("ignores invalid entries that do not follow the schema", async () => {
@@ -179,6 +181,35 @@ describe("readImageLibrary with characters metadata", () => {
 
     expect(bea?.category).toBeNull();
     expect(bea?.serie).toBeNull();
+    expect(bea?.tags).toEqual([]);
+  });
+
+  it("ignores metadata entry when tags is not a string array", async () => {
+    const tempRoot = "/tmp/sd-library-invalid-metadata-tags";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Nora");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "characters", "characters.json"),
+      JSON.stringify([
+        {
+          name: "Nora",
+          category: "Support",
+          serie: "Sample",
+          tags: ["Valid", 123],
+        },
+      ]),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+    const nora = library.characters.find((character) => character.name === "Nora");
+
+    expect(nora?.category).toBeNull();
+    expect(nora?.serie).toBeNull();
+    expect(nora?.tags).toEqual([]);
   });
 
   it("marks images as new only within 3 days from first discovery", async () => {

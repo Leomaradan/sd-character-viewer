@@ -59,6 +59,9 @@ const buildMetadataFilterOptions = (characters: ICharacterSummary[]): IMetadataF
       .map((character) => character.serie)
       .filter((serie): serie is string => Boolean(serie?.trim())),
   );
+  const tags = new Set(
+    characters.flatMap((character) => character.tags).filter((tag) => Boolean(tag?.trim())),
+  );
 
   const categoryFilters = [...categories].map((category) => ({
     id: `category::${category}`,
@@ -72,8 +75,16 @@ const buildMetadataFilterOptions = (characters: ICharacterSummary[]): IMetadataF
     value: serie,
     label: serie,
   }));
+  const tagFilters = [...tags].map((tag) => ({
+    id: `tag::${tag}`,
+    type: "tag" as const,
+    value: tag,
+    label: tag,
+  }));
 
-  return [...categoryFilters, ...serieFilters].sort((a, b) => compareNatural(a.label, b.label));
+  return [...categoryFilters, ...serieFilters, ...tagFilters].sort((a, b) =>
+    compareNatural(a.label, b.label),
+  );
 };
 
 export const ImageViewerBody = ({
@@ -226,7 +237,7 @@ export const ImageViewerBody = ({
     return new Map(
       library.characters.map((character) => [
         character.name,
-        { category: character.category, serie: character.serie },
+        { category: character.category, serie: character.serie, tags: character.tags },
       ]),
     );
   }, [library.characters]);
@@ -286,8 +297,10 @@ export const ImageViewerBody = ({
       if (selectedMetadataFilter) {
         if (selectedMetadataFilter.type === "category") {
           matchesMetadata = characterMetadata?.category === selectedMetadataFilter.value;
-        } else {
+        } else if (selectedMetadataFilter.type === "serie") {
           matchesMetadata = characterMetadata?.serie === selectedMetadataFilter.value;
+        } else {
+          matchesMetadata = characterMetadata?.tags.includes(selectedMetadataFilter.value) ?? false;
         }
       }
 
@@ -345,8 +358,10 @@ export const ImageViewerBody = ({
       if (selectedMetadataFilter) {
         if (selectedMetadataFilter.type === "category") {
           matchesMetadata = characterMetadata?.category === selectedMetadataFilter.value;
-        } else {
+        } else if (selectedMetadataFilter.type === "serie") {
           matchesMetadata = characterMetadata?.serie === selectedMetadataFilter.value;
+        } else {
+          matchesMetadata = characterMetadata?.tags.includes(selectedMetadataFilter.value) ?? false;
         }
       }
 

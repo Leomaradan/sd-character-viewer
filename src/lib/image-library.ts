@@ -32,11 +32,13 @@ interface ICharacterMetadata {
   name: string;
   category: string;
   serie?: string;
+  tags?: string[];
 }
 
 interface ICharacterMetadataSummary {
   category: string;
   serie: string | null;
+  tags: string[];
 }
 
 interface ILibraryIndexState {
@@ -79,7 +81,9 @@ const isCharacterMetadata = (value: unknown): value is ICharacterMetadata => {
     return false;
   }
 
-  const hasOnlyAllowedKeys = keys.every((key) => ["name", "category", "serie"].includes(key));
+  const hasOnlyAllowedKeys = keys.every((key) =>
+    ["name", "category", "serie", "tags"].includes(key),
+  );
 
   if (!hasOnlyAllowedKeys) {
     return false;
@@ -93,7 +97,24 @@ const isCharacterMetadata = (value: unknown): value is ICharacterMetadata => {
     return false;
   }
 
+  if (
+    record.tags !== undefined &&
+    (!Array.isArray(record.tags) || !record.tags.every((tag) => typeof tag === "string"))
+  ) {
+    return false;
+  }
+
   return true;
+};
+
+const normalizeMetadataTags = (tags: string[] | undefined): string[] => {
+  if (!tags) {
+    return [];
+  }
+
+  return [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag !== ""))].sort(
+    compareNatural,
+  );
 };
 
 const isPosePatternFilterConfig = (value: unknown): value is IPosePatternFilterConfig => {
@@ -210,6 +231,7 @@ const readCharactersMetadata = async (
     metadataByCharacter.set(normalizedName, {
       category: item.category,
       serie: item.serie ?? null,
+      tags: normalizeMetadataTags(item.tags),
     });
   }
 
@@ -273,6 +295,7 @@ const toCharacterSummary = (accumulator: ICharacterAccumulator): ICharacterSumma
     thumbnailsByStyle: accumulator.thumbnailsByStyle,
     category: null,
     serie: null,
+    tags: [],
   };
 };
 
@@ -547,6 +570,7 @@ const toLibraryData = (
         ...summary,
         category: metadata.category,
         serie: metadata.serie,
+        tags: metadata.tags,
       };
     })
     .sort((a, b) => compareNatural(a.name, b.name));

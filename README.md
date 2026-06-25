@@ -22,6 +22,12 @@ Pose naming rules:
 - Variant files are supported with numeric suffixes (for example `Full.png`, `Full2.png`).
 - `Base` is treated as the thumbnail pose for each character.
 
+Character metadata file:
+
+- Optional metadata is loaded from `characters/characters.json`.
+- Each character metadata entry supports `name`, `category`, optional `serie`, and optional `tags` (array of strings).
+- `tags` are exposed as additional metadata filters in the UI, alongside category and serie.
+
 Optional pose pattern filters:
 
 - Add `pose-filters.json` in the image root folder (`SD_IMAGES_ROOT`).

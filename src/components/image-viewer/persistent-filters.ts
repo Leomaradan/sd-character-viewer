@@ -16,6 +16,7 @@ export const parseSelectedPoseFilters = (queryParams: IQueryParamsReader): strin
 export const parseSelectedMetadataFilterId = (queryParams: IQueryParamsReader): string => {
   const rawCategoryFilter = queryParams.get("category")?.trim() ?? "";
   const rawSerieFilter = queryParams.get("serie")?.trim() ?? "";
+  const rawTagFilter = queryParams.get("tag")?.trim() ?? "";
 
   if (rawCategoryFilter) {
     return `category::${rawCategoryFilter}`;
@@ -23,6 +24,10 @@ export const parseSelectedMetadataFilterId = (queryParams: IQueryParamsReader): 
 
   if (rawSerieFilter) {
     return `serie::${rawSerieFilter}`;
+  }
+
+  if (rawTagFilter) {
+    return `tag::${rawTagFilter}`;
   }
 
   return "";
@@ -39,22 +44,26 @@ export const normalizePoseFilters = (poses: string[]): string[] => {
 
 export const metadataFilterIdToQueryChanges = (metadataFilterId: string): TQueryParamChanges => {
   if (!metadataFilterId) {
-    return { category: null, serie: null };
+    return { category: null, serie: null, tag: null };
   }
 
   const [type, ...valueParts] = metadataFilterId.split("::");
   const value = valueParts.join("::").trim();
 
   if (!value) {
-    return { category: null, serie: null };
+    return { category: null, serie: null, tag: null };
   }
 
   if (type === "category") {
-    return { category: value, serie: null };
+    return { category: value, serie: null, tag: null };
   }
 
   if (type === "serie") {
-    return { serie: value, category: null };
+    return { serie: value, category: null, tag: null };
+  }
+
+  if (type === "tag") {
+    return { tag: value, category: null, serie: null };
   }
 
   return {};
