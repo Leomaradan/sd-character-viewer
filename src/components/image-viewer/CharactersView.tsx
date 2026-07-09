@@ -2,7 +2,7 @@
 
 import { Box, Chip, type SelectChangeEvent, Stack, Typography } from "@mui/material";
 import { ImageCard } from "@/components/image-viewer/ImageCard";
-import type { ICharacterSummary, IImageItem, IMetadataFilterOption, TStyle } from "@/types/library";
+import type { ICharacterSummary, IImageItem, IMetadataFilterOption } from "@/types/library";
 import { FLEXWRAP, GRID, STACK_SPACING } from "./constants";
 import { useCallback, useMemo } from "react";
 import { StyleView } from "./StyleView";
@@ -11,23 +11,23 @@ import { CharacterView } from "./CharacterView";
 import { CategoryFilter } from "./CategoryFilter";
 
 interface ICharactersViewProps {
-  styles: TStyle[];
-  defaultStyle: TStyle;
-  browseStyle: TStyle;
-  styleLabel: (style: TStyle) => string;
+  styles: string[];
+  defaultStyle: string;
+  browseStyle: string;
+  styleLabel: (style: string) => string;
   selectedCharacter: string | null;
   onMetadataFilterChange: (event: SelectChangeEvent<string>) => void;
   onClearMetadataFilter: () => void;
   selectedMetadataFilterId: string;
   metadataFilterOptions: IMetadataFilterOption[];
-  characterDetailStyle: "all" | TStyle;
+  characterDetailStyle: string;
   characterDetailPose: string;
   characterDetailPoseOptions: string[];
   charactersForBrowseStyle: ICharacterSummary[];
   visibleCharacterDetailImages: IImageItem[];
   showNewBadge: boolean;
   onSelectCharacter: (characterName: string | null) => void;
-  onCharacterDetailStyleChange: (style: "all" | TStyle) => void;
+  onCharacterDetailStyleChange: (style: string) => void;
   onCharacterDetailPoseChange: (pose: string) => void;
   onImageSelect: (image: IImageItem) => void;
 }
@@ -93,11 +93,11 @@ export const CharactersView = ({
   metadataFilterOptions,
 }: Readonly<ICharactersViewProps>) => {
   const onCharacterDetailStyleChangeHandlerAll = useCallback(() => {
-    onCharacterDetailStyleChange("all");
+    onCharacterDetailStyleChange("--all--");
   }, [onCharacterDetailStyleChange]);
 
   const onCharacterDetailPoseChangeHandlerAll = useCallback(() => {
-    onCharacterDetailPoseChange("all");
+    onCharacterDetailPoseChange("--all--");
   }, [onCharacterDetailPoseChange]);
 
   const onBackToCharactersClick = useCallback(() => {
@@ -165,7 +165,7 @@ export const CharactersView = ({
           <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>
             <Chip
               label="All styles"
-              color={characterDetailStyle === "all" ? "primary" : "default"}
+              color={characterDetailStyle === "--all--" ? "primary" : "default"}
               onClick={onCharacterDetailStyleChangeHandlerAll}
             />
             {styles.map((style) => (
@@ -182,7 +182,7 @@ export const CharactersView = ({
           <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>
             <Chip
               label="All poses"
-              color={characterDetailPose === "all" ? "secondary" : "default"}
+              color={characterDetailPose === "--all--" ? "secondary" : "default"}
               onClick={onCharacterDetailPoseChangeHandlerAll}
             />
             {characterDetailPoseOptions.map((pose) => (

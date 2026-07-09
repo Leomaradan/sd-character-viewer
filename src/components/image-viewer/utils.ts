@@ -1,12 +1,12 @@
-import type { IImageItem, IPosePatternFilter, TStyle } from "@/types/library";
+import type { IImageItem, IPosePatternFilter } from "@/types/library";
 
 export const getImageUrl = (relativePath: string): string => {
   return `/api/image?path=${encodeURIComponent(relativePath)}`;
 };
 
 export const formatStyleLabel = (
-  style: TStyle,
-  styleLabels?: Partial<Record<TStyle, string>>,
+  style: string,
+  styleLabels?: Partial<Record<string, string>>,
 ): string => {
   const configuredLabel = styleLabels?.[style]?.trim();
   if (configuredLabel) {

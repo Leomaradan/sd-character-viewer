@@ -8,12 +8,11 @@ import {
   type ILibraryData,
   type IPosePatternFilter,
   type IPoseSummary,
-  type TStyle,
 } from "@/types/library";
 import { ensureLocalEnvLoaded } from "@/lib/env";
 import { SD_CACHE_DIR_ENV_KEY, SD_IMAGES_ROOT_ENV_KEY } from "@/lib/env-keys";
 
-const DEFAULT_STYLE: TStyle = "3d";
+const DEFAULT_STYLE: string = "3d";
 const PNG_EXTENSION = ".png";
 const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
@@ -30,17 +29,17 @@ interface ILibraryConfig {
 }
 
 interface IStyleConfig {
-  styles: TStyle[];
-  defaultStyle: TStyle;
-  styleLabels: Partial<Record<TStyle, string>>;
+  styles: string[];
+  defaultStyle: string;
+  styleLabels: Partial<Record<string, string>>;
 }
 
 interface ICharacterAccumulator {
   name: string;
   imageCount: number;
-  styles: Set<TStyle>;
+  styles: Set<string>;
   poses: Set<string>;
-  thumbnailsByStyle: Partial<Record<TStyle, string>>;
+  thumbnailsByStyle: Partial<Record<string, string>>;
 }
 
 interface ICharacterMetadata {
@@ -123,7 +122,7 @@ const isCharacterMetadata = (value: unknown): value is ICharacterMetadata => {
 const isPosePatternFilterConfig = (value: unknown): value is IPosePatternFilterConfig => {
   return posePatternFilterConfigValidator(value);
 };
-const normalizeStyleNames = (styles: string[] | undefined): TStyle[] => {
+const normalizeStyleNames = (styles: string[] | undefined): string[] => {
   if (!styles) {
     return [];
   }
@@ -133,7 +132,7 @@ const normalizeStyleNames = (styles: string[] | undefined): TStyle[] => {
   return [...new Set(normalizedStyles)];
 };
 
-const resolveDefaultStyle = (styles: TStyle[], rawDefaultStyle: unknown): TStyle => {
+const resolveDefaultStyle = (styles: string[], rawDefaultStyle: unknown): string => {
   if (typeof rawDefaultStyle === "string") {
     const normalizedDefaultStyle = rawDefaultStyle.trim();
     if (normalizedDefaultStyle && styles.includes(normalizedDefaultStyle)) {
@@ -149,15 +148,15 @@ const resolveDefaultStyle = (styles: TStyle[], rawDefaultStyle: unknown): TStyle
 };
 
 const normalizeStyleLabels = (
-  styles: TStyle[],
+  styles: string[],
   styleLabels: Record<string, string> | undefined,
-): Partial<Record<TStyle, string>> => {
+): Partial<Record<string, string>> => {
   if (!styleLabels) {
     return {};
   }
 
   const styleSet = new Set(styles);
-  const normalizedLabels: Partial<Record<TStyle, string>> = {};
+  const normalizedLabels: Partial<Record<string, string>> = {};
 
   for (const [style, label] of Object.entries(styleLabels)) {
     if (!styleSet.has(style)) {
@@ -178,7 +177,7 @@ const normalizeStyleLabels = (
 const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
   const configPath = path.join(rootPath, LIBRARY_CONFIG_FILE_NAME);
   const fallbackStyles = [...STYLES];
-  const fallbackStyleLabels: Partial<Record<TStyle, string>> = {};
+  const fallbackStyleLabels: Partial<Record<string, string>> = {};
 
   let fileContent = "";
   try {
@@ -410,8 +409,8 @@ const listPngFiles = async (characterFolderPath: string): Promise<string[]> => {
 
 const resolveStyleFolders = async (
   charactersRootPath: string,
-  configuredStyles: TStyle[],
-): Promise<TStyle[]> => {
+  configuredStyles: string[],
+): Promise<string[]> => {
   const styleEntries = await fs.readdir(charactersRootPath, { withFileTypes: true });
 
   return configuredStyles.filter((style) => {
@@ -442,19 +441,15 @@ const createEmptyLibraryData = (
   rootConfigured: boolean,
   rootPath: string | null,
   warning: string | null,
-  styleConfig: IStyleConfig = {
-    styles: [...STYLES],
-    defaultStyle: DEFAULT_STYLE,
-    styleLabels: {},
-  },
+  styleConfig: IStyleConfig | null = null,
   cacheAvailable: boolean = false,
 ): ILibraryData => {
   return {
     rootConfigured,
     rootPath,
-    defaultStyle: styleConfig.defaultStyle,
-    styles: styleConfig.styles,
-    styleLabels: styleConfig.styleLabels,
+    defaultStyle: styleConfig?.defaultStyle ?? DEFAULT_STYLE,
+    styles: styleConfig?.styles ?? [...STYLES],
+    styleLabels: styleConfig?.styleLabels ?? {},
     images: [],
     characters: [],
     poses: [],
@@ -472,7 +467,7 @@ const createLibraryIndexState = (): ILibraryIndexState => {
   };
 };
 
-const buildImageItem = (style: TStyle, characterName: string, pngFile: string): IImageItem => {
+const buildImageItem = (style: string, characterName: string, pngFile: string): IImageItem => {
   const parsedPose = parsePoseName(pngFile);
   const relativePath = normalizeRelativePath(
     path.join("characters", style, characterName, pngFile),
@@ -638,7 +633,7 @@ const mergeIndexState = (target: ILibraryIndexState, source: ILibraryIndexState)
 };
 
 const indexCharacterFolder = async (
-  style: TStyle,
+  style: string,
   characterName: string,
   characterFolderPath: string,
   state: ILibraryIndexState,
@@ -654,7 +649,7 @@ const indexCharacterFolder = async (
 };
 
 const indexStyleFolder = async (
-  style: TStyle,
+  style: string,
   stylePath: string,
   state: ILibraryIndexState,
 ): Promise<void> => {
@@ -766,7 +761,7 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
     metadataByCharacter = new Map<string, ICharacterMetadataSummary>();
   }
 
-  let availableStyles: TStyle[] = [];
+  let availableStyles: string[] = [];
   try {
     availableStyles = await resolveStyleFolders(charactersRootPath, styleConfig.styles);
   } catch {

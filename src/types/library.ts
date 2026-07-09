@@ -1,12 +1,10 @@
 export const STYLES = ["realistic", "3d", "anime"] as const;
 
-export type TStyle = string;
-
 export type TMajorFilter = "character" | "style" | "pose";
 
 export interface IImageItem {
   id: string;
-  style: TStyle;
+  style: string;
   characterName: string;
   poseName: string;
   poseBaseName: string;
@@ -19,8 +17,8 @@ export interface ICharacterSummary {
   name: string;
   imageCount: number;
   poseCount: number;
-  styles: TStyle[];
-  thumbnailsByStyle: Partial<Record<TStyle, string>>;
+  styles: string[];
+  thumbnailsByStyle: Partial<Record<string, string>>;
   category: string | null;
   serie: string | null;
   tags: string[];
@@ -48,9 +46,9 @@ export interface IPosePatternFilter {
 export interface ILibraryData {
   rootConfigured: boolean;
   rootPath: string | null;
-  defaultStyle: TStyle;
-  styles: TStyle[];
-  styleLabels?: Partial<Record<TStyle, string>>;
+  defaultStyle: string;
+  styles: string[];
+  styleLabels?: Partial<Record<string, string>>;
   images: IImageItem[];
   characters: ICharacterSummary[];
   poses: IPoseSummary[];

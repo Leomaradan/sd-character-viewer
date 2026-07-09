@@ -3,14 +3,14 @@
 import { Box, Card, CardActionArea, CardContent, Typography } from "@mui/material";
 import StarIcon from "@mui/icons-material/Star";
 import { useCallback } from "react";
-import type { IImageItem, TStyle } from "@/types/library";
+import type { IImageItem } from "@/types/library";
 import { LazyImage } from "@/components/image-viewer/LazyImage";
 import { formatStyleLabel } from "@/components/image-viewer/utils";
 
 interface IImageCardProps {
   image: IImageItem;
   showNewBadge?: boolean;
-  styleLabel?: (style: TStyle) => string;
+  styleLabel?: (style: string) => string;
   onSelect?: (image: IImageItem) => void;
 }
 

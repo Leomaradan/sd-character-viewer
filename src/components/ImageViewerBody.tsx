@@ -19,7 +19,6 @@ import type {
   ILibraryData,
   IMetadataFilterOption,
   TMajorFilter,
-  TStyle,
 } from "@/types/library";
 
 interface IImageViewerBodyProps {
@@ -28,7 +27,7 @@ interface IImageViewerBodyProps {
   selectedPoseFilters: string[];
   selectedMetadataFilterId: string;
   showOnlyNewImages: boolean;
-  characterDetailStyle: "all" | TStyle;
+  characterDetailStyle: string;
   characterDetailPose: string;
   reloadToken: number;
   onImageSelect: (image: IImageItem, filteredImages: IImageItem[]) => void;
@@ -37,7 +36,7 @@ interface IImageViewerBodyProps {
   setSelectedCharacter: (characterName: string | null) => void;
   setSelectedPoseFilters: (nextPoseFilters: string[] | ((prev: string[]) => string[])) => void;
   setSelectedMetadataFilterId: (metadataFilterId: string) => void;
-  setCharacterDetailStyle: (style: "all" | TStyle) => void;
+  setCharacterDetailStyle: (style: string) => void;
   setCharacterDetailPose: (pose: string) => void;
 }
 
@@ -117,13 +116,13 @@ export const ImageViewerBody = ({
   const [isLoading, setIsLoading] = useState(true);
   const [requestError, setRequestError] = useState<string | null>(null);
 
-  const [styleViewStyle, setStyleViewStyle] = useState<TStyle>("3d");
+  const [styleViewStyle, setStyleViewStyle] = useState<string>("3d");
   const [styleViewSearchText, setStyleViewSearchText] = useState<string>("");
 
-  const [poseViewStyle, setPoseViewStyle] = useState<"all" | TStyle>("all");
+  const [poseViewStyle, setPoseViewStyle] = useState<string>("--all--");
   const [poseViewCharacterSearch, setPoseViewCharacterSearch] = useState<string>("");
 
-  const onStyleSelect = useCallback((style: TStyle) => {
+  const onStyleSelect = useCallback((style: string) => {
     setStyleViewStyle(style);
     setStyleViewSearchText("");
   }, []);
@@ -239,7 +238,7 @@ export const ImageViewerBody = ({
   }, [library.characters]);
 
   const styleLabel = useCallback(
-    (style: TStyle) => formatStyleLabel(style, library.styleLabels),
+    (style: string) => formatStyleLabel(style, library.styleLabels),
     [library.styleLabels],
   );
 
@@ -287,9 +286,9 @@ export const ImageViewerBody = ({
   const visibleCharacterDetailImages = useMemo(() => {
     return selectedCharacterImages.filter((image) => {
       const matchesStyle =
-        characterDetailStyle === "all" ? true : image.style === characterDetailStyle;
+        characterDetailStyle === "--all--" ? true : image.style === characterDetailStyle;
       const matchesPose =
-        characterDetailPose === "all" ? true : image.poseBaseName === characterDetailPose;
+        characterDetailPose === "--all--" ? true : image.poseBaseName === characterDetailPose;
       return matchesStyle && matchesPose;
     });
   }, [selectedCharacterImages, characterDetailStyle, characterDetailPose]);
@@ -362,7 +361,7 @@ export const ImageViewerBody = ({
       });
       const matchesPose =
         isAllPosesSelected || selectedPoses.has(image.poseBaseName) || matchesPatternPose;
-      const matchesStyle = poseViewStyle === "all" ? true : image.style === poseViewStyle;
+      const matchesStyle = poseViewStyle === "--all--" ? true : image.style === poseViewStyle;
       const matchesCharacter =
         normalizedCharacterSearch.length === 0
           ? true

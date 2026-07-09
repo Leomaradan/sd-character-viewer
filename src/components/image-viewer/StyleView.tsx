@@ -2,14 +2,13 @@
 
 import { Chip } from "@mui/material";
 import { formatStyleLabel } from "@/components/image-viewer/utils";
-import type { TStyle } from "@/types/library";
 import { useCallback } from "react";
 
 interface IStyleViewProps {
-  style: TStyle;
+  style: string;
   primary: boolean;
-  styleLabel?: (style: TStyle) => string;
-  onStyleSelect: (style: TStyle) => void;
+  styleLabel?: (style: string) => string;
+  onStyleSelect: (style: string) => void;
 }
 
 export const StyleView = ({

@@ -2,12 +2,12 @@
 
 import { Box, Card, CardActionArea, CardContent, Typography } from "@mui/material";
 import { LazyImage } from "@/components/image-viewer/LazyImage";
-import type { ICharacterSummary, TStyle } from "@/types/library";
+import type { ICharacterSummary } from "@/types/library";
 import { useCallback, useMemo } from "react";
 
 interface ICharacterViewProps {
-  defaultStyle: TStyle;
-  browseStyle: TStyle;
+  defaultStyle: string;
+  browseStyle: string;
 
   character: ICharacterSummary;
 
