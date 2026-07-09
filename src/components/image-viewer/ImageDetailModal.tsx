@@ -22,7 +22,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { IImageItem, TStyle } from "@/types/library";
+import type { IImageItem } from "@/types/library";
 import { LazyImage } from "@/components/image-viewer/LazyImage";
 import { formatStyleLabel, getImageUrl } from "@/components/image-viewer/utils";
 import { ImageDetailMetadata } from "./ImageDetailMetadata";
@@ -111,7 +111,7 @@ interface IImageDetailModalProps {
   canNavigateNext?: boolean;
   onNavigatePrevious?: () => void;
   onNavigateNext?: () => void;
-  styleLabel?: (style: TStyle) => string;
+  styleLabel?: (style: string) => string;
 }
 
 interface IMetadataState {

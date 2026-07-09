@@ -8,14 +8,17 @@ import { DEFAULT_LIBRARY } from "@/components/image-viewer/constants";
 import { EmptyState } from "@/components/image-viewer/EmptyState";
 import { PosesView } from "@/components/image-viewer/PosesView";
 import { StylesView } from "@/components/image-viewer/StylesView";
-import { buildPoseFilterOptions, buildPoseOptions } from "@/components/image-viewer/utils";
+import {
+  buildPoseFilterOptions,
+  buildPoseOptions,
+  formatStyleLabel,
+} from "@/components/image-viewer/utils";
 import type {
   ICharacterSummary,
   IImageItem,
   ILibraryData,
   IMetadataFilterOption,
   TMajorFilter,
-  TStyle,
 } from "@/types/library";
 
 interface IImageViewerBodyProps {
@@ -24,7 +27,7 @@ interface IImageViewerBodyProps {
   selectedPoseFilters: string[];
   selectedMetadataFilterId: string;
   showOnlyNewImages: boolean;
-  characterDetailStyle: "all" | TStyle;
+  characterDetailStyle: string;
   characterDetailPose: string;
   reloadToken: number;
   onImageSelect: (image: IImageItem, filteredImages: IImageItem[]) => void;
@@ -33,7 +36,7 @@ interface IImageViewerBodyProps {
   setSelectedCharacter: (characterName: string | null) => void;
   setSelectedPoseFilters: (nextPoseFilters: string[] | ((prev: string[]) => string[])) => void;
   setSelectedMetadataFilterId: (metadataFilterId: string) => void;
-  setCharacterDetailStyle: (style: "all" | TStyle) => void;
+  setCharacterDetailStyle: (style: string) => void;
   setCharacterDetailPose: (pose: string) => void;
 }
 
@@ -113,13 +116,13 @@ export const ImageViewerBody = ({
   const [isLoading, setIsLoading] = useState(true);
   const [requestError, setRequestError] = useState<string | null>(null);
 
-  const [styleViewStyle, setStyleViewStyle] = useState<TStyle>("3d");
+  const [styleViewStyle, setStyleViewStyle] = useState<string>("3d");
   const [styleViewSearchText, setStyleViewSearchText] = useState<string>("");
 
-  const [poseViewStyle, setPoseViewStyle] = useState<"all" | TStyle>("all");
+  const [poseViewStyle, setPoseViewStyle] = useState<string>("--all--");
   const [poseViewCharacterSearch, setPoseViewCharacterSearch] = useState<string>("");
 
-  const onStyleSelect = useCallback((style: TStyle) => {
+  const onStyleSelect = useCallback((style: string) => {
     setStyleViewStyle(style);
     setStyleViewSearchText("");
   }, []);
@@ -234,6 +237,11 @@ export const ImageViewerBody = ({
     return buildMetadataFilterOptions(library.characters);
   }, [library.characters]);
 
+  const styleLabel = useCallback(
+    (style: string) => formatStyleLabel(style, library.styleLabels),
+    [library.styleLabels],
+  );
+
   const metadataFilterById = useMemo(() => {
     return new Map(metadataFilterOptions.map((option) => [option.id, option]));
   }, [metadataFilterOptions]);
@@ -278,9 +286,9 @@ export const ImageViewerBody = ({
   const visibleCharacterDetailImages = useMemo(() => {
     return selectedCharacterImages.filter((image) => {
       const matchesStyle =
-        characterDetailStyle === "all" ? true : image.style === characterDetailStyle;
+        characterDetailStyle === "--all--" ? true : image.style === characterDetailStyle;
       const matchesPose =
-        characterDetailPose === "all" ? true : image.poseBaseName === characterDetailPose;
+        characterDetailPose === "--all--" ? true : image.poseBaseName === characterDetailPose;
       return matchesStyle && matchesPose;
     });
   }, [selectedCharacterImages, characterDetailStyle, characterDetailPose]);
@@ -353,7 +361,7 @@ export const ImageViewerBody = ({
       });
       const matchesPose =
         isAllPosesSelected || selectedPoses.has(image.poseBaseName) || matchesPatternPose;
-      const matchesStyle = poseViewStyle === "all" ? true : image.style === poseViewStyle;
+      const matchesStyle = poseViewStyle === "--all--" ? true : image.style === poseViewStyle;
       const matchesCharacter =
         normalizedCharacterSearch.length === 0
           ? true
@@ -469,7 +477,7 @@ export const ImageViewerBody = ({
         description={
           showOnlyNewImages
             ? "No images discovered in the last 3 days are currently available."
-            : "Check the folder pattern characters/{style}/{character}/*.png and ensure styles use realistic, 3d, or anime."
+            : "Check the folder pattern characters/{style}/{character}/*.png and ensure style folders match your configured styles."
         }
       />
     );
@@ -481,6 +489,7 @@ export const ImageViewerBody = ({
         styles={library.styles}
         defaultStyle={library.defaultStyle}
         browseStyle={library.defaultStyle}
+        styleLabel={styleLabel}
         metadataFilterOptions={metadataFilterOptions}
         onClearMetadataFilter={onClearMetadataFilter}
         onMetadataFilterChange={onMetadataFilterChange}
@@ -502,6 +511,7 @@ export const ImageViewerBody = ({
     return (
       <StylesView
         styles={library.styles}
+        styleLabel={styleLabel}
         styleViewStyle={styleViewStyle}
         styleViewSearchText={styleViewSearchText}
         metadataFilterOptions={metadataFilterOptions}
@@ -520,6 +530,7 @@ export const ImageViewerBody = ({
   return (
     <PosesView
       styles={library.styles}
+      styleLabel={styleLabel}
       poseViewPoseOptions={poseViewPoseOptions}
       poseViewSelectedPoses={selectedPoseFilters}
       poseViewStyle={poseViewStyle}

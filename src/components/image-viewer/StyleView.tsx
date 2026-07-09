@@ -2,18 +2,19 @@
 
 import { Chip } from "@mui/material";
 import { formatStyleLabel } from "@/components/image-viewer/utils";
-import type { TStyle } from "@/types/library";
 import { useCallback } from "react";
 
 interface IStyleViewProps {
-  style: TStyle;
+  style: string;
   primary: boolean;
-  onStyleSelect: (style: TStyle) => void;
+  styleLabel?: (style: string) => string;
+  onStyleSelect: (style: string) => void;
 }
 
 export const StyleView = ({
   style,
   primary,
+  styleLabel = formatStyleLabel,
 
   onStyleSelect,
 }: Readonly<IStyleViewProps>) => {
@@ -23,7 +24,7 @@ export const StyleView = ({
 
   return (
     <Chip
-      label={formatStyleLabel(style)}
+      label={styleLabel(style)}
       color={primary ? "primary" : "default"}
       onClick={handleOnClickStyleChip}
     />

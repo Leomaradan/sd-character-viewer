@@ -2,7 +2,7 @@
 
 import { Box, type SelectChangeEvent, Stack, TextField } from "@mui/material";
 import { ImageCard } from "@/components/image-viewer/ImageCard";
-import type { IImageItem, IMetadataFilterOption, TStyle } from "@/types/library";
+import type { IImageItem, IMetadataFilterOption } from "@/types/library";
 import { FLEXWRAP, GRID, STACK_SPACING } from "./constants";
 import { StyleView } from "./StyleView";
 import { useCallback, useMemo } from "react";
@@ -10,14 +10,15 @@ import { SearchField } from "./SearchField";
 import { CategoryFilter } from "./CategoryFilter";
 
 interface IStylesViewProps {
-  styles: TStyle[];
-  styleViewStyle: TStyle;
+  styles: string[];
+  styleLabel: (style: string) => string;
+  styleViewStyle: string;
   styleViewSearchText: string;
   metadataFilterOptions: IMetadataFilterOption[];
   selectedMetadataFilterId: string;
   styleFilteredImages: IImageItem[];
   showNewBadge: boolean;
-  onStyleSelect: (style: TStyle) => void;
+  onStyleSelect: (style: string) => void;
   onMetadataFilterChange: (event: SelectChangeEvent<string>) => void;
   onClearMetadataFilter: () => void;
   onStyleSearchTextChange: (value: string) => void;
@@ -26,6 +27,7 @@ interface IStylesViewProps {
 
 export const StylesView = ({
   styles,
+  styleLabel,
   styleViewStyle,
   styleViewSearchText,
   metadataFilterOptions,
@@ -63,6 +65,7 @@ export const StylesView = ({
           <StyleView
             key={style}
             style={style}
+            styleLabel={styleLabel}
             primary={styleViewStyle === style}
             onStyleSelect={onStyleSelect}
           />
@@ -92,6 +95,7 @@ export const StylesView = ({
             key={image.id}
             image={image}
             showNewBadge={showNewBadge}
+            styleLabel={styleLabel}
             onSelect={onImageSelect}
           />
         ))}

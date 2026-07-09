@@ -37,6 +37,7 @@ export const DEFAULT_LIBRARY: ILibraryData = {
   rootPath: null,
   defaultStyle: "3d",
   styles: ["realistic", "3d", "anime"],
+  styleLabels: {},
   images: [],
   characters: [],
   poses: [],

@@ -37,7 +37,8 @@ import {
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
 } from "@/components/image-viewer/persistent-filters";
-import type { IImageItem, ILibraryData, TMajorFilter, TStyle } from "@/types/library";
+import { formatStyleLabel } from "@/components/image-viewer/utils";
+import type { IImageItem, ILibraryData, TMajorFilter } from "@/types/library";
 import { ImageViewerBody } from "./ImageViewerBody";
 import { ImageDetailModal } from "@/components/image-viewer/ImageDetailModal";
 import { ScrollToTopButton } from "@/components/image-viewer/ScrollToTopButton";
@@ -136,8 +137,8 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  const [characterDetailStyle, setCharacterDetailStyle] = useState<"all" | TStyle>("all");
-  const [characterDetailPose, setCharacterDetailPose] = useState<string>("all");
+  const [characterDetailStyle, setCharacterDetailStyle] = useState<string>("--all--");
+  const [characterDetailPose, setCharacterDetailPose] = useState<string>("--all--");
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -336,8 +337,8 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   const handleMajorFilterChange = useCallback(
     (nextFilter: TMajorFilter) => {
       closeMobileDrawer();
-      setCharacterDetailStyle("all");
-      setCharacterDetailPose("all");
+      setCharacterDetailStyle("--all--");
+      setCharacterDetailPose("--all--");
       updateQueryParams({ view: nextFilter, char: null });
     },
     [closeMobileDrawer, updateQueryParams],
@@ -345,8 +346,8 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
 
   const handleSelectCharacter = useCallback(
     (characterName: string | null) => {
-      setCharacterDetailStyle("all");
-      setCharacterDetailPose("all");
+      setCharacterDetailStyle("--all--");
+      setCharacterDetailPose("--all--");
       if (characterName === null) {
         updateQueryParams({ view: "character", char: null });
       } else {
@@ -416,6 +417,11 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   const handleLibraryLoad = useCallback((loadedLibrary: ILibraryData) => {
     setLibrary(loadedLibrary);
   }, []);
+
+  const styleLabel = useCallback(
+    (style: string) => formatStyleLabel(style, library.styleLabels),
+    [library.styleLabels],
+  );
 
   if (authStatus === "checking") {
     return (
@@ -568,6 +574,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
         canNavigateNext={canNavigateModalNext}
         onNavigatePrevious={handleModalPrevious}
         onNavigateNext={handleModalNext}
+        styleLabel={styleLabel}
       />
 
       <ScrollToTopButton />

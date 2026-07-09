@@ -1,19 +1,32 @@
-import type { IImageItem, IPosePatternFilter, TStyle } from "@/types/library";
+import type { IImageItem, IPosePatternFilter } from "@/types/library";
 
 export const getImageUrl = (relativePath: string): string => {
   return `/api/image?path=${encodeURIComponent(relativePath)}`;
 };
 
-export const formatStyleLabel = (style: TStyle): string => {
+export const formatStyleLabel = (
+  style: string,
+  styleLabels?: Partial<Record<string, string>>,
+): string => {
+  const configuredLabel = styleLabels?.[style]?.trim();
+  if (configuredLabel) {
+    return configuredLabel;
+  }
+
   if (style === "3d") {
     return "3D";
   }
 
-  if (style === "anime") {
-    return "Anime";
+  const normalized = style.trim();
+  if (!normalized) {
+    return "Unknown";
   }
 
-  return "Realistic";
+  return normalized
+    .split(/[-_\s]+/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
 };
 
 export const buildPoseOptions = (images: IImageItem[]): string[] => {

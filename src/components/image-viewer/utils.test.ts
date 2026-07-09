@@ -24,6 +24,13 @@ describe("image-viewer utils", () => {
     expect(formatStyleLabel("3d")).toBe("3D");
     expect(formatStyleLabel("anime")).toBe("Anime");
     expect(formatStyleLabel("realistic")).toBe("Realistic");
+    expect(formatStyleLabel("comic_book")).toBe("Comic Book");
+  });
+
+  it("prefers configured style labels when provided", () => {
+    expect(formatStyleLabel("comic_book", { comic_book: "Comic Book Deluxe" })).toBe(
+      "Comic Book Deluxe",
+    );
   });
 
   it("builds sorted unique pose options", () => {

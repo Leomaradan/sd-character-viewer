@@ -2,7 +2,7 @@
 
 import { Box, Chip, type SelectChangeEvent, Stack, TextField } from "@mui/material";
 import { ImageCard } from "@/components/image-viewer/ImageCard";
-import type { IImageItem, IMetadataFilterOption, TStyle } from "@/types/library";
+import type { IImageItem, IMetadataFilterOption } from "@/types/library";
 import { FLEXWRAP, GRID, STACK_SPACING } from "./constants";
 import { useCallback, useMemo } from "react";
 import { SearchField } from "./SearchField";
@@ -16,10 +16,11 @@ interface IPoseOption {
 }
 
 interface IPosesViewProps {
-  styles: TStyle[];
+  styles: string[];
+  styleLabel: (style: string) => string;
   poseViewPoseOptions: IPoseOption[];
   poseViewSelectedPoses: string[];
-  poseViewStyle: "all" | TStyle;
+  poseViewStyle: string;
   poseViewCharacterSearch: string;
   metadataFilterOptions: IMetadataFilterOption[];
   selectedMetadataFilterId: string;
@@ -27,7 +28,7 @@ interface IPosesViewProps {
   showNewBadge: boolean;
   onClearPoses: () => void;
   onTogglePose: (pose: string) => void;
-  onPoseStyleChange: (style: "all" | TStyle) => void;
+  onPoseStyleChange: (style: string) => void;
   onMetadataFilterChange: (event: SelectChangeEvent<string>) => void;
   onClearMetadataFilter: () => void;
   onCharacterSearchChange: (value: string) => void;
@@ -36,6 +37,7 @@ interface IPosesViewProps {
 
 export const PosesView = ({
   styles,
+  styleLabel,
   poseViewPoseOptions,
   poseViewSelectedPoses,
   poseViewStyle,
@@ -60,7 +62,7 @@ export const PosesView = ({
   );
 
   const handleSelectAllStyles = useCallback(() => {
-    onPoseStyleChange("all");
+    onPoseStyleChange("--all--");
   }, [onPoseStyleChange]);
 
   const textFieldSlotProps = useMemo(
@@ -95,13 +97,14 @@ export const PosesView = ({
       <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>
         <Chip
           label="All styles"
-          color={poseViewStyle === "all" ? "secondary" : "default"}
+          color={poseViewStyle === "--all--" ? "secondary" : "default"}
           onClick={handleSelectAllStyles}
         />
         {styles.map((style) => (
           <StyleView
             key={style}
             style={style}
+            styleLabel={styleLabel}
             primary={poseViewStyle === style}
             onStyleSelect={onPoseStyleChange}
           />
@@ -131,6 +134,7 @@ export const PosesView = ({
             key={image.id}
             image={image}
             showNewBadge={showNewBadge}
+            styleLabel={styleLabel}
             onSelect={onImageSelect}
           />
         ))}

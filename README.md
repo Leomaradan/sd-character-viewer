@@ -10,11 +10,24 @@ The app expects this tree inside your configured root directory:
 characters/{style}/{character_name}/*.png
 ```
 
-Supported styles:
+Styles configuration:
 
-- `3d` (default)
-- `realistic`
-- `anime`
+- Optional styles are loaded from `config.json` in the image root folder (`SD_IMAGES_ROOT`).
+- `config.json` accepts `styles` (array of folder names), optional `defaultStyle`, and optional `styleLabels` for display aliases.
+- If `config.json` is missing or invalid, the app falls back to `realistic`, `3d` (default), and `anime`.
+
+Example `config.json`:
+
+```json
+{
+	"styles": ["comic", "3d", "anime"],
+	"defaultStyle": "comic",
+	"styleLabels": {
+		"comic": "Comic Book",
+		"3d": "3D Render"
+	}
+}
+```
 
 Pose naming rules:
 
