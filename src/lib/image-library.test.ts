@@ -120,6 +120,31 @@ describe("readImageLibrary with characters metadata", () => {
     expect(library.images.every((image) => ["comic", "sketch"].includes(image.style))).toBe(true);
   });
 
+  it("accepts extra keys in config.json", async () => {
+    const tempRoot = "/tmp/sd-library-style-config-extra-keys";
+    const characterDir = path.join(tempRoot, "characters", "comic", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "config.json"),
+      JSON.stringify({
+        styles: ["comic"],
+        defaultStyle: "comic",
+        styleLabels: { comic: "Comic Book" },
+        unknownKey: "allowed",
+      }),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.styles).toEqual(["comic"]);
+    expect(library.defaultStyle).toBe("comic");
+    expect(library.styleLabels).toEqual({ comic: "Comic Book" });
+  });
+
   it("falls back to legacy styles when config.json is malformed", async () => {
     const tempRoot = "/tmp/sd-library-invalid-style-config";
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
@@ -162,6 +187,27 @@ describe("readImageLibrary with characters metadata", () => {
       expect.objectContaining({ label: "Duo", pattern: "^Duo " }),
       expect.objectContaining({ label: "With Somebody CI", pattern: "^with ", flags: "i" }),
     ]);
+  });
+
+  it("accepts pose-filters entries with extra keys", async () => {
+    const tempRoot = "/tmp/sd-library-pose-filters-extra-keys";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "With Bob.png"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "pose-filters.json"),
+      JSON.stringify([{ label: "With Somebody", pattern: "^With ", extra: "allowed" }]),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.posePatternFilters).toHaveLength(1);
+    expect(library.posePatternFilters[0]).toEqual(
+      expect.objectContaining({ label: "With Somebody", pattern: "^With " }),
+    );
   });
 
   it("falls back to default pose pattern filter when pose-filters.json is invalid", async () => {
@@ -210,7 +256,7 @@ describe("readImageLibrary with characters metadata", () => {
     expect(anna?.tags).toEqual(["Action", "Main"]);
   });
 
-  it("ignores invalid entries that do not follow the schema", async () => {
+  it("accepts metadata entries with extra keys", async () => {
     const tempRoot = "/tmp/sd-library-invalid-metadata";
     const characterDir = path.join(tempRoot, "characters", "3d", "Bea");
 
@@ -233,8 +279,8 @@ describe("readImageLibrary with characters metadata", () => {
     const library = await readImageLibrary();
     const bea = library.characters.find((character) => character.name === "Bea");
 
-    expect(bea?.category).toBeNull();
-    expect(bea?.serie).toBeNull();
+    expect(bea?.category).toBe("Support");
+    expect(bea?.serie).toBe("Sample");
     expect(bea?.tags).toEqual([]);
   });
 

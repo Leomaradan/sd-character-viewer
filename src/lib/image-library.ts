@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import Ajv from "ajv";
 import {
   STYLES,
   type ICharacterSummary,
@@ -23,9 +24,9 @@ const POSE_FILTERS_FILE_NAME = "pose-filters.json";
 const DEFAULT_POSE_PATTERN_FILTER_CONFIGS = [{ label: "With Somebody", pattern: "^With " }];
 
 interface ILibraryConfig {
-  styles?: unknown;
-  defaultStyle?: unknown;
-  styleLabels?: unknown;
+  styles?: string[];
+  defaultStyle?: string;
+  styleLabels?: Record<string, string>;
 }
 
 interface IStyleConfig {
@@ -67,26 +68,67 @@ interface IPosePatternFilterConfig {
   flags?: string;
 }
 
+const ajv = new Ajv({ allErrors: false, strict: false });
+
+const libraryConfigValidator = ajv.compile<ILibraryConfig>({
+  type: "object",
+  properties: {
+    styles: {
+      type: "array",
+      items: { type: "string" },
+    },
+    defaultStyle: { type: "string" },
+    styleLabels: {
+      type: "object",
+      additionalProperties: { type: "string" },
+    },
+  },
+  additionalProperties: true,
+});
+
+const characterMetadataValidator = ajv.compile<ICharacterMetadata>({
+  type: "object",
+  properties: {
+    name: { type: "string" },
+    category: { type: "string" },
+    serie: { type: "string" },
+    tags: {
+      type: "array",
+      items: { type: "string" },
+    },
+  },
+  required: ["name", "category"],
+  additionalProperties: true,
+});
+
+const posePatternFilterConfigValidator = ajv.compile<IPosePatternFilterConfig>({
+  type: "object",
+  properties: {
+    label: { type: "string" },
+    pattern: { type: "string" },
+    flags: { type: "string" },
+  },
+  required: ["label", "pattern"],
+  additionalProperties: true,
+});
+
 const isLibraryConfig = (value: unknown): value is ILibraryConfig => {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record);
-
-  return keys.every((key) => ["styles", "defaultStyle", "styleLabels"].includes(key));
+  return libraryConfigValidator(value);
 };
 
-const normalizeStyleNames = (styles: unknown): TStyle[] => {
-  if (!Array.isArray(styles)) {
+const isCharacterMetadata = (value: unknown): value is ICharacterMetadata => {
+  return characterMetadataValidator(value);
+};
+
+const isPosePatternFilterConfig = (value: unknown): value is IPosePatternFilterConfig => {
+  return posePatternFilterConfigValidator(value);
+};
+const normalizeStyleNames = (styles: string[] | undefined): TStyle[] => {
+  if (!styles) {
     return [];
   }
 
-  const normalizedStyles = styles
-    .filter((style): style is string => typeof style === "string")
-    .map((style) => style.trim())
-    .filter((style) => style !== "");
+  const normalizedStyles = styles.map((style) => style.trim()).filter((style) => style !== "");
 
   return [...new Set(normalizedStyles)];
 };
@@ -108,18 +150,17 @@ const resolveDefaultStyle = (styles: TStyle[], rawDefaultStyle: unknown): TStyle
 
 const normalizeStyleLabels = (
   styles: TStyle[],
-  styleLabels: unknown,
+  styleLabels: Record<string, string> | undefined,
 ): Partial<Record<TStyle, string>> => {
-  if (!styleLabels || typeof styleLabels !== "object") {
+  if (!styleLabels) {
     return {};
   }
 
-  const labelsRecord = styleLabels as Record<string, unknown>;
   const styleSet = new Set(styles);
   const normalizedLabels: Partial<Record<TStyle, string>> = {};
 
-  for (const [style, label] of Object.entries(labelsRecord)) {
-    if (!styleSet.has(style) || typeof label !== "string") {
+  for (const [style, label] of Object.entries(styleLabels)) {
+    if (!styleSet.has(style)) {
       continue;
     }
 
@@ -209,44 +250,6 @@ const normalizeCharacterNameKey = (characterName: string): string => {
   return characterName.trim().toLowerCase();
 };
 
-const isCharacterMetadata = (value: unknown): value is ICharacterMetadata => {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record);
-
-  if (!keys.includes("name") || !keys.includes("category")) {
-    return false;
-  }
-
-  const hasOnlyAllowedKeys = keys.every((key) =>
-    ["name", "category", "serie", "tags"].includes(key),
-  );
-
-  if (!hasOnlyAllowedKeys) {
-    return false;
-  }
-
-  if (typeof record.name !== "string" || typeof record.category !== "string") {
-    return false;
-  }
-
-  if (record.serie !== undefined && typeof record.serie !== "string") {
-    return false;
-  }
-
-  if (
-    record.tags !== undefined &&
-    (!Array.isArray(record.tags) || !record.tags.every((tag) => typeof tag === "string"))
-  ) {
-    return false;
-  }
-
-  return true;
-};
-
 const normalizeMetadataTags = (tags: string[] | undefined): string[] => {
   if (!tags) {
     return [];
@@ -255,19 +258,6 @@ const normalizeMetadataTags = (tags: string[] | undefined): string[] => {
   return [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag !== ""))].sort(
     compareNatural,
   );
-};
-
-const isPosePatternFilterConfig = (value: unknown): value is IPosePatternFilterConfig => {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  if (typeof record.label !== "string" || typeof record.pattern !== "string") {
-    return false;
-  }
-
-  return record.flags === undefined || typeof record.flags === "string";
 };
 
 const createPosePatternFilterId = (label: string, pattern: string, flags: string): string => {
