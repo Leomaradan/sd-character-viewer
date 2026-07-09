@@ -17,6 +17,7 @@ interface IPoseOption {
 
 interface IPosesViewProps {
   styles: TStyle[];
+  styleLabel: (style: TStyle) => string;
   poseViewPoseOptions: IPoseOption[];
   poseViewSelectedPoses: string[];
   poseViewStyle: "all" | TStyle;
@@ -36,6 +37,7 @@ interface IPosesViewProps {
 
 export const PosesView = ({
   styles,
+  styleLabel,
   poseViewPoseOptions,
   poseViewSelectedPoses,
   poseViewStyle,
@@ -102,6 +104,7 @@ export const PosesView = ({
           <StyleView
             key={style}
             style={style}
+            styleLabel={styleLabel}
             primary={poseViewStyle === style}
             onStyleSelect={onPoseStyleChange}
           />
@@ -131,6 +134,7 @@ export const PosesView = ({
             key={image.id}
             image={image}
             showNewBadge={showNewBadge}
+            styleLabel={styleLabel}
             onSelect={onImageSelect}
           />
         ))}

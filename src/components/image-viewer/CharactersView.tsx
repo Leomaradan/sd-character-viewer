@@ -14,6 +14,7 @@ interface ICharactersViewProps {
   styles: TStyle[];
   defaultStyle: TStyle;
   browseStyle: TStyle;
+  styleLabel: (style: TStyle) => string;
   selectedCharacter: string | null;
   onMetadataFilterChange: (event: SelectChangeEvent<string>) => void;
   onClearMetadataFilter: () => void;
@@ -74,6 +75,7 @@ export const CharactersView = ({
   styles,
   defaultStyle,
   browseStyle,
+  styleLabel,
   selectedCharacter,
   selectedMetadataFilterId,
   characterDetailStyle,
@@ -170,6 +172,7 @@ export const CharactersView = ({
               <StyleView
                 key={style}
                 style={style}
+                styleLabel={styleLabel}
                 onStyleSelect={onCharacterDetailStyleChange}
                 primary={characterDetailStyle === style}
               />
@@ -207,6 +210,7 @@ export const CharactersView = ({
                 key={image.id}
                 image={image}
                 showNewBadge={showNewBadge}
+                styleLabel={styleLabel}
                 onSelect={onImageSelect}
               />
             ))}

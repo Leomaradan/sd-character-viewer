@@ -37,6 +37,7 @@ import {
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
 } from "@/components/image-viewer/persistent-filters";
+import { formatStyleLabel } from "@/components/image-viewer/utils";
 import type { IImageItem, ILibraryData, TMajorFilter, TStyle } from "@/types/library";
 import { ImageViewerBody } from "./ImageViewerBody";
 import { ImageDetailModal } from "@/components/image-viewer/ImageDetailModal";
@@ -417,6 +418,11 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     setLibrary(loadedLibrary);
   }, []);
 
+  const styleLabel = useCallback(
+    (style: TStyle) => formatStyleLabel(style, library.styleLabels),
+    [library.styleLabels],
+  );
+
   if (authStatus === "checking") {
     return (
       <Box sx={AUTH_LOADING_SX}>
@@ -568,6 +574,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
         canNavigateNext={canNavigateModalNext}
         onNavigatePrevious={handleModalPrevious}
         onNavigateNext={handleModalNext}
+        styleLabel={styleLabel}
       />
 
       <ScrollToTopButton />

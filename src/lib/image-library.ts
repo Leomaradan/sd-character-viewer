@@ -17,8 +17,22 @@ const PNG_EXTENSION = ".png";
 const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
+const LIBRARY_CONFIG_FILE_NAME = "config.json";
+const CHARACTERS_CONFIG_FILE_NAME = "characters.json";
 const POSE_FILTERS_FILE_NAME = "pose-filters.json";
 const DEFAULT_POSE_PATTERN_FILTER_CONFIGS = [{ label: "With Somebody", pattern: "^With " }];
+
+interface ILibraryConfig {
+  styles?: unknown;
+  defaultStyle?: unknown;
+  styleLabels?: unknown;
+}
+
+interface IStyleConfig {
+  styles: TStyle[];
+  defaultStyle: TStyle;
+  styleLabels: Partial<Record<TStyle, string>>;
+}
 
 interface ICharacterAccumulator {
   name: string;
@@ -52,6 +66,132 @@ interface IPosePatternFilterConfig {
   pattern: string;
   flags?: string;
 }
+
+const isLibraryConfig = (value: unknown): value is ILibraryConfig => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+
+  return keys.every((key) => ["styles", "defaultStyle", "styleLabels"].includes(key));
+};
+
+const normalizeStyleNames = (styles: unknown): TStyle[] => {
+  if (!Array.isArray(styles)) {
+    return [];
+  }
+
+  const normalizedStyles = styles
+    .filter((style): style is string => typeof style === "string")
+    .map((style) => style.trim())
+    .filter((style) => style !== "");
+
+  return [...new Set(normalizedStyles)];
+};
+
+const resolveDefaultStyle = (styles: TStyle[], rawDefaultStyle: unknown): TStyle => {
+  if (typeof rawDefaultStyle === "string") {
+    const normalizedDefaultStyle = rawDefaultStyle.trim();
+    if (normalizedDefaultStyle && styles.includes(normalizedDefaultStyle)) {
+      return normalizedDefaultStyle;
+    }
+  }
+
+  if (styles.includes(DEFAULT_STYLE)) {
+    return DEFAULT_STYLE;
+  }
+
+  return styles[0] ?? DEFAULT_STYLE;
+};
+
+const normalizeStyleLabels = (
+  styles: TStyle[],
+  styleLabels: unknown,
+): Partial<Record<TStyle, string>> => {
+  if (!styleLabels || typeof styleLabels !== "object") {
+    return {};
+  }
+
+  const labelsRecord = styleLabels as Record<string, unknown>;
+  const styleSet = new Set(styles);
+  const normalizedLabels: Partial<Record<TStyle, string>> = {};
+
+  for (const [style, label] of Object.entries(labelsRecord)) {
+    if (!styleSet.has(style) || typeof label !== "string") {
+      continue;
+    }
+
+    const normalizedLabel = label.trim();
+    if (!normalizedLabel) {
+      continue;
+    }
+
+    normalizedLabels[style] = normalizedLabel;
+  }
+
+  return normalizedLabels;
+};
+
+const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
+  const configPath = path.join(rootPath, LIBRARY_CONFIG_FILE_NAME);
+  const fallbackStyles = [...STYLES];
+  const fallbackStyleLabels: Partial<Record<TStyle, string>> = {};
+
+  let fileContent = "";
+  try {
+    fileContent = await fs.readFile(configPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        styles: fallbackStyles,
+        defaultStyle: DEFAULT_STYLE,
+        styleLabels: fallbackStyleLabels,
+      };
+    }
+
+    return {
+      styles: fallbackStyles,
+      defaultStyle: DEFAULT_STYLE,
+      styleLabels: fallbackStyleLabels,
+    };
+  }
+
+  try {
+    const parsedContent: unknown = JSON.parse(fileContent);
+
+    if (!isLibraryConfig(parsedContent)) {
+      return {
+        styles: fallbackStyles,
+        defaultStyle: DEFAULT_STYLE,
+        styleLabels: fallbackStyleLabels,
+      };
+    }
+
+    const styles = normalizeStyleNames(parsedContent.styles);
+    if (styles.length === 0) {
+      return {
+        styles: fallbackStyles,
+        defaultStyle: DEFAULT_STYLE,
+        styleLabels: fallbackStyleLabels,
+      };
+    }
+
+    return {
+      styles,
+      defaultStyle: resolveDefaultStyle(styles, parsedContent.defaultStyle),
+      styleLabels: normalizeStyleLabels(styles, parsedContent.styleLabels),
+    };
+  } catch {
+    // Fallback to legacy defaults when config.json is malformed.
+    return {
+      styles: fallbackStyles,
+      defaultStyle: DEFAULT_STYLE,
+      styleLabels: fallbackStyleLabels,
+    };
+  }
+};
 
 const normalizeRelativePath = (filePath: string): string => {
   return filePath.split(path.sep).join(path.posix.sep);
@@ -201,7 +341,7 @@ const readPosePatternFilters = async (rootPath: string): Promise<IPosePatternFil
 const readCharactersMetadata = async (
   rootPath: string,
 ): Promise<Map<string, ICharacterMetadataSummary>> => {
-  const metadataPath = path.join(rootPath, "characters", "characters.json");
+  const metadataPath = path.join(rootPath, "characters", CHARACTERS_CONFIG_FILE_NAME);
 
   let fileContent = "";
   try {
@@ -278,10 +418,13 @@ const listPngFiles = async (characterFolderPath: string): Promise<string[]> => {
     .filter((fileName) => fileName.toLowerCase().endsWith(PNG_EXTENSION));
 };
 
-const resolveStyleFolders = async (charactersRootPath: string): Promise<TStyle[]> => {
+const resolveStyleFolders = async (
+  charactersRootPath: string,
+  configuredStyles: TStyle[],
+): Promise<TStyle[]> => {
   const styleEntries = await fs.readdir(charactersRootPath, { withFileTypes: true });
 
-  return STYLES.filter((style) => {
+  return configuredStyles.filter((style) => {
     return styleEntries.some((entry) => entry.isDirectory() && entry.name === style);
   });
 };
@@ -309,13 +452,19 @@ const createEmptyLibraryData = (
   rootConfigured: boolean,
   rootPath: string | null,
   warning: string | null,
+  styleConfig: IStyleConfig = {
+    styles: [...STYLES],
+    defaultStyle: DEFAULT_STYLE,
+    styleLabels: {},
+  },
   cacheAvailable: boolean = false,
 ): ILibraryData => {
   return {
     rootConfigured,
     rootPath,
-    defaultStyle: DEFAULT_STYLE,
-    styles: [...STYLES],
+    defaultStyle: styleConfig.defaultStyle,
+    styles: styleConfig.styles,
+    styleLabels: styleConfig.styleLabels,
     images: [],
     characters: [],
     poses: [],
@@ -552,6 +701,7 @@ const sortImageItems = (imageItems: IImageItem[]): void => {
 
 const toLibraryData = (
   rootPath: string,
+  styleConfig: IStyleConfig,
   state: ILibraryIndexState,
   metadataByCharacter: Map<string, ICharacterMetadataSummary>,
   posePatternFilters: IPosePatternFilter[],
@@ -580,8 +730,9 @@ const toLibraryData = (
   return {
     rootConfigured: true,
     rootPath,
-    defaultStyle: DEFAULT_STYLE,
-    styles: [...STYLES],
+    defaultStyle: styleConfig.defaultStyle,
+    styles: styleConfig.styles,
+    styleLabels: styleConfig.styleLabels,
     images: state.imageItems,
     characters,
     poses,
@@ -599,15 +750,22 @@ const getImagesRootPathFromEnv = (): string | null => {
 
 export const readImageLibrary = async (): Promise<ILibraryData> => {
   const rootPath = getImagesRootPathFromEnv();
+  const fallbackStyleConfig: IStyleConfig = {
+    styles: [...STYLES],
+    defaultStyle: DEFAULT_STYLE,
+    styleLabels: {},
+  };
 
   if (!rootPath) {
     return createEmptyLibraryData(
       false,
       null,
       `Set ${SD_IMAGES_ROOT_ENV_KEY} to the folder that contains characters/{style}/{character}/*.png`,
+      fallbackStyleConfig,
     );
   }
 
+  const styleConfig = await readStyleConfig(rootPath);
   const charactersRootPath = path.join(rootPath, "characters");
   let metadataByCharacter = new Map<string, ICharacterMetadataSummary>();
   const posePatternFilters = await readPosePatternFilters(rootPath);
@@ -620,12 +778,13 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
 
   let availableStyles: TStyle[] = [];
   try {
-    availableStyles = await resolveStyleFolders(charactersRootPath);
+    availableStyles = await resolveStyleFolders(charactersRootPath, styleConfig.styles);
   } catch {
     return createEmptyLibraryData(
       true,
       rootPath,
       `Could not read ${path.join(rootPath, "characters")}. Ensure the folder exists and is readable.`,
+      styleConfig,
     );
   }
 
@@ -656,6 +815,7 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
 
   return toLibraryData(
     rootPath,
+    styleConfig,
     indexState,
     metadataByCharacter,
     posePatternFilters,

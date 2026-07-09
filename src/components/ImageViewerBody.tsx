@@ -8,7 +8,11 @@ import { DEFAULT_LIBRARY } from "@/components/image-viewer/constants";
 import { EmptyState } from "@/components/image-viewer/EmptyState";
 import { PosesView } from "@/components/image-viewer/PosesView";
 import { StylesView } from "@/components/image-viewer/StylesView";
-import { buildPoseFilterOptions, buildPoseOptions } from "@/components/image-viewer/utils";
+import {
+  buildPoseFilterOptions,
+  buildPoseOptions,
+  formatStyleLabel,
+} from "@/components/image-viewer/utils";
 import type {
   ICharacterSummary,
   IImageItem,
@@ -233,6 +237,11 @@ export const ImageViewerBody = ({
   const metadataFilterOptions = useMemo((): IMetadataFilterOption[] => {
     return buildMetadataFilterOptions(library.characters);
   }, [library.characters]);
+
+  const styleLabel = useCallback(
+    (style: TStyle) => formatStyleLabel(style, library.styleLabels),
+    [library.styleLabels],
+  );
 
   const metadataFilterById = useMemo(() => {
     return new Map(metadataFilterOptions.map((option) => [option.id, option]));
@@ -469,7 +478,7 @@ export const ImageViewerBody = ({
         description={
           showOnlyNewImages
             ? "No images discovered in the last 3 days are currently available."
-            : "Check the folder pattern characters/{style}/{character}/*.png and ensure styles use realistic, 3d, or anime."
+            : "Check the folder pattern characters/{style}/{character}/*.png and ensure style folders match your configured styles."
         }
       />
     );
@@ -481,6 +490,7 @@ export const ImageViewerBody = ({
         styles={library.styles}
         defaultStyle={library.defaultStyle}
         browseStyle={library.defaultStyle}
+        styleLabel={styleLabel}
         metadataFilterOptions={metadataFilterOptions}
         onClearMetadataFilter={onClearMetadataFilter}
         onMetadataFilterChange={onMetadataFilterChange}
@@ -502,6 +512,7 @@ export const ImageViewerBody = ({
     return (
       <StylesView
         styles={library.styles}
+        styleLabel={styleLabel}
         styleViewStyle={styleViewStyle}
         styleViewSearchText={styleViewSearchText}
         metadataFilterOptions={metadataFilterOptions}
@@ -520,6 +531,7 @@ export const ImageViewerBody = ({
   return (
     <PosesView
       styles={library.styles}
+      styleLabel={styleLabel}
       poseViewPoseOptions={poseViewPoseOptions}
       poseViewSelectedPoses={selectedPoseFilters}
       poseViewStyle={poseViewStyle}

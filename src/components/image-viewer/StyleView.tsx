@@ -8,12 +8,14 @@ import { useCallback } from "react";
 interface IStyleViewProps {
   style: TStyle;
   primary: boolean;
+  styleLabel?: (style: TStyle) => string;
   onStyleSelect: (style: TStyle) => void;
 }
 
 export const StyleView = ({
   style,
   primary,
+  styleLabel = formatStyleLabel,
 
   onStyleSelect,
 }: Readonly<IStyleViewProps>) => {
@@ -23,7 +25,7 @@ export const StyleView = ({
 
   return (
     <Chip
-      label={formatStyleLabel(style)}
+      label={styleLabel(style)}
       color={primary ? "primary" : "default"}
       onClick={handleOnClickStyleChip}
     />

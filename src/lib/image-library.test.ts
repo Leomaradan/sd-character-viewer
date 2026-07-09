@@ -83,6 +83,60 @@ describe("resolveImageFilePath", () => {
 });
 
 describe("readImageLibrary with characters metadata", () => {
+  it("loads styles and default style from config.json", async () => {
+    const tempRoot = "/tmp/sd-library-style-config";
+    const comicCharacterDir = path.join(tempRoot, "characters", "comic", "Anna");
+    const sketchCharacterDir = path.join(tempRoot, "characters", "sketch", "Anna");
+
+    await fs.mkdir(comicCharacterDir, { recursive: true });
+    await fs.mkdir(sketchCharacterDir, { recursive: true });
+    await fs.writeFile(path.join(comicCharacterDir, "Base.png"), "");
+    await fs.writeFile(path.join(sketchCharacterDir, "Base.png"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "config.json"),
+      JSON.stringify({
+        styles: ["comic", "sketch", "unused-style"],
+        defaultStyle: "sketch",
+        styleLabels: {
+          comic: "Comic Book",
+          sketch: "Sketch Art",
+          "unused-style": "Unused",
+        },
+      }),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.styles).toEqual(["comic", "sketch", "unused-style"]);
+    expect(library.defaultStyle).toBe("sketch");
+    expect(library.styleLabels).toEqual({
+      comic: "Comic Book",
+      sketch: "Sketch Art",
+      "unused-style": "Unused",
+    });
+    expect(library.images).toHaveLength(2);
+    expect(library.images.every((image) => ["comic", "sketch"].includes(image.style))).toBe(true);
+  });
+
+  it("falls back to legacy styles when config.json is malformed", async () => {
+    const tempRoot = "/tmp/sd-library-invalid-style-config";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await fs.writeFile(path.join(tempRoot, "config.json"), "{invalid-json");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.styles).toEqual(["realistic", "3d", "anime"]);
+    expect(library.defaultStyle).toBe("3d");
+    expect(library.styleLabels).toEqual({});
+  });
+
   it("loads pose pattern filters from pose-filters.json", async () => {
     const tempRoot = "/tmp/sd-library-pose-filters";
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");

@@ -11,6 +11,7 @@ import { CategoryFilter } from "./CategoryFilter";
 
 interface IStylesViewProps {
   styles: TStyle[];
+  styleLabel: (style: TStyle) => string;
   styleViewStyle: TStyle;
   styleViewSearchText: string;
   metadataFilterOptions: IMetadataFilterOption[];
@@ -26,6 +27,7 @@ interface IStylesViewProps {
 
 export const StylesView = ({
   styles,
+  styleLabel,
   styleViewStyle,
   styleViewSearchText,
   metadataFilterOptions,
@@ -63,6 +65,7 @@ export const StylesView = ({
           <StyleView
             key={style}
             style={style}
+            styleLabel={styleLabel}
             primary={styleViewStyle === style}
             onStyleSelect={onStyleSelect}
           />
@@ -92,6 +95,7 @@ export const StylesView = ({
             key={image.id}
             image={image}
             showNewBadge={showNewBadge}
+            styleLabel={styleLabel}
             onSelect={onImageSelect}
           />
         ))}

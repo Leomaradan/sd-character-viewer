@@ -1,6 +1,6 @@
 export const STYLES = ["realistic", "3d", "anime"] as const;
 
-export type TStyle = (typeof STYLES)[number];
+export type TStyle = string;
 
 export type TMajorFilter = "character" | "style" | "pose";
 
@@ -50,6 +50,7 @@ export interface ILibraryData {
   rootPath: string | null;
   defaultStyle: TStyle;
   styles: TStyle[];
+  styleLabels?: Partial<Record<TStyle, string>>;
   images: IImageItem[];
   characters: ICharacterSummary[];
   poses: IPoseSummary[];

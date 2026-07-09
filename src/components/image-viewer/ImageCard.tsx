@@ -3,12 +3,14 @@
 import { Box, Card, CardActionArea, CardContent, Typography } from "@mui/material";
 import StarIcon from "@mui/icons-material/Star";
 import { useCallback } from "react";
-import type { IImageItem } from "@/types/library";
+import type { IImageItem, TStyle } from "@/types/library";
 import { LazyImage } from "@/components/image-viewer/LazyImage";
+import { formatStyleLabel } from "@/components/image-viewer/utils";
 
 interface IImageCardProps {
   image: IImageItem;
   showNewBadge?: boolean;
+  styleLabel?: (style: TStyle) => string;
   onSelect?: (image: IImageItem) => void;
 }
 
@@ -33,7 +35,12 @@ const NEW_BADGE_SX = {
   pointerEvents: "none",
 };
 
-export const ImageCard = ({ image, showNewBadge = false, onSelect }: Readonly<IImageCardProps>) => {
+export const ImageCard = ({
+  image,
+  showNewBadge = false,
+  styleLabel = formatStyleLabel,
+  onSelect,
+}: Readonly<IImageCardProps>) => {
   const handleClick = useCallback(() => {
     onSelect?.(image);
   }, [image, onSelect]);
@@ -58,7 +65,7 @@ export const ImageCard = ({ image, showNewBadge = false, onSelect }: Readonly<II
             {image.characterName}
           </Typography>
           <Typography variant="body2" color="text.secondary" noWrap>
-            {image.style} - {image.poseName}
+            {styleLabel(image.style)} - {image.poseName}
           </Typography>
         </CardContent>
       </CardActionArea>
