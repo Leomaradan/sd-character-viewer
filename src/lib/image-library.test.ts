@@ -145,6 +145,29 @@ describe("readImageLibrary with characters metadata", () => {
     expect(library.styleLabels).toEqual({ comic: "Comic Book" });
   });
 
+  it("re-resolves defaultStyle to an indexed style when configured default folder is missing", async () => {
+    const tempRoot = "/tmp/sd-library-missing-default-style-folder";
+    const sketchCharacterDir = path.join(tempRoot, "characters", "sketch", "Anna");
+
+    await fs.mkdir(sketchCharacterDir, { recursive: true });
+    await fs.writeFile(path.join(sketchCharacterDir, "Base.png"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "config.json"),
+      JSON.stringify({
+        styles: ["comic", "sketch"],
+        defaultStyle: "comic",
+      }),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.styles).toEqual(["comic", "sketch"]);
+    expect(library.defaultStyle).toBe("sketch");
+    expect(library.images).toHaveLength(1);
+  });
+
   it("falls back to legacy styles when config.json is malformed", async () => {
     const tempRoot = "/tmp/sd-library-invalid-style-config";
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");

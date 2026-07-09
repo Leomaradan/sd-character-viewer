@@ -778,6 +778,14 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
     );
   }
 
+  const effectiveStyleConfig: IStyleConfig = {
+    ...styleConfig,
+    defaultStyle:
+      availableStyles.length > 0
+        ? resolveDefaultStyle(availableStyles, styleConfig.defaultStyle)
+        : styleConfig.defaultStyle,
+  };
+
   const styleStates = await Promise.all(
     availableStyles.map(async (style) => {
       const stylePath = path.join(charactersRootPath, style);
@@ -805,7 +813,7 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
 
   return toLibraryData(
     rootPath,
-    styleConfig,
+    effectiveStyleConfig,
     indexState,
     metadataByCharacter,
     posePatternFilters,
