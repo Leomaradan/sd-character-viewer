@@ -135,4 +135,42 @@ describe("SideMenu", () => {
     expect(setModeSpy).toHaveBeenNthCalledWith(1, "light");
     expect(setModeSpy).toHaveBeenNthCalledWith(2, "dark");
   });
+
+  it("calls onCharacterSortOrderChange when a sort option is selected", () => {
+    const mockOnSortOrderChange = vi.fn();
+
+    render(
+      <SideMenu
+        majorFilter="character"
+        onMajorFilterChange={vi.fn()}
+        showOnlyNewImages={false}
+        onShowOnlyNewImagesChange={vi.fn()}
+        characterSortOrder="name"
+        onCharacterSortOrderChange={mockOnSortOrderChange}
+        library={createMockLibrary({ cacheAvailable: true })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "sort by date" }));
+    expect(mockOnSortOrderChange).toHaveBeenCalledWith("date");
+  });
+
+  it("ignores deselecting the currently active sort option", () => {
+    const mockOnSortOrderChange = vi.fn();
+
+    render(
+      <SideMenu
+        majorFilter="character"
+        onMajorFilterChange={vi.fn()}
+        showOnlyNewImages={false}
+        onShowOnlyNewImagesChange={vi.fn()}
+        characterSortOrder="name"
+        onCharacterSortOrderChange={mockOnSortOrderChange}
+        library={createMockLibrary({ cacheAvailable: true })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "sort by name" }));
+    expect(mockOnSortOrderChange).not.toHaveBeenCalled();
+  });
 });

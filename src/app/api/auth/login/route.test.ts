@@ -73,6 +73,26 @@ describe("POST /api/auth/login", () => {
     expect(response.status).toBe(401);
   });
 
+  it("returns 401 when no password is provided", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const validatePasswordMock = vi.mocked(auth.validatePassword);
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(true);
+    validatePasswordMock.mockClear();
+
+    const request = new Request("http://localhost/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({}),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(401);
+    expect(validatePasswordMock).not.toHaveBeenCalled();
+  });
+
   it("returns success without cookie when no cookie value is available", async () => {
     const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
     const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
@@ -117,5 +137,28 @@ describe("POST /api/auth/login", () => {
     expect(response.headers.get("Set-Cookie")).toContain("sd_auth=token-123");
     expect(response.headers.get("Set-Cookie")).toContain("Secure");
     await expect(response.json()).resolves.toEqual({ authenticated: true, required: true });
+  });
+
+  it("sets auth cookie without Secure directive over an insecure connection", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const validatePasswordMock = vi.mocked(auth.validatePassword);
+    const createAuthCookieValueMock = vi.mocked(auth.createAuthCookieValue);
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(true);
+    validatePasswordMock.mockReturnValue(true);
+    createAuthCookieValueMock.mockReturnValue("token-456");
+
+    const request = new Request("http://localhost/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ password: "ok" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Set-Cookie")).toContain("sd_auth=token-456");
+    expect(response.headers.get("Set-Cookie")).not.toContain("Secure");
   });
 });
