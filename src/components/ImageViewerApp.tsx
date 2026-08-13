@@ -33,12 +33,13 @@ import {
   buildNextQueryString,
   metadataFilterIdToQueryChanges,
   normalizePoseFilters,
+  parseCharacterSortOrder,
   parseShowOnlyNewImages,
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
 } from "@/components/image-viewer/persistent-filters";
 import { formatStyleLabel } from "@/components/image-viewer/utils";
-import type { IImageItem, ILibraryData, TMajorFilter } from "@/types/library";
+import type { IImageItem, ILibraryData, TCharacterSortOrder, TMajorFilter } from "@/types/library";
 import { ImageViewerBody } from "./ImageViewerBody";
 import { ImageDetailModal } from "@/components/image-viewer/ImageDetailModal";
 import { ScrollToTopButton } from "@/components/image-viewer/ScrollToTopButton";
@@ -120,6 +121,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   const selectedCharacter = majorFilter === "character" ? rawChar : null;
   const selectedPoseFilters = useMemo(() => parseSelectedPoseFilters(searchParams), [searchParams]);
   const showOnlyNewImages = useMemo(() => parseShowOnlyNewImages(searchParams), [searchParams]);
+  const characterSortOrder = useMemo(() => parseCharacterSortOrder(searchParams), [searchParams]);
   const selectedMetadataFilterId = useMemo(
     () => parseSelectedMetadataFilterId(searchParams),
     [searchParams],
@@ -382,6 +384,13 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     [updateQueryParams],
   );
 
+  const handleCharacterSortOrderChange = useCallback(
+    (nextSortOrder: TCharacterSortOrder) => {
+      updateQueryParams({ sort: nextSortOrder === "date" ? "date" : null });
+    },
+    [updateQueryParams],
+  );
+
   const modalImageIndexById = useMemo(() => {
     return new Map(modalFilteredImages.map((image, index) => [image.id, index]));
   }, [modalFilteredImages]);
@@ -527,6 +536,8 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
           onMajorFilterChange={handleMajorFilterChange}
           showOnlyNewImages={showOnlyNewImages}
           onShowOnlyNewImagesChange={handleShowOnlyNewImagesChange}
+          characterSortOrder={characterSortOrder}
+          onCharacterSortOrderChange={handleCharacterSortOrderChange}
           library={library}
         />
       </Drawer>
@@ -539,6 +550,8 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
             onMajorFilterChange={handleMajorFilterChange}
             showOnlyNewImages={showOnlyNewImages}
             onShowOnlyNewImagesChange={handleShowOnlyNewImagesChange}
+            characterSortOrder={characterSortOrder}
+            onCharacterSortOrderChange={handleCharacterSortOrderChange}
             library={library}
           />
         </Drawer>
@@ -552,6 +565,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
           selectedPoseFilters={selectedPoseFilters}
           selectedMetadataFilterId={selectedMetadataFilterId}
           showOnlyNewImages={showOnlyNewImages}
+          characterSortOrder={characterSortOrder}
           characterDetailStyle={characterDetailStyle}
           characterDetailPose={characterDetailPose}
           reloadToken={libraryRefreshToken}

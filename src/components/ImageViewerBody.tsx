@@ -18,6 +18,7 @@ import type {
   IImageItem,
   ILibraryData,
   IMetadataFilterOption,
+  TCharacterSortOrder,
   TMajorFilter,
 } from "@/types/library";
 
@@ -27,6 +28,7 @@ interface IImageViewerBodyProps {
   selectedPoseFilters: string[];
   selectedMetadataFilterId: string;
   showOnlyNewImages: boolean;
+  characterSortOrder: TCharacterSortOrder;
   characterDetailStyle: string;
   characterDetailPose: string;
   reloadToken: number;
@@ -101,6 +103,7 @@ export const ImageViewerBody = ({
   selectedPoseFilters,
   selectedMetadataFilterId,
   showOnlyNewImages,
+  characterSortOrder,
   characterDetailStyle,
   characterDetailPose,
   reloadToken,
@@ -216,12 +219,16 @@ export const ImageViewerBody = ({
   ]);
 
   const filteredImages = useMemo(() => {
-    if (!showOnlyNewImages) {
-      return library.images;
+    const baseImages = showOnlyNewImages
+      ? library.images.filter((image) => image.isNew)
+      : library.images;
+
+    if (characterSortOrder !== "date") {
+      return baseImages;
     }
 
-    return library.images.filter((image) => image.isNew);
-  }, [library.images, showOnlyNewImages]);
+    return [...baseImages].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+  }, [library.images, showOnlyNewImages, characterSortOrder]);
 
   const charactersForBrowseStyle = useMemo(() => {
     const visibleCharacterNames = new Set(filteredImages.map((image) => image.characterName));
@@ -501,6 +508,7 @@ export const ImageViewerBody = ({
         charactersForBrowseStyle={charactersForBrowseStyle}
         visibleCharacterDetailImages={visibleCharacterDetailImages}
         showNewBadge={!showOnlyNewImages}
+        characterSortOrder={characterSortOrder}
         onSelectCharacter={setSelectedCharacter}
         onCharacterDetailStyleChange={setCharacterDetailStyle}
         onCharacterDetailPoseChange={setCharacterDetailPose}

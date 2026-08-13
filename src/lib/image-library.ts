@@ -418,7 +418,10 @@ const resolveStyleFolders = async (
   });
 };
 
-const toCharacterSummary = (accumulator: ICharacterAccumulator): ICharacterSummary => {
+const toCharacterSummary = (
+  accumulator: ICharacterAccumulator,
+  firstSeenAt: number,
+): ICharacterSummary => {
   return {
     name: accumulator.name,
     imageCount: accumulator.imageCount,
@@ -428,7 +431,21 @@ const toCharacterSummary = (accumulator: ICharacterAccumulator): ICharacterSumma
     category: null,
     serie: null,
     tags: [],
+    firstSeenAt,
   };
+};
+
+const computeFirstSeenByCharacter = (imageItems: IImageItem[]): Map<string, number> => {
+  const firstSeenByCharacter = new Map<string, number>();
+
+  for (const imageItem of imageItems) {
+    const currentFirstSeen = firstSeenByCharacter.get(imageItem.characterName);
+    if (currentFirstSeen === undefined || imageItem.firstSeenAt < currentFirstSeen) {
+      firstSeenByCharacter.set(imageItem.characterName, imageItem.firstSeenAt);
+    }
+  }
+
+  return firstSeenByCharacter;
 };
 
 const toPoseSummaries = (poseCounter: Map<string, number>): IPoseSummary[] => {
@@ -482,6 +499,7 @@ const buildImageItem = (style: string, characterName: string, pngFile: string): 
     poseVariant: parsedPose.poseVariant,
     relativePath,
     isNew: false,
+    firstSeenAt: 0,
   };
 };
 
@@ -575,6 +593,7 @@ const markNewImages = (
     }
 
     imageItem.isNew = now - firstSeenAt <= NEW_IMAGE_WINDOW_MS;
+    imageItem.firstSeenAt = firstSeenAt;
   }
 
   for (const [cacheKey, firstSeenAt] of firstSeenByRelativePath.entries()) {
@@ -692,9 +711,14 @@ const toLibraryData = (
   posePatternFilters: IPosePatternFilter[],
   cacheAvailable: boolean,
 ): ILibraryData => {
+  const firstSeenByCharacter = computeFirstSeenByCharacter(state.imageItems);
+
   const characters = [...state.characterMap.values()]
     .map((accumulator) => {
-      const summary = toCharacterSummary(accumulator);
+      const summary = toCharacterSummary(
+        accumulator,
+        firstSeenByCharacter.get(accumulator.name) ?? 0,
+      );
       const metadata = metadataByCharacter.get(normalizeCharacterNameKey(summary.name));
 
       if (!metadata) {
