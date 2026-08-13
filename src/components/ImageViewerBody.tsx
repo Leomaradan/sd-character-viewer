@@ -320,7 +320,7 @@ export const ImageViewerBody = ({
     const normalizedSearchText = styleViewSearchText.trim().toLowerCase();
     const selectedMetadataFilter = metadataFilterById.get(effectiveStyleMetadataFilterId);
 
-    return filteredImages.filter((image) => {
+    const matchingImages = filteredImages.filter((image) => {
       const matchesStyle = image.style === effectiveStyleViewStyle;
       const matchesSearchText =
         normalizedSearchText.length === 0
@@ -342,13 +342,20 @@ export const ImageViewerBody = ({
 
       return matchesStyle && matchesSearchText && matchesMetadata;
     });
+
+    if (characterSortOrder === "date") {
+      return [...matchingImages].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+    }
+
+    return matchingImages;
   }, [
-    filteredImages,
-    effectiveStyleViewStyle,
-    styleViewSearchText,
-    effectiveStyleMetadataFilterId,
-    metadataFilterById,
     characterMetadataByName,
+    characterSortOrder,
+    effectiveStyleMetadataFilterId,
+    effectiveStyleViewStyle,
+    filteredImages,
+    metadataFilterById,
+    styleViewSearchText,
   ]);
 
   const posePatternFiltersById = useMemo(() => {
@@ -377,7 +384,7 @@ export const ImageViewerBody = ({
       .filter((filter): filter is { label: string; regex: RegExp } => Boolean(filter));
     const selectedMetadataFilter = metadataFilterById.get(effectivePoseMetadataFilterId);
 
-    return filteredImages.filter((image) => {
+    const matchingImages = filteredImages.filter((image) => {
       const matchesPatternPose = selectedPatternFilters.some((filter) => {
         filter.regex.lastIndex = 0;
         return filter.regex.test(image.poseBaseName);
@@ -405,15 +412,22 @@ export const ImageViewerBody = ({
 
       return matchesPose && matchesStyle && matchesCharacter && matchesMetadata;
     });
+
+    if (characterSortOrder === "date") {
+      return [...matchingImages].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+    }
+
+    return matchingImages;
   }, [
-    filteredImages,
-    selectedPoseFilters,
-    effectivePoseViewStyle,
-    poseViewCharacterSearch,
-    posePatternFiltersById,
-    effectivePoseMetadataFilterId,
-    metadataFilterById,
     characterMetadataByName,
+    characterSortOrder,
+    effectivePoseMetadataFilterId,
+    effectivePoseViewStyle,
+    filteredImages,
+    metadataFilterById,
+    posePatternFiltersById,
+    poseViewCharacterSearch,
+    selectedPoseFilters,
   ]);
 
   const allPoseOptions = useMemo(() => {
