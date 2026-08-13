@@ -2,7 +2,7 @@
 
 import { Alert, Box, CircularProgress } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CharactersView } from "@/components/image-viewer/CharactersView";
 import { DEFAULT_LIBRARY } from "@/components/image-viewer/constants";
 import { EmptyState } from "@/components/image-viewer/EmptyState";
@@ -126,6 +126,7 @@ export const ImageViewerBody = ({
   const [library, setLibrary] = useState<ILibraryData>(DEFAULT_LIBRARY);
   const [isLoading, setIsLoading] = useState(true);
   const [requestError, setRequestError] = useState<string | null>(null);
+  const hasLoadedOnceRef = useRef(false);
 
   const [styleViewSearchText, setStyleViewSearchText] = useState<string>("");
   const [poseViewCharacterSearch, setPoseViewCharacterSearch] = useState<string>("");
@@ -181,7 +182,10 @@ export const ImageViewerBody = ({
 
     const loadLibrary = async () => {
       try {
-        setIsLoading(true);
+        // Only show the full-page spinner on the first load; background reloads (e.g. after delete/redraw) keep content in place to preserve scroll position.
+        if (!hasLoadedOnceRef.current) {
+          setIsLoading(true);
+        }
         const response = await fetch("/api/library", { cache: "no-store" });
 
         if (!response.ok) {
@@ -200,6 +204,7 @@ export const ImageViewerBody = ({
           setLibrary(data);
           onLibraryLoad(data);
           setRequestError(null);
+          hasLoadedOnceRef.current = true;
 
           if (nextMetadataFilterId !== selectedMetadataFilterId) {
             setSelectedMetadataFilterId(nextMetadataFilterId);
