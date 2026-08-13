@@ -259,4 +259,49 @@ describe("/api/image PATCH", () => {
     const data = (await response.json()) as { newPath: string };
     expect(data.newPath).toBe("ImageA 2.png");
   });
+
+  it("PATCH skips numbers already used by existing renamed files", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const readBooleanEnvFlagMock = vi.mocked(env.readBooleanEnvFlag);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const renameMock = vi.mocked(fs.rename);
+    const readdirMock = vi.mocked(fs.readdir);
+    const removeFirstSeenCacheEntryMock = vi.mocked(removeFirstSeenCacheEntry);
+
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    readBooleanEnvFlagMock.mockReturnValue(true);
+    resolveImageFilePathMock.mockReturnValue("/tmp/ImageA.png");
+    renameMock.mockResolvedValue(undefined);
+    readdirMock.mockResolvedValue(["ImageA 2.png", "ImageA 3.png", "Unrelated.png"] as never);
+    removeFirstSeenCacheEntryMock.mockResolvedValue(undefined);
+
+    const response = await PATCH(new Request("http://localhost/api/image?path=ImageA.png"));
+
+    expect(response.status).toBe(200);
+    expect(renameMock).toHaveBeenCalledWith("/tmp/ImageA.png", "/tmp/ImageA 4.png");
+    const data = (await response.json()) as { newPath: string };
+    expect(data.newPath).toBe("ImageA 4.png");
+  });
+
+  it("PATCH returns 500 when renaming fails", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const readBooleanEnvFlagMock = vi.mocked(env.readBooleanEnvFlag);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const renameMock = vi.mocked(fs.rename);
+    const readdirMock = vi.mocked(fs.readdir);
+
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    readBooleanEnvFlagMock.mockReturnValue(true);
+    resolveImageFilePathMock.mockReturnValue("/tmp/ImageA.png");
+    readdirMock.mockResolvedValue([]);
+    renameMock.mockRejectedValue(new Error("disk error"));
+
+    const response = await PATCH(new Request("http://localhost/api/image?path=ImageA.png"));
+
+    expect(response.status).toBe(500);
+  });
 });

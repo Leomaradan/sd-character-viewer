@@ -1,3 +1,5 @@
+import type { TCharacterSortOrder } from "@/types/library";
+
 interface IQueryParamsReader {
   get: (key: string) => string | null;
   getAll: (key: string) => string[];
@@ -36,6 +38,20 @@ export const parseSelectedMetadataFilterId = (queryParams: IQueryParamsReader): 
 export const parseShowOnlyNewImages = (queryParams: IQueryParamsReader): boolean => {
   const rawValue = queryParams.get("new")?.trim().toLowerCase();
   return rawValue === "1" || rawValue === "true";
+};
+
+export const parseCharacterSortOrder = (queryParams: IQueryParamsReader): TCharacterSortOrder => {
+  const rawValue = queryParams.get("sort")?.trim().toLowerCase();
+  return rawValue === "date" ? "date" : "name";
+};
+
+export const parseStyleViewStyle = (queryParams: IQueryParamsReader): string => {
+  return queryParams.get("styleTab")?.trim() ?? "";
+};
+
+export const parsePoseViewStyle = (queryParams: IQueryParamsReader): string => {
+  const rawValue = queryParams.get("poseStyle")?.trim();
+  return rawValue ? rawValue : "--all--";
 };
 
 export const normalizePoseFilters = (poses: string[]): string[] => {

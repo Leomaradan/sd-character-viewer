@@ -2,6 +2,8 @@ export const STYLES = ["realistic", "3d", "anime"] as const;
 
 export type TMajorFilter = "character" | "style" | "pose";
 
+export type TCharacterSortOrder = "name" | "date";
+
 export interface IImageItem {
   id: string;
   style: string;
@@ -11,6 +13,7 @@ export interface IImageItem {
   poseVariant: number;
   relativePath: string;
   isNew: boolean;
+  firstSeenAt: number;
 }
 
 export interface ICharacterSummary {
@@ -22,6 +25,7 @@ export interface ICharacterSummary {
   category: string | null;
   serie: string | null;
   tags: string[];
+  firstSeenAt: number;
 }
 
 export interface IMetadataFilterOption {

@@ -33,6 +33,10 @@ describe("image-viewer utils", () => {
     );
   });
 
+  it("returns Unknown for a blank style", () => {
+    expect(formatStyleLabel("   ")).toBe("Unknown");
+  });
+
   it("builds sorted unique pose options", () => {
     const options = buildPoseOptions([
       { poseBaseName: "Pose10" } as never,
@@ -88,6 +92,18 @@ describe("image-viewer utils", () => {
 
   it("keeps all poses unchanged when no pattern filters are configured", () => {
     const options = buildPoseFilterOptions(["Base", "With Alice"], []);
+
+    expect(options).toEqual([
+      { value: "Base", label: "Base" },
+      { value: "With Alice", label: "With Alice" },
+    ]);
+  });
+
+  it("ignores pattern filters with invalid regex patterns", () => {
+    const options = buildPoseFilterOptions(
+      ["Base", "With Alice"],
+      [{ id: "pose-pattern::invalid", label: "Invalid", pattern: "(" }],
+    );
 
     expect(options).toEqual([
       { value: "Base", label: "Base" },

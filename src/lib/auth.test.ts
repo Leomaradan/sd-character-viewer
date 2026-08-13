@@ -9,6 +9,7 @@ import {
   createAuthCookieValue,
   isAuthenticatedRequest,
   isMisconfigured,
+  isPasswordProtectionEnabled,
   validatePassword,
 } from "@/lib/auth";
 
@@ -45,6 +46,38 @@ describe("isMisconfigured", () => {
   it("returns false when only salt is set without password", () => {
     process.env.SD_PASSWORD_SALT = "abc123";
     expect(isMisconfigured()).toBe(false);
+  });
+});
+
+describe("isPasswordProtectionEnabled", () => {
+  afterEach(() => {
+    delete process.env.SD_PASSWORD;
+  });
+
+  it("returns false when no password is configured", () => {
+    expect(isPasswordProtectionEnabled()).toBe(false);
+  });
+
+  it("returns true when a password is configured", () => {
+    process.env.SD_PASSWORD = "secret";
+    expect(isPasswordProtectionEnabled()).toBe(true);
+  });
+});
+
+describe("createAuthCookieValue", () => {
+  afterEach(() => {
+    delete process.env.SD_PASSWORD;
+    delete process.env.SD_PASSWORD_SALT;
+  });
+
+  it("returns null when password protection is disabled", () => {
+    expect(createAuthCookieValue()).toBeNull();
+  });
+
+  it("returns a token when a password is configured", () => {
+    process.env.SD_PASSWORD = "secret";
+    process.env.SD_PASSWORD_SALT = "cookie-salt";
+    expect(createAuthCookieValue()).toEqual(expect.any(String));
   });
 });
 
@@ -116,5 +149,16 @@ describe("isAuthenticatedRequest", () => {
     process.env.SD_PASSWORD_SALT = "rotated-salt";
 
     expect(isAuthenticatedRequest(makeRequest(staleToken))).toBe(false);
+  });
+
+  it("rejects a request whose cookie value cannot be percent-decoded", () => {
+    process.env.SD_PASSWORD = "correct-pass";
+    process.env.SD_PASSWORD_SALT = "auth-salt-malformed";
+
+    const headers = new Headers();
+    headers.set("cookie", `${AUTH_COOKIE_NAME}=%`);
+    const request = new Request("http://localhost/", { headers });
+
+    expect(isAuthenticatedRequest(request)).toBe(false);
   });
 });

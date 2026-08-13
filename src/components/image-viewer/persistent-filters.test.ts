@@ -2,9 +2,12 @@ import {
   buildNextQueryString,
   metadataFilterIdToQueryChanges,
   normalizePoseFilters,
+  parseCharacterSortOrder,
+  parsePoseViewStyle,
   parseShowOnlyNewImages,
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
+  parseStyleViewStyle,
 } from "@/components/image-viewer/persistent-filters";
 import { describe, expect, it } from "vitest";
 
@@ -56,6 +59,41 @@ describe("persistent filters", () => {
         "Base",
         "Jump",
       ]);
+    });
+  });
+
+  describe("parseCharacterSortOrder", () => {
+    it("returns date when explicitly requested", () => {
+      expect(parseCharacterSortOrder(new URLSearchParams("sort=date"))).toBe("date");
+      expect(parseCharacterSortOrder(new URLSearchParams("sort=DATE"))).toBe("date");
+    });
+
+    it("defaults to name for any other value", () => {
+      expect(parseCharacterSortOrder(new URLSearchParams("sort=name"))).toBe("name");
+      expect(parseCharacterSortOrder(new URLSearchParams(""))).toBe("name");
+    });
+  });
+
+  describe("parseStyleViewStyle", () => {
+    it("reads and trims the configured style tab", () => {
+      expect(parseStyleViewStyle(new URLSearchParams("styleTab=%20anime%20"))).toBe("anime");
+    });
+
+    it("returns an empty string when absent", () => {
+      expect(parseStyleViewStyle(new URLSearchParams(""))).toBe("");
+    });
+  });
+
+  describe("parsePoseViewStyle", () => {
+    it("reads and trims the configured style filter", () => {
+      expect(parsePoseViewStyle(new URLSearchParams("poseStyle=%20realistic%20"))).toBe(
+        "realistic",
+      );
+    });
+
+    it("defaults to --all-- when absent or blank", () => {
+      expect(parsePoseViewStyle(new URLSearchParams(""))).toBe("--all--");
+      expect(parsePoseViewStyle(new URLSearchParams("poseStyle=%20"))).toBe("--all--");
     });
   });
 

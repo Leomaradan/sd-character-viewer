@@ -2,7 +2,7 @@
 
 import { Alert, Box, CircularProgress } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CharactersView } from "@/components/image-viewer/CharactersView";
 import { DEFAULT_LIBRARY } from "@/components/image-viewer/constants";
 import { EmptyState } from "@/components/image-viewer/EmptyState";
@@ -18,6 +18,7 @@ import type {
   IImageItem,
   ILibraryData,
   IMetadataFilterOption,
+  TCharacterSortOrder,
   TMajorFilter,
 } from "@/types/library";
 
@@ -27,6 +28,9 @@ interface IImageViewerBodyProps {
   selectedPoseFilters: string[];
   selectedMetadataFilterId: string;
   showOnlyNewImages: boolean;
+  characterSortOrder: TCharacterSortOrder;
+  styleViewStyle: string;
+  poseViewStyle: string;
   characterDetailStyle: string;
   characterDetailPose: string;
   reloadToken: number;
@@ -36,6 +40,8 @@ interface IImageViewerBodyProps {
   setSelectedCharacter: (characterName: string | null) => void;
   setSelectedPoseFilters: (nextPoseFilters: string[] | ((prev: string[]) => string[])) => void;
   setSelectedMetadataFilterId: (metadataFilterId: string) => void;
+  setStyleViewStyle: (style: string) => void;
+  setPoseViewStyle: (style: string) => void;
   setCharacterDetailStyle: (style: string) => void;
   setCharacterDetailPose: (pose: string) => void;
 }
@@ -101,6 +107,9 @@ export const ImageViewerBody = ({
   selectedPoseFilters,
   selectedMetadataFilterId,
   showOnlyNewImages,
+  characterSortOrder,
+  styleViewStyle,
+  poseViewStyle,
   characterDetailStyle,
   characterDetailPose,
   reloadToken,
@@ -109,23 +118,38 @@ export const ImageViewerBody = ({
   setSelectedCharacter,
   setSelectedPoseFilters,
   setSelectedMetadataFilterId,
+  setStyleViewStyle,
+  setPoseViewStyle,
   setCharacterDetailStyle,
   setCharacterDetailPose,
 }: Readonly<IImageViewerBodyProps>) => {
   const [library, setLibrary] = useState<ILibraryData>(DEFAULT_LIBRARY);
   const [isLoading, setIsLoading] = useState(true);
   const [requestError, setRequestError] = useState<string | null>(null);
+  const hasLoadedOnceRef = useRef(false);
 
-  const [styleViewStyle, setStyleViewStyle] = useState<string>("3d");
   const [styleViewSearchText, setStyleViewSearchText] = useState<string>("");
-
-  const [poseViewStyle, setPoseViewStyle] = useState<string>("--all--");
   const [poseViewCharacterSearch, setPoseViewCharacterSearch] = useState<string>("");
 
-  const onStyleSelect = useCallback((style: string) => {
-    setStyleViewStyle(style);
-    setStyleViewSearchText("");
-  }, []);
+  const effectiveStyleViewStyle = useMemo(() => {
+    return styleViewStyle && library.styles.includes(styleViewStyle)
+      ? styleViewStyle
+      : library.defaultStyle;
+  }, [styleViewStyle, library.styles, library.defaultStyle]);
+
+  const effectivePoseViewStyle = useMemo(() => {
+    return poseViewStyle === "--all--" || library.styles.includes(poseViewStyle)
+      ? poseViewStyle
+      : "--all--";
+  }, [poseViewStyle, library.styles]);
+
+  const onStyleSelect = useCallback(
+    (style: string) => {
+      setStyleViewStyle(style);
+      setStyleViewSearchText("");
+    },
+    [setStyleViewStyle],
+  );
 
   const onClearPoses = useCallback(() => {
     setSelectedPoseFilters([]);
@@ -158,7 +182,10 @@ export const ImageViewerBody = ({
 
     const loadLibrary = async () => {
       try {
-        setIsLoading(true);
+        // Only show the full-page spinner on the first load; background reloads (e.g. after delete/redraw) keep content in place to preserve scroll position.
+        if (!hasLoadedOnceRef.current) {
+          setIsLoading(true);
+        }
         const response = await fetch("/api/library", { cache: "no-store" });
 
         if (!response.ok) {
@@ -177,7 +204,7 @@ export const ImageViewerBody = ({
           setLibrary(data);
           onLibraryLoad(data);
           setRequestError(null);
-          setStyleViewStyle(data.defaultStyle);
+          hasLoadedOnceRef.current = true;
 
           if (nextMetadataFilterId !== selectedMetadataFilterId) {
             setSelectedMetadataFilterId(nextMetadataFilterId);
@@ -216,11 +243,7 @@ export const ImageViewerBody = ({
   ]);
 
   const filteredImages = useMemo(() => {
-    if (!showOnlyNewImages) {
-      return library.images;
-    }
-
-    return library.images.filter((image) => image.isNew);
+    return showOnlyNewImages ? library.images.filter((image) => image.isNew) : library.images;
   }, [library.images, showOnlyNewImages]);
 
   const charactersForBrowseStyle = useMemo(() => {
@@ -298,7 +321,7 @@ export const ImageViewerBody = ({
     const selectedMetadataFilter = metadataFilterById.get(effectiveStyleMetadataFilterId);
 
     return filteredImages.filter((image) => {
-      const matchesStyle = image.style === styleViewStyle;
+      const matchesStyle = image.style === effectiveStyleViewStyle;
       const matchesSearchText =
         normalizedSearchText.length === 0
           ? true
@@ -321,7 +344,7 @@ export const ImageViewerBody = ({
     });
   }, [
     filteredImages,
-    styleViewStyle,
+    effectiveStyleViewStyle,
     styleViewSearchText,
     effectiveStyleMetadataFilterId,
     metadataFilterById,
@@ -361,7 +384,8 @@ export const ImageViewerBody = ({
       });
       const matchesPose =
         isAllPosesSelected || selectedPoses.has(image.poseBaseName) || matchesPatternPose;
-      const matchesStyle = poseViewStyle === "--all--" ? true : image.style === poseViewStyle;
+      const matchesStyle =
+        effectivePoseViewStyle === "--all--" ? true : image.style === effectivePoseViewStyle;
       const matchesCharacter =
         normalizedCharacterSearch.length === 0
           ? true
@@ -384,7 +408,7 @@ export const ImageViewerBody = ({
   }, [
     filteredImages,
     selectedPoseFilters,
-    poseViewStyle,
+    effectivePoseViewStyle,
     poseViewCharacterSearch,
     posePatternFiltersById,
     effectivePoseMetadataFilterId,
@@ -501,6 +525,7 @@ export const ImageViewerBody = ({
         charactersForBrowseStyle={charactersForBrowseStyle}
         visibleCharacterDetailImages={visibleCharacterDetailImages}
         showNewBadge={!showOnlyNewImages}
+        characterSortOrder={characterSortOrder}
         onSelectCharacter={setSelectedCharacter}
         onCharacterDetailStyleChange={setCharacterDetailStyle}
         onCharacterDetailPoseChange={setCharacterDetailPose}
@@ -512,7 +537,7 @@ export const ImageViewerBody = ({
       <StylesView
         styles={library.styles}
         styleLabel={styleLabel}
-        styleViewStyle={styleViewStyle}
+        styleViewStyle={effectiveStyleViewStyle}
         styleViewSearchText={styleViewSearchText}
         metadataFilterOptions={metadataFilterOptions}
         selectedMetadataFilterId={effectiveStyleMetadataFilterId}
@@ -533,7 +558,7 @@ export const ImageViewerBody = ({
       styleLabel={styleLabel}
       poseViewPoseOptions={poseViewPoseOptions}
       poseViewSelectedPoses={selectedPoseFilters}
-      poseViewStyle={poseViewStyle}
+      poseViewStyle={effectivePoseViewStyle}
       poseViewCharacterSearch={poseViewCharacterSearch}
       metadataFilterOptions={metadataFilterOptions}
       selectedMetadataFilterId={effectivePoseMetadataFilterId}

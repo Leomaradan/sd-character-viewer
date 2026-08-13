@@ -19,7 +19,7 @@ import LightModeIcon from "@mui/icons-material/LightMode";
 import PaletteIcon from "@mui/icons-material/Palette";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import { useColorScheme } from "@mui/material/styles";
-import type { ILibraryData, TMajorFilter } from "@/types/library";
+import type { ILibraryData, TCharacterSortOrder, TMajorFilter } from "@/types/library";
 import { useCallback, type ChangeEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { PADDING, MARGIN_BOTTOM, BORDER_RADIUS } from "./constants";
 
@@ -40,12 +40,17 @@ const NEW_FILTER_SECTION_SX = {
 };
 const NEW_FILTER_LABEL_SX = { ml: 0 };
 const CACHE_UNAVAILABLE_TEXT_SX = { display: "block", mt: 1, opacity: 0.6 };
+const SORT_ORDER_SECTION_SX = { mt: 2 };
+const SORT_ORDER_TOGGLE_SX = { mt: 0.5, width: "100%" };
+const SORT_ORDER_BUTTON_SX = { flex: 1 };
 
 interface ISideMenuProps {
   majorFilter: TMajorFilter;
   onMajorFilterChange: (nextFilter: TMajorFilter) => void;
   showOnlyNewImages: boolean;
   onShowOnlyNewImagesChange: (enabled: boolean) => void;
+  characterSortOrder?: TCharacterSortOrder;
+  onCharacterSortOrderChange?: (nextSortOrder: TCharacterSortOrder) => void;
   library: ILibraryData;
 }
 
@@ -54,6 +59,8 @@ export const SideMenu = ({
   onMajorFilterChange,
   showOnlyNewImages,
   onShowOnlyNewImagesChange,
+  characterSortOrder = "name",
+  onCharacterSortOrderChange,
   library,
 }: Readonly<ISideMenuProps>) => {
   const { mode, setMode } = useColorScheme();
@@ -84,6 +91,15 @@ export const SideMenu = ({
       onShowOnlyNewImagesChange(checked);
     },
     [onShowOnlyNewImagesChange],
+  );
+
+  const handleSortOrderChange = useCallback(
+    (_: ReactMouseEvent<HTMLElement>, newSortOrder: TCharacterSortOrder | null) => {
+      if (newSortOrder) {
+        onCharacterSortOrderChange?.(newSortOrder);
+      }
+    },
+    [onCharacterSortOrderChange],
   );
 
   return (
@@ -138,6 +154,24 @@ export const SideMenu = ({
             Cache unavailable - refresh disabled
           </Typography>
         )}
+
+        <Box sx={SORT_ORDER_SECTION_SX}>
+          <Typography variant="overline">Sort by</Typography>
+          <ToggleButtonGroup
+            value={characterSortOrder}
+            exclusive
+            onChange={handleSortOrderChange}
+            size="small"
+            sx={SORT_ORDER_TOGGLE_SX}
+          >
+            <ToggleButton value="name" sx={SORT_ORDER_BUTTON_SX} aria-label="sort by name">
+              Name
+            </ToggleButton>
+            <ToggleButton value="date" sx={SORT_ORDER_BUTTON_SX} aria-label="sort by date">
+              Date
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
       </Box>
 
       <Box sx={THEME_SECTION_SX}>

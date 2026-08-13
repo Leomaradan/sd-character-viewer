@@ -2,7 +2,12 @@
 
 import { Box, Chip, type SelectChangeEvent, Stack, Typography } from "@mui/material";
 import { ImageCard } from "@/components/image-viewer/ImageCard";
-import type { ICharacterSummary, IImageItem, IMetadataFilterOption } from "@/types/library";
+import type {
+  ICharacterSummary,
+  IImageItem,
+  IMetadataFilterOption,
+  TCharacterSortOrder,
+} from "@/types/library";
 import { FLEXWRAP, GRID, STACK_SPACING } from "./constants";
 import { useCallback, useMemo } from "react";
 import { StyleView } from "./StyleView";
@@ -26,6 +31,7 @@ interface ICharactersViewProps {
   charactersForBrowseStyle: ICharacterSummary[];
   visibleCharacterDetailImages: IImageItem[];
   showNewBadge: boolean;
+  characterSortOrder: TCharacterSortOrder;
   onSelectCharacter: (characterName: string | null) => void;
   onCharacterDetailStyleChange: (style: string) => void;
   onCharacterDetailPoseChange: (pose: string) => void;
@@ -84,6 +90,7 @@ export const CharactersView = ({
   charactersForBrowseStyle,
   visibleCharacterDetailImages,
   showNewBadge,
+  characterSortOrder,
   onSelectCharacter,
   onMetadataFilterChange,
   onClearMetadataFilter,
@@ -118,25 +125,37 @@ export const CharactersView = ({
 
   const filteredCharacters = useMemo(() => {
     const selectedOption = metadataFilterById.get(effectiveSelectedMetadataFilterId);
+    const matchingCharacters = selectedOption
+      ? charactersForBrowseStyle.filter((character) => {
+          if (selectedOption.type === "category") {
+            return character.category === selectedOption.value;
+          }
 
-    if (!selectedOption) {
-      return charactersForBrowseStyle;
+          if (selectedOption.type === "tag") {
+            return character.tags.includes(selectedOption.value);
+          }
+
+          return character.serie === selectedOption.value;
+        })
+      : charactersForBrowseStyle;
+
+    if (characterSortOrder === "date") {
+      return [...matchingCharacters].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
     }
 
-    return charactersForBrowseStyle.filter((character) => {
-      if (selectedOption.type === "category") {
-        return character.category === selectedOption.value;
-      }
-
-      if (selectedOption.type === "tag") {
-        return character.tags.includes(selectedOption.value);
-      }
-
-      return character.serie === selectedOption.value;
-    });
-  }, [charactersForBrowseStyle, effectiveSelectedMetadataFilterId, metadataFilterById]);
+    return matchingCharacters;
+  }, [
+    charactersForBrowseStyle,
+    effectiveSelectedMetadataFilterId,
+    metadataFilterById,
+    characterSortOrder,
+  ]);
 
   const groupedCharacters = useMemo((): ICharacterGroup[] => {
+    if (characterSortOrder === "date") {
+      return filteredCharacters.length > 0 ? [{ letter: "", characters: filteredCharacters }] : [];
+    }
+
     const map = new Map<string, ICharacterSummary[]>();
     for (const character of filteredCharacters) {
       const letter = getGroupLetter(character.name);
@@ -153,9 +172,9 @@ export const CharactersView = ({
       return a.localeCompare(b);
     });
     return letters.map((letter) => ({ letter, characters: map.get(letter)! }));
-  }, [filteredCharacters]);
+  }, [filteredCharacters, characterSortOrder]);
 
-  const showAzBar = groupedCharacters.length > 1;
+  const showAzBar = characterSortOrder === "name" && groupedCharacters.length > 1;
   const hasActiveMetadataFilters = Boolean(effectiveSelectedMetadataFilterId);
 
   return (
