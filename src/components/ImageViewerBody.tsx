@@ -29,6 +29,8 @@ interface IImageViewerBodyProps {
   selectedMetadataFilterId: string;
   showOnlyNewImages: boolean;
   characterSortOrder: TCharacterSortOrder;
+  styleViewStyle: string;
+  poseViewStyle: string;
   characterDetailStyle: string;
   characterDetailPose: string;
   reloadToken: number;
@@ -38,6 +40,8 @@ interface IImageViewerBodyProps {
   setSelectedCharacter: (characterName: string | null) => void;
   setSelectedPoseFilters: (nextPoseFilters: string[] | ((prev: string[]) => string[])) => void;
   setSelectedMetadataFilterId: (metadataFilterId: string) => void;
+  setStyleViewStyle: (style: string) => void;
+  setPoseViewStyle: (style: string) => void;
   setCharacterDetailStyle: (style: string) => void;
   setCharacterDetailPose: (pose: string) => void;
 }
@@ -104,6 +108,8 @@ export const ImageViewerBody = ({
   selectedMetadataFilterId,
   showOnlyNewImages,
   characterSortOrder,
+  styleViewStyle,
+  poseViewStyle,
   characterDetailStyle,
   characterDetailPose,
   reloadToken,
@@ -112,6 +118,8 @@ export const ImageViewerBody = ({
   setSelectedCharacter,
   setSelectedPoseFilters,
   setSelectedMetadataFilterId,
+  setStyleViewStyle,
+  setPoseViewStyle,
   setCharacterDetailStyle,
   setCharacterDetailPose,
 }: Readonly<IImageViewerBodyProps>) => {
@@ -119,16 +127,28 @@ export const ImageViewerBody = ({
   const [isLoading, setIsLoading] = useState(true);
   const [requestError, setRequestError] = useState<string | null>(null);
 
-  const [styleViewStyle, setStyleViewStyle] = useState<string>("3d");
   const [styleViewSearchText, setStyleViewSearchText] = useState<string>("");
-
-  const [poseViewStyle, setPoseViewStyle] = useState<string>("--all--");
   const [poseViewCharacterSearch, setPoseViewCharacterSearch] = useState<string>("");
 
-  const onStyleSelect = useCallback((style: string) => {
-    setStyleViewStyle(style);
-    setStyleViewSearchText("");
-  }, []);
+  const effectiveStyleViewStyle = useMemo(() => {
+    return styleViewStyle && library.styles.includes(styleViewStyle)
+      ? styleViewStyle
+      : library.defaultStyle;
+  }, [styleViewStyle, library.styles, library.defaultStyle]);
+
+  const effectivePoseViewStyle = useMemo(() => {
+    return poseViewStyle === "--all--" || library.styles.includes(poseViewStyle)
+      ? poseViewStyle
+      : "--all--";
+  }, [poseViewStyle, library.styles]);
+
+  const onStyleSelect = useCallback(
+    (style: string) => {
+      setStyleViewStyle(style);
+      setStyleViewSearchText("");
+    },
+    [setStyleViewStyle],
+  );
 
   const onClearPoses = useCallback(() => {
     setSelectedPoseFilters([]);
@@ -180,7 +200,6 @@ export const ImageViewerBody = ({
           setLibrary(data);
           onLibraryLoad(data);
           setRequestError(null);
-          setStyleViewStyle(data.defaultStyle);
 
           if (nextMetadataFilterId !== selectedMetadataFilterId) {
             setSelectedMetadataFilterId(nextMetadataFilterId);
@@ -305,7 +324,7 @@ export const ImageViewerBody = ({
     const selectedMetadataFilter = metadataFilterById.get(effectiveStyleMetadataFilterId);
 
     return filteredImages.filter((image) => {
-      const matchesStyle = image.style === styleViewStyle;
+      const matchesStyle = image.style === effectiveStyleViewStyle;
       const matchesSearchText =
         normalizedSearchText.length === 0
           ? true
@@ -328,7 +347,7 @@ export const ImageViewerBody = ({
     });
   }, [
     filteredImages,
-    styleViewStyle,
+    effectiveStyleViewStyle,
     styleViewSearchText,
     effectiveStyleMetadataFilterId,
     metadataFilterById,
@@ -368,7 +387,8 @@ export const ImageViewerBody = ({
       });
       const matchesPose =
         isAllPosesSelected || selectedPoses.has(image.poseBaseName) || matchesPatternPose;
-      const matchesStyle = poseViewStyle === "--all--" ? true : image.style === poseViewStyle;
+      const matchesStyle =
+        effectivePoseViewStyle === "--all--" ? true : image.style === effectivePoseViewStyle;
       const matchesCharacter =
         normalizedCharacterSearch.length === 0
           ? true
@@ -391,7 +411,7 @@ export const ImageViewerBody = ({
   }, [
     filteredImages,
     selectedPoseFilters,
-    poseViewStyle,
+    effectivePoseViewStyle,
     poseViewCharacterSearch,
     posePatternFiltersById,
     effectivePoseMetadataFilterId,
@@ -520,7 +540,7 @@ export const ImageViewerBody = ({
       <StylesView
         styles={library.styles}
         styleLabel={styleLabel}
-        styleViewStyle={styleViewStyle}
+        styleViewStyle={effectiveStyleViewStyle}
         styleViewSearchText={styleViewSearchText}
         metadataFilterOptions={metadataFilterOptions}
         selectedMetadataFilterId={effectiveStyleMetadataFilterId}
@@ -541,7 +561,7 @@ export const ImageViewerBody = ({
       styleLabel={styleLabel}
       poseViewPoseOptions={poseViewPoseOptions}
       poseViewSelectedPoses={selectedPoseFilters}
-      poseViewStyle={poseViewStyle}
+      poseViewStyle={effectivePoseViewStyle}
       poseViewCharacterSearch={poseViewCharacterSearch}
       metadataFilterOptions={metadataFilterOptions}
       selectedMetadataFilterId={effectivePoseMetadataFilterId}

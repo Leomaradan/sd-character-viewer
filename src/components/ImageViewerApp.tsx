@@ -34,9 +34,11 @@ import {
   metadataFilterIdToQueryChanges,
   normalizePoseFilters,
   parseCharacterSortOrder,
+  parsePoseViewStyle,
   parseShowOnlyNewImages,
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
+  parseStyleViewStyle,
 } from "@/components/image-viewer/persistent-filters";
 import { formatStyleLabel } from "@/components/image-viewer/utils";
 import type { IImageItem, ILibraryData, TCharacterSortOrder, TMajorFilter } from "@/types/library";
@@ -122,6 +124,8 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   const selectedPoseFilters = useMemo(() => parseSelectedPoseFilters(searchParams), [searchParams]);
   const showOnlyNewImages = useMemo(() => parseShowOnlyNewImages(searchParams), [searchParams]);
   const characterSortOrder = useMemo(() => parseCharacterSortOrder(searchParams), [searchParams]);
+  const styleViewStyle = useMemo(() => parseStyleViewStyle(searchParams), [searchParams]);
+  const poseViewStyle = useMemo(() => parsePoseViewStyle(searchParams), [searchParams]);
   const selectedMetadataFilterId = useMemo(
     () => parseSelectedMetadataFilterId(searchParams),
     [searchParams],
@@ -149,7 +153,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   const updateQueryParams = useCallback(
     (changes: Record<string, string | string[] | null>) => {
       const nextQuery = buildNextQueryString(searchParams, changes);
-      router.replace(nextQuery ? `/?${nextQuery}` : "/");
+      router.push(nextQuery ? `/?${nextQuery}` : "/");
     },
     [router, searchParams],
   );
@@ -391,6 +395,20 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
     [updateQueryParams],
   );
 
+  const handleStyleViewStyleChange = useCallback(
+    (nextStyle: string) => {
+      updateQueryParams({ styleTab: nextStyle || null });
+    },
+    [updateQueryParams],
+  );
+
+  const handlePoseViewStyleChange = useCallback(
+    (nextStyle: string) => {
+      updateQueryParams({ poseStyle: nextStyle === "--all--" ? null : nextStyle });
+    },
+    [updateQueryParams],
+  );
+
   const modalImageIndexById = useMemo(() => {
     return new Map(modalFilteredImages.map((image, index) => [image.id, index]));
   }, [modalFilteredImages]);
@@ -566,12 +584,16 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
           selectedMetadataFilterId={selectedMetadataFilterId}
           showOnlyNewImages={showOnlyNewImages}
           characterSortOrder={characterSortOrder}
+          styleViewStyle={styleViewStyle}
+          poseViewStyle={poseViewStyle}
           characterDetailStyle={characterDetailStyle}
           characterDetailPose={characterDetailPose}
           reloadToken={libraryRefreshToken}
           setSelectedCharacter={handleSelectCharacter}
           setSelectedPoseFilters={handlePoseFiltersChange}
           setSelectedMetadataFilterId={handleMetadataFilterChange}
+          setStyleViewStyle={handleStyleViewStyleChange}
+          setPoseViewStyle={handlePoseViewStyleChange}
           setCharacterDetailStyle={setCharacterDetailStyle}
           setCharacterDetailPose={setCharacterDetailPose}
           onImageSelect={handleOpenImageModal}

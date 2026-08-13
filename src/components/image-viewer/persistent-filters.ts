@@ -45,6 +45,15 @@ export const parseCharacterSortOrder = (queryParams: IQueryParamsReader): TChara
   return rawValue === "date" ? "date" : "name";
 };
 
+export const parseStyleViewStyle = (queryParams: IQueryParamsReader): string => {
+  return queryParams.get("styleTab")?.trim() ?? "";
+};
+
+export const parsePoseViewStyle = (queryParams: IQueryParamsReader): string => {
+  const rawValue = queryParams.get("poseStyle")?.trim();
+  return rawValue ? rawValue : "--all--";
+};
+
 export const normalizePoseFilters = (poses: string[]): string[] => {
   return [...new Set(poses.map((pose) => pose.trim()))].filter((pose) => pose !== "");
 };
