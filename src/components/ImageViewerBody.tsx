@@ -243,16 +243,8 @@ export const ImageViewerBody = ({
   ]);
 
   const filteredImages = useMemo(() => {
-    const baseImages = showOnlyNewImages
-      ? library.images.filter((image) => image.isNew)
-      : library.images;
-
-    if (characterSortOrder !== "date") {
-      return baseImages;
-    }
-
-    return [...baseImages].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
-  }, [library.images, showOnlyNewImages, characterSortOrder]);
+    return showOnlyNewImages ? library.images.filter((image) => image.isNew) : library.images;
+  }, [library.images, showOnlyNewImages]);
 
   const charactersForBrowseStyle = useMemo(() => {
     const visibleCharacterNames = new Set(filteredImages.map((image) => image.characterName));

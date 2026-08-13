@@ -435,10 +435,17 @@ const toCharacterSummary = (
   };
 };
 
-const computeFirstSeenByCharacter = (imageItems: IImageItem[]): Map<string, number> => {
+const computeFirstSeenByCharacter = (
+  imageItems: IImageItem[],
+  defaultStyle: string,
+): Map<string, number> => {
   const firstSeenByCharacter = new Map<string, number>();
 
   for (const imageItem of imageItems) {
+    if (imageItem.style !== defaultStyle) {
+      continue;
+    }
+
     const currentFirstSeen = firstSeenByCharacter.get(imageItem.characterName);
     if (currentFirstSeen === undefined || imageItem.firstSeenAt < currentFirstSeen) {
       firstSeenByCharacter.set(imageItem.characterName, imageItem.firstSeenAt);
@@ -711,7 +718,10 @@ const toLibraryData = (
   posePatternFilters: IPosePatternFilter[],
   cacheAvailable: boolean,
 ): ILibraryData => {
-  const firstSeenByCharacter = computeFirstSeenByCharacter(state.imageItems);
+  const firstSeenByCharacter = computeFirstSeenByCharacter(
+    state.imageItems,
+    styleConfig.defaultStyle,
+  );
 
   const characters = [...state.characterMap.values()]
     .map((accumulator) => {

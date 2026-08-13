@@ -374,6 +374,35 @@ describe("readImageLibrary with characters metadata", () => {
     delete process.env.SD_CACHE_DIR;
   });
 
+  it("computes character firstSeenAt from the default style only", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+
+    const tempRoot = "/tmp/sd-library-default-style-first-seen";
+    const tempCacheDir = "/tmp/sd-cache-default-style-first-seen";
+    const nonDefaultCharacterDir = path.join(tempRoot, "characters", "realistic", "Mia");
+
+    await fs.mkdir(nonDefaultCharacterDir, { recursive: true });
+    await fs.writeFile(path.join(nonDefaultCharacterDir, "Base.png"), "");
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    // Older image exists only in a non-default style; it should not influence the summary date.
+    await readImageLibrary();
+
+    vi.setSystemTime(new Date("2026-01-02T00:00:00.000Z"));
+    const defaultStyleCharacterDir = path.join(tempRoot, "characters", "3d", "Mia");
+    await fs.mkdir(defaultStyleCharacterDir, { recursive: true });
+    await fs.writeFile(path.join(defaultStyleCharacterDir, "Base.png"), "");
+
+    const library = await readImageLibrary();
+    const mia = library.characters.find((character) => character.name === "Mia");
+
+    expect(mia?.firstSeenAt).toBe(new Date("2026-01-02T00:00:00.000Z").getTime());
+
+    delete process.env.SD_CACHE_DIR;
+  });
+
   it("sets cacheAvailable to false when cache persistence fails", async () => {
     const tempRoot = "/tmp/sd-library-cache-write-fail";
     const tempCacheDir = "/tmp/sd-cache-write-fail";
