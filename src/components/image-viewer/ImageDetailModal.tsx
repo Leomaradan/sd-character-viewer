@@ -65,10 +65,12 @@ const NAV_BUTTON_RIGHT_SX = { ...NAV_BUTTON_BASE_SX, right: 8 };
 const IMAGE_CONTAINER_SX = {
   flex: 1,
   display: "flex",
+  flexDirection: { xs: "column", sm: "row" },
   alignItems: "center",
   justifyContent: "center",
   overflow: "hidden",
 };
+const IMAGE_VIEW_SX = { flex: 1, width: "100%", minHeight: 0 };
 const LAZY_IMAGE_SX = { width: "100%", height: "100%" };
 const LAZY_IMAGE_IMG_SX = { objectFit: "contain" };
 const SIDEBAR_SX = {
@@ -86,6 +88,15 @@ const META_BODY_SX = { mt: 0.5, opacity: 0.8 };
 
 const METADATA_LOADING_SX = { display: "flex", justifyContent: "center", pt: 1 };
 const BUTTON_CONTAINER_SX = { display: "flex", gap: 1 };
+const MOBILE_ACTIONS_SX = {
+  display: { xs: "flex", sm: "none" },
+  flexDirection: "column",
+  width: "100%",
+  p: 2,
+  gap: 1,
+  bgcolor: "#1e1e1e",
+};
+const SIDEBAR_ACTIONS_SX = { display: { xs: "none", sm: "flex" }, flexDirection: "column" };
 
 const DIVIDER_SX = { borderColor: "rgba(255,255,255,0.1)" };
 const SPINNER_SX = { color: "rgba(255,255,255,0.5)" };
@@ -318,6 +329,43 @@ export function ImageDetailModal({
     [canNavigateNext, canNavigatePrevious, onNavigateNext, onNavigatePrevious],
   );
 
+  const imageActions = (
+    <>
+      {deleteError && (
+        <Alert severity="error" sx={DELETE_ERROR_SX}>
+          {deleteError}
+        </Alert>
+      )}
+      {redrawError && (
+        <Alert severity="error" sx={DELETE_ERROR_SX}>
+          {redrawError}
+        </Alert>
+      )}
+      <Box sx={BUTTON_CONTAINER_SX}>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<RefreshIcon />}
+          onClick={handleRedrawClick}
+          disabled={isRedrawing}
+          sx={REDRAW_BUTTON_SX}
+        >
+          {isRedrawing ? <CircularProgress size={18} /> : "Redraw"}
+        </Button>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<DeleteIcon />}
+          onClick={handleDeleteClick}
+          disabled={isDeleting}
+          sx={DELETE_BUTTON_SX}
+        >
+          {isDeleting ? <CircularProgress size={18} /> : "Delete image"}
+        </Button>
+      </Box>
+    </>
+  );
+
   if (!image) {
     return null;
   }
@@ -357,12 +405,15 @@ export function ImageDetailModal({
 
             {/* Image */}
             <Box sx={imageContainerSx} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-              <LazyImage
-                relativePath={image.relativePath}
-                alt={`${image.characterName} ${image.poseName}`}
-                sx={LAZY_IMAGE_SX}
-                imgSx={LAZY_IMAGE_IMG_SX}
-              />
+              <Box sx={IMAGE_VIEW_SX}>
+                <LazyImage
+                  relativePath={image.relativePath}
+                  alt={`${image.characterName} ${image.poseName}`}
+                  sx={LAZY_IMAGE_SX}
+                  imgSx={LAZY_IMAGE_IMG_SX}
+                />
+              </Box>
+              {canDeleteImage && <Box sx={MOBILE_ACTIONS_SX}>{imageActions}</Box>}
             </Box>
 
             {/* Metadata sidebar */}
@@ -419,41 +470,10 @@ export function ImageDetailModal({
                 )}
 
               {canDeleteImage && (
-                <>
+                <Box sx={SIDEBAR_ACTIONS_SX}>
                   <Divider sx={DIVIDER_SX} />
-                  {deleteError && (
-                    <Alert severity="error" sx={DELETE_ERROR_SX}>
-                      {deleteError}
-                    </Alert>
-                  )}
-                  {redrawError && (
-                    <Alert severity="error" sx={DELETE_ERROR_SX}>
-                      {redrawError}
-                    </Alert>
-                  )}
-                  <Box sx={BUTTON_CONTAINER_SX}>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<RefreshIcon />}
-                      onClick={handleRedrawClick}
-                      disabled={isRedrawing}
-                      sx={REDRAW_BUTTON_SX}
-                    >
-                      {isRedrawing ? <CircularProgress size={18} /> : "Redraw"}
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<DeleteIcon />}
-                      onClick={handleDeleteClick}
-                      disabled={isDeleting}
-                      sx={DELETE_BUTTON_SX}
-                    >
-                      {isDeleting ? <CircularProgress size={18} /> : "Delete image"}
-                    </Button>
-                  </Box>
-                </>
+                  {imageActions}
+                </Box>
               )}
             </Box>
           </Box>
