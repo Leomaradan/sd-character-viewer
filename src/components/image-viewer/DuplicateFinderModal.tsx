@@ -126,6 +126,7 @@ const DuplicateImageItem = ({
         control={
           <Radio
             checked={isPrimary}
+            name={`primary-${groupId}`}
             onChange={handlePrimarySelect}
             disabled={isValidating}
             size="small"
