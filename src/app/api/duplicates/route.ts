@@ -111,6 +111,15 @@ export const POST = async (request: Request) => {
     (relativePath) => relativePath !== primaryRelativePath,
   );
 
+  const isCharacterImagePath = (value: string): boolean =>
+    value.replaceAll("\\", "/").startsWith("characters/");
+  if (
+    !isCharacterImagePath(primaryRelativePath) ||
+    additionalRelativePaths.some((relativePath) => !isCharacterImagePath(relativePath))
+  ) {
+    return new Response("Invalid image path", { status: 400 });
+  }
+
   const primaryFilePath = resolveImageFilePath(primaryRelativePath);
   if (!primaryFilePath) {
     return new Response("Invalid image path", { status: 400 });
