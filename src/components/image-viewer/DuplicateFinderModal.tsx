@@ -44,7 +44,6 @@ const IMAGES_ROW_SX = {
   gap: 2,
 };
 const IMAGE_ITEM_SX = {
-  width: 160,
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
