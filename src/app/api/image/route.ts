@@ -15,7 +15,13 @@ export const dynamic = "force-dynamic";
 // Content rarely changes once generated, but files can still be overwritten in place
 // (e.g. a pose regenerated under the same name), so cache freshness is validated against
 // file size/mtime on every request rather than trusted for a fixed period.
-const CACHE_CONTROL = "public, max-age=86400, must-revalidate";
+// When password protection is enabled, responses must stay "private": a shared proxy/CDN
+// does not vary its cache on the auth cookie, so "public" would let it replay one user's
+// authenticated image response to a later unauthenticated (or different) requester.
+const buildCacheControl = (): string => {
+  const visibility = isPasswordProtectionEnabled() ? "private" : "public";
+  return `${visibility}, max-age=86400, must-revalidate`;
+};
 
 const isDeleteAllowed = (): boolean => {
   ensureLocalEnvLoaded();
@@ -53,7 +59,7 @@ const respondWithFile = async (
   const lastModifiedMs = Math.trunc(stat.mtimeMs);
   const etag = buildEntityTag(stat);
   const cacheHeaders = {
-    "Cache-Control": CACHE_CONTROL,
+    "Cache-Control": buildCacheControl(),
     ETag: etag,
     "Last-Modified": new Date(lastModifiedMs).toUTCString(),
   };

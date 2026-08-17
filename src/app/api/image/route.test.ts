@@ -84,6 +84,24 @@ describe("/api/image", () => {
     expect(response.headers.get("Last-Modified")).toBe(new Date(1_700_000_000_000).toUTCString());
   });
 
+  it("GET uses private Cache-Control when password protection is enabled", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const isAuthenticatedRequestMock = vi.mocked(auth.isAuthenticatedRequest);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const readFileMock = vi.mocked(fs.readFile);
+    const statMock = vi.mocked(fs.stat);
+    isPasswordProtectionEnabledMock.mockReturnValue(true);
+    isAuthenticatedRequestMock.mockReturnValue(true);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
+    statMock.mockResolvedValue({ size: 3, mtimeMs: 1_700_000_000_000 } as never);
+    readFileMock.mockResolvedValue(Buffer.from([1, 2, 3]));
+
+    const response = await GET(new Request("http://localhost/api/image?path=ok.png"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, max-age=86400, must-revalidate");
+  });
+
   it("GET returns 304 when If-None-Match matches the current ETag", async () => {
     const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
     const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
