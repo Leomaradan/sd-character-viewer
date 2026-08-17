@@ -20,19 +20,19 @@ Example `config.json`:
 
 ```json
 {
-	"styles": ["comic", "3d", "anime"],
-	"defaultStyle": "comic",
-	"styleLabels": {
-		"comic": "Comic Book",
-		"3d": "3D Render"
-	}
+  "styles": ["comic", "3d", "anime"],
+  "defaultStyle": "comic",
+  "styleLabels": {
+    "comic": "Comic Book",
+    "3d": "3D Render"
+  }
 }
 ```
 
 Pose naming rules:
 
-- One file equals one pose image (for example `Base.png`, `Lying Side On Bed.png`).
-- Variant files are supported with numeric suffixes (for example `Full.png`, `Full2.png`).
+- One file equals one pose image (for example `Base.png`, `Lying Side.png`).
+- Variant files are supported with numeric suffixes (for example `Full.png`, `Full 2.png`).
 - `Base` is treated as the thumbnail pose for each character.
 
 Character metadata file:
@@ -51,14 +51,14 @@ Example `pose-filters.json`:
 
 ```json
 [
-	{ "label": "With Somebody", "pattern": "^With " },
-	{ "label": "With Somebody (CI)", "pattern": "^with ", "flags": "i" }
+  { "label": "With Somebody", "pattern": "^With " },
+  { "label": "With Somebody (CI)", "pattern": "^with ", "flags": "i" }
 ]
 ```
 
 ## Preview Thumbnails
 
-To keep the browsing grid fast, the app serves a heavily compressed JPEG preview next to each PNG instead of transferring the full-resolution file. A preview is stored as a sibling file using the `.preview.jpg` suffix, for example `characters/3d/Anna/Base.png` gets `characters/3d/Anna/Base.preview.jpg`.
+To keep the browsing grid fast, the app serves a heavily compressed JPEG preview next to each PNG instead of transferring the full-resolution file. A preview is stored as a sibling file using the `.preview.jpg` suffix, for example `characters/3d/Elric/Base.png` gets `characters/3d/Elric/Base.preview.jpg`.
 
 Generate (or refresh) previews with:
 
