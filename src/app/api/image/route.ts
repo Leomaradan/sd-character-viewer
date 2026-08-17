@@ -1,16 +1,73 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
-import { resolveImageFilePath, removeFirstSeenCacheEntry } from "@/lib/image-library";
+import {
+  resolveImageFilePath,
+  resolvePreviewFilePath,
+  removeFirstSeenCacheEntry,
+} from "@/lib/image-library";
 import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
 import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 
 export const dynamic = "force-dynamic";
 
+// Content rarely changes once generated, but files can still be overwritten in place
+// (e.g. a pose regenerated under the same name), so cache freshness is validated against
+// file size/mtime on every request rather than trusted for a fixed period.
+const CACHE_CONTROL = "public, max-age=86400, must-revalidate";
+
 const isDeleteAllowed = (): boolean => {
   ensureLocalEnvLoaded();
   return readBooleanEnvFlag(process.env[SD_ALLOW_DELETE_ENV_KEY]);
+};
+
+const buildEntityTag = (stat: { size: number; mtimeMs: number }): string => {
+  return `"${stat.size.toString(16)}-${Math.trunc(stat.mtimeMs).toString(16)}"`;
+};
+
+const isNotModified = (request: Request, etag: string, lastModifiedMs: number): boolean => {
+  const ifNoneMatch = request.headers.get("if-none-match");
+  if (ifNoneMatch) {
+    return ifNoneMatch
+      .split(",")
+      .map((value) => value.trim())
+      .includes(etag);
+  }
+
+  const ifModifiedSince = request.headers.get("if-modified-since");
+  if (ifModifiedSince) {
+    const ifModifiedSinceMs = Date.parse(ifModifiedSince);
+    return Number.isFinite(ifModifiedSinceMs) && lastModifiedMs <= ifModifiedSinceMs;
+  }
+
+  return false;
+};
+
+const respondWithFile = async (
+  request: Request,
+  filePath: string,
+  contentType: string,
+): Promise<Response> => {
+  const stat = await fs.stat(filePath);
+  const lastModifiedMs = Math.trunc(stat.mtimeMs);
+  const etag = buildEntityTag(stat);
+  const cacheHeaders = {
+    "Cache-Control": CACHE_CONTROL,
+    ETag: etag,
+    "Last-Modified": new Date(lastModifiedMs).toUTCString(),
+  };
+
+  if (isNotModified(request, etag, lastModifiedMs)) {
+    return new Response(null, { status: 304, headers: cacheHeaders });
+  }
+
+  const fileBuffer = await fs.readFile(filePath);
+
+  return new Response(fileBuffer, {
+    status: 200,
+    headers: { "Content-Type": contentType, ...cacheHeaders },
+  });
 };
 
 export const GET = async (request: Request) => {
@@ -20,6 +77,7 @@ export const GET = async (request: Request) => {
 
   const { searchParams } = new URL(request.url);
   const requestedPath = searchParams.get("path")?.trim() ?? "";
+  const wantsPreview = searchParams.get("variant") === "preview";
 
   const filePath = resolveImageFilePath(requestedPath);
 
@@ -27,16 +85,16 @@ export const GET = async (request: Request) => {
     return new Response("Invalid image path", { status: 400 });
   }
 
-  try {
-    const fileBuffer = await fs.readFile(filePath);
+  if (wantsPreview) {
+    try {
+      return await respondWithFile(request, resolvePreviewFilePath(filePath), "image/jpeg");
+    } catch {
+      // No preview generated yet for this image; fall back to the full-resolution PNG.
+    }
+  }
 
-    return new Response(fileBuffer, {
-      status: 200,
-      headers: {
-        "Content-Type": "image/png",
-        "Cache-Control": "public, max-age=300",
-      },
-    });
+  try {
+    return await respondWithFile(request, filePath, "image/png");
   } catch {
     return new Response("Image not found", { status: 404 });
   }
@@ -66,6 +124,7 @@ export const DELETE = async (request: Request) => {
 
   try {
     await fs.unlink(filePath);
+    await fs.unlink(resolvePreviewFilePath(filePath)).catch(() => {});
     invalidateMetadataCacheEntry(requestedPath);
     await removeFirstSeenCacheEntry(requestedPath);
 
@@ -132,6 +191,9 @@ export const PATCH = async (request: Request) => {
     const newFilePath = path.join(directory, newFileName);
 
     await fs.rename(filePath, newFilePath);
+    await fs
+      .rename(resolvePreviewFilePath(filePath), resolvePreviewFilePath(newFilePath))
+      .catch(() => {});
 
     const oldRelativePath = requestedPath;
     const newRelativePath =

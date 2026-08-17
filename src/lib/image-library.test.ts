@@ -14,7 +14,12 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { vol } from "memfs";
 
-import { parsePoseName, readImageLibrary, resolveImageFilePath } from "@/lib/image-library";
+import {
+  parsePoseName,
+  readImageLibrary,
+  resolveImageFilePath,
+  resolvePreviewFilePath,
+} from "@/lib/image-library";
 
 beforeEach(() => {
   vol.reset();
@@ -79,6 +84,16 @@ describe("resolveImageFilePath", () => {
     const resolved = resolveImageFilePath("characters/3d/Anna/Base.png");
 
     expect(resolved).toBe(path.resolve("/tmp/images", "characters/3d/Anna/Base.png"));
+  });
+});
+
+describe("resolvePreviewFilePath", () => {
+  it("swaps the .png extension for .preview.jpg", () => {
+    const previewPath = resolvePreviewFilePath(
+      path.resolve("/tmp/images", "characters/3d/Anna/Base.png"),
+    );
+
+    expect(previewPath).toBe(path.resolve("/tmp/images", "characters/3d/Anna/Base.preview.jpg"));
   });
 });
 

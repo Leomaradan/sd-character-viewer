@@ -4,12 +4,17 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import nextEnv from "@next/env";
+import sharp from "sharp";
 
 const { loadEnvConfig } = nextEnv;
 
 const PNG_EXTENSION = ".png";
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
+const PREVIEW_FILE_SUFFIX = ".preview.jpg";
+const PREVIEW_MAX_DIMENSION = Number(process.env.SD_PREVIEW_MAX_DIMENSION ?? "640");
+const PREVIEW_JPEG_QUALITY = Number(process.env.SD_PREVIEW_JPEG_QUALITY ?? "70");
+const PREVIEW_GENERATION_CONCURRENCY = 4;
 
 const normalizeRelativePath = (filePath) => {
   return filePath.split(path.sep).join(path.posix.sep);
@@ -83,9 +88,7 @@ const collectPngFiles = async (directoryPath) => {
   return pngFilePaths;
 };
 
-const buildFirstSeenMapFromFilesystem = async (rootPath) => {
-  const charactersRootPath = path.join(rootPath, "characters");
-  const pngFilePaths = await collectPngFiles(charactersRootPath);
+const buildFirstSeenMapFromFilesystem = async (rootPath, pngFilePaths) => {
   const firstSeenByRelativePath = new Map();
 
   for (const absolutePngFilePath of pngFilePaths) {
@@ -103,13 +106,93 @@ const buildFirstSeenMapFromFilesystem = async (rootPath) => {
   return firstSeenByRelativePath;
 };
 
+const toPreviewFilePath = (pngFilePath) => {
+  const extension = path.extname(pngFilePath);
+  return `${pngFilePath.slice(0, -extension.length)}${PREVIEW_FILE_SUFFIX}`;
+};
+
+const generatePreviewForFile = async (pngFilePath) => {
+  const previewFilePath = toPreviewFilePath(pngFilePath);
+
+  const [pngStat, previewStat] = await Promise.all([
+    fs.stat(pngFilePath),
+    fs.stat(previewFilePath).catch(() => null),
+  ]);
+
+  if (previewStat && previewStat.mtimeMs >= pngStat.mtimeMs) {
+    return false;
+  }
+
+  await sharp(pngFilePath)
+    .resize({
+      width: PREVIEW_MAX_DIMENSION,
+      height: PREVIEW_MAX_DIMENSION,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .jpeg({ quality: PREVIEW_JPEG_QUALITY, mozjpeg: true })
+    .toFile(previewFilePath);
+
+  return true;
+};
+
+const runWithConcurrency = async (items, concurrency, worker) => {
+  const results = [];
+  let nextIndex = 0;
+
+  const runNext = async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(items[currentIndex]);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => runNext()));
+
+  return results;
+};
+
+const generatePreviewThumbnails = async (pngFilePaths, isDryRun) => {
+  if (isDryRun) {
+    let staleCount = 0;
+
+    for (const pngFilePath of pngFilePaths) {
+      const previewFilePath = toPreviewFilePath(pngFilePath);
+      const [pngStat, previewStat] = await Promise.all([
+        fs.stat(pngFilePath),
+        fs.stat(previewFilePath).catch(() => null),
+      ]);
+
+      if (!previewStat || previewStat.mtimeMs < pngStat.mtimeMs) {
+        staleCount += 1;
+      }
+    }
+
+    console.log(`[dry-run] Would generate/update ${staleCount} preview thumbnail(s).`);
+    return;
+  }
+
+  const results = await runWithConcurrency(
+    pngFilePaths,
+    PREVIEW_GENERATION_CONCURRENCY,
+    generatePreviewForFile,
+  );
+  const generatedCount = results.filter(Boolean).length;
+
+  console.log(
+    `Generated/updated ${generatedCount} preview thumbnail(s) (${pngFilePaths.length - generatedCount} already up to date).`,
+  );
+};
+
 const printUsage = () => {
-  console.log("Usage: pnpm sync:first-seen:creation-dates [--dry-run]");
+  console.log("Usage: pnpm sync:first-seen:creation-dates [--dry-run] [--skip-thumbnails]");
 };
 
 const run = async () => {
   const args = new Set(process.argv.slice(2));
   const isDryRun = args.has("--dry-run");
+  const skipThumbnails = args.has("--skip-thumbnails");
 
   if (args.has("--help") || args.has("-h")) {
     printUsage();
@@ -131,7 +214,12 @@ const run = async () => {
     throw new Error(`Could not find a readable characters directory at ${charactersRootPath}`);
   }
 
-  const firstSeenByRelativePath = await buildFirstSeenMapFromFilesystem(resolvedRootPath);
+  const pngFilePaths = await collectPngFiles(charactersRootPath);
+
+  const firstSeenByRelativePath = await buildFirstSeenMapFromFilesystem(
+    resolvedRootPath,
+    pngFilePaths,
+  );
   const sortedEntries = [...firstSeenByRelativePath.entries()].sort((a, b) =>
     compareNatural(a[0], b[0]),
   );
@@ -142,13 +230,16 @@ const run = async () => {
     console.log(
       `[dry-run] Would update ${cacheFilePath} with ${sortedEntries.length} image timestamps.`,
     );
-    return;
+  } else {
+    await fs.mkdir(path.dirname(cacheFilePath), { recursive: true });
+    await fs.writeFile(cacheFilePath, `${JSON.stringify(serializable, null, 2)}\n`, "utf8");
+
+    console.log(`Updated ${cacheFilePath} with ${sortedEntries.length} image timestamps.`);
   }
 
-  await fs.mkdir(path.dirname(cacheFilePath), { recursive: true });
-  await fs.writeFile(cacheFilePath, `${JSON.stringify(serializable, null, 2)}\n`, "utf8");
-
-  console.log(`Updated ${cacheFilePath} with ${sortedEntries.length} image timestamps.`);
+  if (!skipThumbnails) {
+    await generatePreviewThumbnails(pngFilePaths, isDryRun);
+  }
 };
 
 try {

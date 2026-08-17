@@ -53,6 +53,7 @@ export const ImageCard = ({
             relativePath={image.relativePath}
             alt={`${image.characterName} ${image.poseName}`}
             sx={IMAGE_CARD}
+            usePreview
           />
           {showNewBadge && image.isNew && (
             <Box sx={NEW_BADGE_SX} aria-label="New image">

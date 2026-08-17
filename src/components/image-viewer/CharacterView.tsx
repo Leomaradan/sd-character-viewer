@@ -52,6 +52,7 @@ export const CharacterView = ({
               relativePath={thumbnailPath}
               alt={`${character.name} base`}
               sx={LAZY_IMAGE_SX}
+              usePreview
             />
           ) : (
             <Typography variant="body2" color="text.secondary">

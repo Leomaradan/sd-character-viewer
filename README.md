@@ -56,6 +56,29 @@ Example `pose-filters.json`:
 ]
 ```
 
+## Preview Thumbnails
+
+To keep the browsing grid fast, the app serves a heavily compressed JPEG preview next to each PNG instead of transferring the full-resolution file. A preview is stored as a sibling file using the `.preview.jpg` suffix, for example `characters/3d/Anna/Base.png` gets `characters/3d/Anna/Base.preview.jpg`.
+
+Generate (or refresh) previews with:
+
+```bash
+pnpm sync:first-seen:creation-dates
+```
+
+This script walks every PNG under `characters/`, and for each one it skips images whose preview is already newer than the source PNG. Options:
+
+- `--dry-run`: report how many previews would be generated without writing anything.
+- `--skip-thumbnails`: only sync the first-seen cache, skip preview generation.
+- `SD_PREVIEW_MAX_DIMENSION` (default `640`): longest edge, in pixels, of generated previews.
+- `SD_PREVIEW_JPEG_QUALITY` (default `70`): JPEG quality (1-100) used for previews.
+
+`GET /api/image?path=...&variant=preview` serves the JPEG preview when one exists and transparently falls back to the full PNG otherwise, so the app keeps working before previews are generated. The full-resolution modal view always requests the original PNG.
+
+### HTTP Caching
+
+`GET /api/image` responses (both variants) carry `Cache-Control: public, max-age=86400, must-revalidate`, an `ETag`, and a `Last-Modified` header derived from the served file's size and modification time. Browsers revalidate with `If-None-Match`/`If-Modified-Since` and get a bodyless `304` when the file hasn't changed, so repeat views (scrolling back, reopening a character) cost a small header round trip instead of a full re-download. The cache key is tied to file `mtime`/size rather than the first-seen timestamp, because `firstSeenAt` never changes when a file is overwritten in place under the same name (e.g. regenerating a pose), which would make a stale image cache forever.
+
 ## Environment Variable
 
 Set `SD_IMAGES_ROOT` to the host directory that contains the `characters` folder.
@@ -144,7 +167,7 @@ Example character flow:
 ## API Endpoints
 
 - `GET /api/library`: Returns computed library index from disk.
-- `GET /api/image?path=characters/...`: Streams a PNG image safely from configured root.
+- `GET /api/image?path=characters/...`: Streams a PNG image safely from configured root. Add `&variant=preview` to stream the compressed JPEG preview instead (falls back to the PNG if no preview exists yet).
 
 ## Test And Lint
 

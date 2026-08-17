@@ -17,6 +17,7 @@ const PNG_EXTENSION = ".png";
 const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
+const PREVIEW_FILE_SUFFIX = ".preview.jpg";
 const LIBRARY_CONFIG_FILE_NAME = "config.json";
 const CHARACTERS_CONFIG_FILE_NAME = "characters.json";
 const POSE_FILTERS_FILE_NAME = "pose-filters.json";
@@ -877,6 +878,11 @@ export const resolveImageFilePath = (relativePath: string): string | null => {
   }
 
   return fullPath;
+};
+
+export const resolvePreviewFilePath = (pngFilePath: string): string => {
+  const extension = path.extname(pngFilePath);
+  return `${pngFilePath.slice(0, -extension.length)}${PREVIEW_FILE_SUFFIX}`;
 };
 
 export const removeFirstSeenCacheEntry = async (relativePath: string): Promise<void> => {
