@@ -111,9 +111,10 @@ type TAuthStatus = "checking" | "misconfigured" | "required" | "authenticated" |
 
 interface IImageViewerAppProps {
   canDeleteImage?: boolean;
+  appVersion?: string;
 }
 
-export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps) => {
+export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageViewerAppProps) => {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -572,6 +573,9 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
           characterSortOrder={characterSortOrder}
           onCharacterSortOrderChange={handleCharacterSortOrderChange}
           library={library}
+          canManageDuplicates={canDeleteImage}
+          onOpenDuplicateFinder={handleOpenDuplicateFinder}
+          appVersion={appVersion}
         />
       </Drawer>
 
@@ -588,6 +592,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
             library={library}
             canManageDuplicates={canDeleteImage}
             onOpenDuplicateFinder={handleOpenDuplicateFinder}
+            appVersion={appVersion}
           />
         </Drawer>
       )}

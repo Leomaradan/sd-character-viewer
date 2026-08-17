@@ -52,6 +52,7 @@ const TOOLS_SECTION_SX = {
   borderColor: "divider",
 };
 const DUPLICATE_FINDER_BUTTON_SX = { mt: 0.5, width: "100%", justifyContent: "flex-start" };
+const APP_VERSION_SX = { display: "block", mt: 1.5, textAlign: "center", opacity: 0.5 };
 
 interface ISideMenuProps {
   majorFilter: TMajorFilter;
@@ -63,6 +64,7 @@ interface ISideMenuProps {
   library: ILibraryData;
   canManageDuplicates?: boolean;
   onOpenDuplicateFinder?: () => void;
+  appVersion?: string;
 }
 
 export const SideMenu = ({
@@ -75,6 +77,7 @@ export const SideMenu = ({
   library,
   canManageDuplicates = false,
   onOpenDuplicateFinder,
+  appVersion,
 }: Readonly<ISideMenuProps>) => {
   const { mode, setMode } = useColorScheme();
 
@@ -221,6 +224,12 @@ export const SideMenu = ({
             <DarkModeIcon fontSize="small" />
           </ToggleButton>
         </ToggleButtonGroup>
+
+        {appVersion && (
+          <Typography variant="caption" sx={APP_VERSION_SX}>
+            v{appVersion}
+          </Typography>
+        )}
       </Box>
     </Box>
   );

@@ -173,4 +173,33 @@ describe("SideMenu", () => {
     fireEvent.click(screen.getByRole("button", { name: "sort by name" }));
     expect(mockOnSortOrderChange).not.toHaveBeenCalled();
   });
+
+  it("shows the app version below the theme switcher when provided", () => {
+    render(
+      <SideMenu
+        majorFilter="character"
+        onMajorFilterChange={vi.fn()}
+        showOnlyNewImages={false}
+        onShowOnlyNewImagesChange={vi.fn()}
+        library={createMockLibrary({ cacheAvailable: true })}
+        appVersion="1.3.1"
+      />,
+    );
+
+    expect(screen.getByText("v1.3.1")).toBeInTheDocument();
+  });
+
+  it("does not render a version when appVersion is not provided", () => {
+    render(
+      <SideMenu
+        majorFilter="character"
+        onMajorFilterChange={vi.fn()}
+        showOnlyNewImages={false}
+        onShowOnlyNewImagesChange={vi.fn()}
+        library={createMockLibrary({ cacheAvailable: true })}
+      />,
+    );
+
+    expect(screen.queryByText(/^v\d/)).not.toBeInTheDocument();
+  });
 });
