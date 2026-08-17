@@ -12,8 +12,6 @@ const PNG_EXTENSION = ".png";
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
 const PREVIEW_FILE_SUFFIX = ".preview.jpg";
-const PREVIEW_MAX_DIMENSION = Number(process.env.SD_PREVIEW_MAX_DIMENSION ?? "640");
-const PREVIEW_JPEG_QUALITY = Number(process.env.SD_PREVIEW_JPEG_QUALITY ?? "70");
 const PREVIEW_GENERATION_CONCURRENCY = 4;
 
 const normalizeRelativePath = (filePath) => {
@@ -125,12 +123,12 @@ const generatePreviewForFile = async (pngFilePath) => {
 
   await sharp(pngFilePath)
     .resize({
-      width: PREVIEW_MAX_DIMENSION,
-      height: PREVIEW_MAX_DIMENSION,
+      width: Number(process.env.SD_PREVIEW_MAX_DIMENSION ?? "640"),
+      height: Number(process.env.SD_PREVIEW_MAX_DIMENSION ?? "640"),
       fit: "inside",
       withoutEnlargement: true,
     })
-    .jpeg({ quality: PREVIEW_JPEG_QUALITY, mozjpeg: true })
+    .jpeg({ quality: Number(process.env.SD_PREVIEW_JPEG_QUALITY ?? "70"), mozjpeg: true })
     .toFile(previewFilePath);
 
   return true;
