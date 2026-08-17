@@ -15,11 +15,16 @@ import { promises as fs } from "node:fs";
 import { vol } from "memfs";
 
 import {
+  findDuplicateGroups,
+  isDuplicateGroupReviewed,
   parsePoseName,
   readImageLibrary,
+  readReviewedDuplicateGroups,
   resolveImageFilePath,
   resolvePreviewFilePath,
+  writeReviewedDuplicateGroups,
 } from "@/lib/image-library";
+import type { IImageItem } from "@/types/library";
 
 beforeEach(() => {
   vol.reset();
@@ -490,5 +495,150 @@ describe("readImageLibrary with characters metadata", () => {
     expect(cacheExists).toBe(true);
 
     delete process.env.SD_CACHE_DIR;
+  });
+});
+
+const buildImage = (
+  overrides: Partial<IImageItem> & Pick<IImageItem, "relativePath">,
+): IImageItem => ({
+  id: overrides.relativePath,
+  style: "3d",
+  characterName: "Anna",
+  poseName: "Base",
+  poseBaseName: "Base",
+  poseVariant: 1,
+  isNew: false,
+  firstSeenAt: 0,
+  ...overrides,
+});
+
+describe("findDuplicateGroups", () => {
+  it("groups images sharing style, character and poseBaseName, sorted by variant", () => {
+    const images: IImageItem[] = [
+      buildImage({ relativePath: "characters/3d/Anna/Base 2.png", poseVariant: 2 }),
+      buildImage({ relativePath: "characters/3d/Anna/Base.png", poseVariant: 1 }),
+      buildImage({
+        relativePath: "characters/3d/Anna/Sitting.png",
+        poseName: "Sitting",
+        poseBaseName: "Sitting",
+      }),
+    ];
+
+    const groups = findDuplicateGroups(images);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].poseBaseName).toBe("Base");
+    expect(groups[0].images.map((image) => image.relativePath)).toEqual([
+      "characters/3d/Anna/Base.png",
+      "characters/3d/Anna/Base 2.png",
+    ]);
+  });
+
+  it("excludes poses that have no duplicates", () => {
+    const images: IImageItem[] = [
+      buildImage({ relativePath: "characters/3d/Anna/Base.png" }),
+      buildImage({
+        relativePath: "characters/3d/Anna/Sitting.png",
+        poseName: "Sitting",
+        poseBaseName: "Sitting",
+      }),
+    ];
+
+    expect(findDuplicateGroups(images)).toEqual([]);
+  });
+});
+
+describe("isDuplicateGroupReviewed", () => {
+  const reviewedGroups = [
+    {
+      style: "3d",
+      characterName: "Anna",
+      poseBaseName: "Base",
+      fileNames: ["Base.png", "Base 2.png"],
+    },
+  ];
+
+  it("matches regardless of the order the images are listed in", () => {
+    const group = {
+      style: "3d",
+      characterName: "Anna",
+      poseBaseName: "Base",
+      images: [
+        buildImage({ relativePath: "characters/3d/Anna/Base 2.png", poseVariant: 2 }),
+        buildImage({ relativePath: "characters/3d/Anna/Base.png", poseVariant: 1 }),
+      ],
+    };
+
+    expect(isDuplicateGroupReviewed(group, reviewedGroups)).toBe(true);
+  });
+
+  it("returns false when a new file has been added to the group", () => {
+    const group = {
+      style: "3d",
+      characterName: "Anna",
+      poseBaseName: "Base",
+      images: [
+        buildImage({ relativePath: "characters/3d/Anna/Base.png", poseVariant: 1 }),
+        buildImage({ relativePath: "characters/3d/Anna/Base 2.png", poseVariant: 2 }),
+        buildImage({ relativePath: "characters/3d/Anna/Base 3.png", poseVariant: 3 }),
+      ],
+    };
+
+    expect(isDuplicateGroupReviewed(group, reviewedGroups)).toBe(false);
+  });
+
+  it("returns false for an unrelated character/style/pose", () => {
+    const group = {
+      style: "3d",
+      characterName: "Bob",
+      poseBaseName: "Base",
+      images: [
+        buildImage({ relativePath: "characters/3d/Bob/Base.png", characterName: "Bob" }),
+        buildImage({
+          relativePath: "characters/3d/Bob/Base 2.png",
+          characterName: "Bob",
+          poseVariant: 2,
+        }),
+      ],
+    };
+
+    expect(isDuplicateGroupReviewed(group, reviewedGroups)).toBe(false);
+  });
+});
+
+describe("readReviewedDuplicateGroups / writeReviewedDuplicateGroups", () => {
+  it("returns an empty array when the config file does not exist", async () => {
+    const groups = await readReviewedDuplicateGroups("/tmp/sd-dup-reviews-missing");
+
+    expect(groups).toEqual([]);
+  });
+
+  it("round-trips reviewed groups through disk", async () => {
+    const tempRoot = "/tmp/sd-dup-reviews-roundtrip";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    const groupsToWrite = [
+      {
+        style: "3d",
+        characterName: "Anna",
+        poseBaseName: "Base",
+        fileNames: ["Base.png", "Base 2.png"],
+      },
+    ];
+
+    await writeReviewedDuplicateGroups(tempRoot, groupsToWrite);
+
+    expect(await readReviewedDuplicateGroups(tempRoot)).toEqual(groupsToWrite);
+  });
+
+  it("ignores malformed entries in the config file", async () => {
+    const tempRoot = "/tmp/sd-dup-reviews-malformed";
+    await fs.mkdir(tempRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(tempRoot, "duplicate-reviews.json"),
+      JSON.stringify([{ style: "3d" }]),
+    );
+
+    expect(await readReviewedDuplicateGroups(tempRoot)).toEqual([]);
   });
 });

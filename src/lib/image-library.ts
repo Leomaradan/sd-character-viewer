@@ -4,6 +4,7 @@ import Ajv from "ajv";
 import {
   STYLES,
   type ICharacterSummary,
+  type IDuplicateGroup,
   type IImageItem,
   type ILibraryData,
   type IPosePatternFilter,
@@ -21,6 +22,7 @@ const PREVIEW_FILE_SUFFIX = ".preview.jpg";
 const LIBRARY_CONFIG_FILE_NAME = "config.json";
 const CHARACTERS_CONFIG_FILE_NAME = "characters.json";
 const POSE_FILTERS_FILE_NAME = "pose-filters.json";
+const DUPLICATE_REVIEW_CONFIG_FILE_NAME = "duplicate-reviews.json";
 const DEFAULT_POSE_PATTERN_FILTER_CONFIGS = [{ label: "With Somebody", pattern: "^With " }];
 
 interface ILibraryConfig {
@@ -68,6 +70,13 @@ interface IPosePatternFilterConfig {
   flags?: string;
 }
 
+export interface IReviewedDuplicateGroup {
+  style: string;
+  characterName: string;
+  poseBaseName: string;
+  fileNames: string[];
+}
+
 const ajv = new Ajv({ allErrors: false, strict: false });
 
 const libraryConfigValidator = ajv.compile<ILibraryConfig>({
@@ -112,6 +121,21 @@ const posePatternFilterConfigValidator = ajv.compile<IPosePatternFilterConfig>({
   additionalProperties: true,
 });
 
+const reviewedDuplicateGroupValidator = ajv.compile<IReviewedDuplicateGroup>({
+  type: "object",
+  properties: {
+    style: { type: "string" },
+    characterName: { type: "string" },
+    poseBaseName: { type: "string" },
+    fileNames: {
+      type: "array",
+      items: { type: "string" },
+    },
+  },
+  required: ["style", "characterName", "poseBaseName", "fileNames"],
+  additionalProperties: true,
+});
+
 const isLibraryConfig = (value: unknown): value is ILibraryConfig => {
   return libraryConfigValidator(value);
 };
@@ -122,6 +146,10 @@ const isCharacterMetadata = (value: unknown): value is ICharacterMetadata => {
 
 const isPosePatternFilterConfig = (value: unknown): value is IPosePatternFilterConfig => {
   return posePatternFilterConfigValidator(value);
+};
+
+const isReviewedDuplicateGroup = (value: unknown): value is IReviewedDuplicateGroup => {
+  return reviewedDuplicateGroupValidator(value);
 };
 const normalizeStyleNames = (styles: string[] | undefined): string[] => {
   if (!styles) {
@@ -368,6 +396,36 @@ const readCharactersMetadata = async (
   return metadataByCharacter;
 };
 
+export const readReviewedDuplicateGroups = async (
+  rootPath: string,
+): Promise<IReviewedDuplicateGroup[]> => {
+  const configPath = path.join(rootPath, DUPLICATE_REVIEW_CONFIG_FILE_NAME);
+
+  let fileContent = "";
+  try {
+    fileContent = await fs.readFile(configPath, "utf8");
+  } catch {
+    return [];
+  }
+
+  try {
+    const parsedContent: unknown = JSON.parse(fileContent);
+    const items = Array.isArray(parsedContent) ? parsedContent : [parsedContent];
+    return items.filter(isReviewedDuplicateGroup);
+  } catch {
+    // Fallback to no reviewed groups when the file is malformed.
+    return [];
+  }
+};
+
+export const writeReviewedDuplicateGroups = async (
+  rootPath: string,
+  reviewedGroups: IReviewedDuplicateGroup[],
+): Promise<void> => {
+  const configPath = path.join(rootPath, DUPLICATE_REVIEW_CONFIG_FILE_NAME);
+  await fs.writeFile(configPath, `${JSON.stringify(reviewedGroups, null, 2)}\n`, "utf8");
+};
+
 export const parsePoseName = (
   fileName: string,
 ): {
@@ -397,6 +455,89 @@ export const parsePoseName = (
     poseBaseName: poseBaseName || cleanName,
     poseVariant: variantRaw ? Number.parseInt(variantRaw, 10) : 1,
   };
+};
+
+const getImageFileName = (image: IImageItem): string => {
+  return image.relativePath.split("/").pop() ?? image.relativePath;
+};
+
+export const findDuplicateGroups = (images: IImageItem[]): IDuplicateGroup[] => {
+  const imagesByGroupKey = new Map<string, IImageItem[]>();
+
+  for (const image of images) {
+    const groupKey = `${image.style}::${image.characterName}::${image.poseBaseName}`;
+    const existingGroupImages = imagesByGroupKey.get(groupKey);
+
+    if (existingGroupImages) {
+      existingGroupImages.push(image);
+    } else {
+      imagesByGroupKey.set(groupKey, [image]);
+    }
+  }
+
+  const duplicateGroups: IDuplicateGroup[] = [];
+
+  for (const [groupKey, groupImages] of imagesByGroupKey.entries()) {
+    if (groupImages.length < 2) {
+      continue;
+    }
+
+    const sortedImages = [...groupImages].sort((a, b) => {
+      if (a.poseVariant !== b.poseVariant) {
+        return a.poseVariant - b.poseVariant;
+      }
+
+      return compareNatural(a.relativePath, b.relativePath);
+    });
+
+    const [firstImage] = sortedImages;
+
+    duplicateGroups.push({
+      id: groupKey,
+      style: firstImage.style,
+      characterName: firstImage.characterName,
+      poseBaseName: firstImage.poseBaseName,
+      images: sortedImages,
+    });
+  }
+
+  duplicateGroups.sort((a, b) => {
+    if (a.characterName !== b.characterName) {
+      return compareNatural(a.characterName, b.characterName);
+    }
+
+    if (a.style !== b.style) {
+      return compareNatural(a.style, b.style);
+    }
+
+    return compareNatural(a.poseBaseName, b.poseBaseName);
+  });
+
+  return duplicateGroups;
+};
+
+export const isDuplicateGroupReviewed = (
+  group: Pick<IDuplicateGroup, "style" | "characterName" | "poseBaseName" | "images">,
+  reviewedGroups: IReviewedDuplicateGroup[],
+): boolean => {
+  const currentFileNames = group.images.map(getImageFileName).sort(compareNatural);
+
+  return reviewedGroups.some((reviewedGroup) => {
+    if (
+      reviewedGroup.style !== group.style ||
+      reviewedGroup.characterName !== group.characterName ||
+      reviewedGroup.poseBaseName !== group.poseBaseName
+    ) {
+      return false;
+    }
+
+    const reviewedFileNames = [...reviewedGroup.fileNames].sort(compareNatural);
+
+    return (
+      reviewedFileNames.length === currentFileNames.length &&
+      reviewedFileNames.every((fileName, index) => fileName === currentFileNames[index])
+    );
+  });
 };
 
 const listPngFiles = async (characterFolderPath: string): Promise<string[]> => {
@@ -762,7 +903,7 @@ const toLibraryData = (
   };
 };
 
-const getImagesRootPathFromEnv = (): string | null => {
+export const getImagesRootPathFromEnv = (): string | null => {
   ensureLocalEnvLoaded();
   const configuredRoot = process.env[SD_IMAGES_ROOT_ENV_KEY]?.trim();
   return configuredRoot || null;
