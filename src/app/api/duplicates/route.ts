@@ -247,7 +247,9 @@ export const POST = async (request: Request) => {
         await removeFirstSeenCacheEntry(oldRelativePath);
       }
 
-      const finalFileNames = renamePlan.map((entry) => entry.targetFileName).sort();
+      const finalFileNames = renamePlan
+        .map((entry) => entry.targetFileName)
+        .toSorted((a, b) => a.localeCompare(b));
 
       const reviewedGroups = await readReviewedDuplicateGroups(rootPath);
       const remainingReviewedGroups = reviewedGroups.filter(
