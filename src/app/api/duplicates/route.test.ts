@@ -276,4 +276,49 @@ describe("POST /api/duplicates", () => {
 
     expect(reviewed.map((entry) => entry.characterName).sort()).toEqual(["Anna", "Bob"]);
   });
+
+  it("serializes two concurrent validations for the same group instead of interleaving their file operations", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+
+    const tempRoot = "/tmp/sd-dup-post-same-group-concurrent";
+    const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
+    await fs.mkdir(annaDir, { recursive: true });
+    await fs.writeFile(path.join(annaDir, "Base.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 2.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 3.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    // Two conflicting requests for the same group, submitted concurrently (e.g. from two tabs).
+    const firstRequest = new Request("http://localhost/api/duplicates", {
+      method: "POST",
+      body: JSON.stringify({
+        primaryRelativePath: "characters/3d/Anna/Base.png",
+        additionalKeptRelativePaths: ["characters/3d/Anna/Base 2.png"],
+      }),
+    });
+    const secondRequest = new Request("http://localhost/api/duplicates", {
+      method: "POST",
+      body: JSON.stringify({
+        primaryRelativePath: "characters/3d/Anna/Base 3.png",
+        additionalKeptRelativePaths: [],
+      }),
+    });
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      POST(firstRequest),
+      POST(secondRequest),
+    ]);
+
+    // Whichever request runs first fully wins; the other must observe its result (files it
+    // referenced may already be gone) rather than partially interleaving with it. Neither
+    // outcome should be a 500 caused by racing filesystem operations.
+    const statuses = [firstResponse.status, secondResponse.status].sort();
+    expect(statuses).toEqual([200, 400]);
+
+    const remainingFiles = (await fs.readdir(annaDir)).sort();
+    expect(remainingFiles).toEqual(["Base 2.png", "Base.png"]);
+  });
 });

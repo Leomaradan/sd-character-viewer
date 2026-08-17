@@ -21,15 +21,16 @@ import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 
 export const dynamic = "force-dynamic";
 
-// Serializes read-modify-write access to duplicate-reviews.json per root path, since concurrent
-// validations (e.g. two groups submitted in quick succession) would otherwise race and one
-// write could clobber the other's reviewed-group entry.
-const reviewedGroupsWriteQueues = new Map<string, Promise<unknown>>();
+// Serializes duplicate-group validation per root path: two concurrent requests (e.g. from two
+// browser tabs) targeting the same character folder could otherwise read the same directory
+// listing before either mutates it, then delete/rename files out from under each other, and a
+// later write to the shared duplicate-reviews.json could clobber an earlier one's entry.
+const duplicateFinderQueues = new Map<string, Promise<unknown>>();
 
-const withReviewedGroupsLock = <T>(rootPath: string, task: () => Promise<T>): Promise<T> => {
-  const previousTask = reviewedGroupsWriteQueues.get(rootPath) ?? Promise.resolve();
+const withDuplicateFinderLock = <T>(rootPath: string, task: () => Promise<T>): Promise<T> => {
+  const previousTask = duplicateFinderQueues.get(rootPath) ?? Promise.resolve();
   const nextTask = previousTask.then(task, task);
-  reviewedGroupsWriteQueues.set(
+  duplicateFinderQueues.set(
     rootPath,
     nextTask.catch(() => {}),
   );
@@ -136,106 +137,109 @@ export const POST = async (request: Request) => {
   const toRelativePath = (fileName: string): string =>
     path.posix.join("characters", style, characterName, fileName);
 
-  let directoryEntries: string[];
-  try {
-    directoryEntries = (await fs.readdir(directory)).filter((entry) =>
-      entry.toLowerCase().endsWith(".png"),
-    );
-  } catch {
-    return new Response("Could not read character folder", { status: 500 });
-  }
-
-  const groupFileNames = directoryEntries.filter(
-    (entry) => parsePoseName(entry).poseBaseName === poseBaseName,
-  );
-
   const keptFileNames = [
     path.basename(primaryFilePath),
     ...additionalFilePaths.map((filePath) => path.basename(filePath)),
   ];
   const keptFileNameSet = new Set(keptFileNames);
 
-  if (keptFileNames.some((fileName) => !groupFileNames.includes(fileName))) {
-    return new Response("Selected images do not belong to this pose group", { status: 400 });
-  }
-
-  try {
-    for (const fileName of groupFileNames) {
-      if (keptFileNameSet.has(fileName)) {
-        continue;
-      }
-
-      const filePath = path.join(directory, fileName);
-      await fs.unlink(filePath);
-      await fs.unlink(resolvePreviewFilePath(filePath)).catch(() => {});
-
-      const relativePath = toRelativePath(fileName);
-      invalidateMetadataCacheEntry(relativePath);
-      await removeFirstSeenCacheEntry(relativePath);
+  // Everything below reads and mutates this character's folder plus the shared
+  // duplicate-reviews.json, so it runs under the lock to stay atomic with respect to any other
+  // concurrent validation against the same root path.
+  return withDuplicateFinderLock(rootPath, async () => {
+    let directoryEntries: string[];
+    try {
+      directoryEntries = (await fs.readdir(directory)).filter((entry) =>
+        entry.toLowerCase().endsWith(".png"),
+      );
+    } catch {
+      return new Response("Could not read character folder", { status: 500 });
     }
 
-    const orderedAdditionalFileNames = additionalFilePaths
-      .map((filePath) => path.basename(filePath))
-      .sort((a, b) => {
-        const variantA = parsePoseName(a).poseVariant;
-        const variantB = parsePoseName(b).poseVariant;
-        if (variantA !== variantB) {
-          return variantA - variantB;
-        }
-        return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
-      });
-
-    const orderedKeptFileNames = [path.basename(primaryFilePath), ...orderedAdditionalFileNames];
-
-    const renamePlan = orderedKeptFileNames.map((fileName, index) => ({
-      currentFileName: fileName,
-      targetFileName: index === 0 ? `${poseBaseName}.png` : `${poseBaseName} ${index + 1}.png`,
-    }));
-
-    const pendingRenames = renamePlan.filter(
-      (entry) => entry.currentFileName !== entry.targetFileName,
+    const groupFileNames = directoryEntries.filter(
+      (entry) => parsePoseName(entry).poseBaseName === poseBaseName,
     );
 
-    const tempRenames: Array<{
-      tempFileName: string;
-      targetFileName: string;
-      oldRelativePath: string;
-    }> = [];
-
-    for (const entry of pendingRenames) {
-      const tempFileName = `.duplicate-finder-tmp-${randomUUID()}.png`;
-      const currentFilePath = path.join(directory, entry.currentFileName);
-      const tempFilePath = path.join(directory, tempFileName);
-
-      await fs.rename(currentFilePath, tempFilePath);
-      await fs
-        .rename(resolvePreviewFilePath(currentFilePath), resolvePreviewFilePath(tempFilePath))
-        .catch(() => {});
-
-      tempRenames.push({
-        tempFileName,
-        targetFileName: entry.targetFileName,
-        oldRelativePath: toRelativePath(entry.currentFileName),
-      });
+    if (keptFileNames.some((fileName) => !groupFileNames.includes(fileName))) {
+      return new Response("Selected images do not belong to this pose group", { status: 400 });
     }
 
-    for (const { tempFileName, targetFileName, oldRelativePath } of tempRenames) {
-      const tempFilePath = path.join(directory, tempFileName);
-      const targetFilePath = path.join(directory, targetFileName);
+    try {
+      for (const fileName of groupFileNames) {
+        if (keptFileNameSet.has(fileName)) {
+          continue;
+        }
 
-      await fs.rename(tempFilePath, targetFilePath);
-      await fs
-        .rename(resolvePreviewFilePath(tempFilePath), resolvePreviewFilePath(targetFilePath))
-        .catch(() => {});
+        const filePath = path.join(directory, fileName);
+        await fs.unlink(filePath);
+        await fs.unlink(resolvePreviewFilePath(filePath)).catch(() => {});
 
-      invalidateMetadataCacheEntry(oldRelativePath);
-      invalidateMetadataCacheEntry(toRelativePath(targetFileName));
-      await removeFirstSeenCacheEntry(oldRelativePath);
-    }
+        const relativePath = toRelativePath(fileName);
+        invalidateMetadataCacheEntry(relativePath);
+        await removeFirstSeenCacheEntry(relativePath);
+      }
 
-    const finalFileNames = renamePlan.map((entry) => entry.targetFileName).sort();
+      const orderedAdditionalFileNames = additionalFilePaths
+        .map((filePath) => path.basename(filePath))
+        .sort((a, b) => {
+          const variantA = parsePoseName(a).poseVariant;
+          const variantB = parsePoseName(b).poseVariant;
+          if (variantA !== variantB) {
+            return variantA - variantB;
+          }
+          return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+        });
 
-    await withReviewedGroupsLock(rootPath, async () => {
+      const orderedKeptFileNames = [path.basename(primaryFilePath), ...orderedAdditionalFileNames];
+
+      const renamePlan = orderedKeptFileNames.map((fileName, index) => ({
+        currentFileName: fileName,
+        targetFileName: index === 0 ? `${poseBaseName}.png` : `${poseBaseName} ${index + 1}.png`,
+      }));
+
+      const pendingRenames = renamePlan.filter(
+        (entry) => entry.currentFileName !== entry.targetFileName,
+      );
+
+      const tempRenames: Array<{
+        tempFileName: string;
+        targetFileName: string;
+        oldRelativePath: string;
+      }> = [];
+
+      for (const entry of pendingRenames) {
+        const tempFileName = `.duplicate-finder-tmp-${randomUUID()}.png`;
+        const currentFilePath = path.join(directory, entry.currentFileName);
+        const tempFilePath = path.join(directory, tempFileName);
+
+        await fs.rename(currentFilePath, tempFilePath);
+        await fs
+          .rename(resolvePreviewFilePath(currentFilePath), resolvePreviewFilePath(tempFilePath))
+          .catch(() => {});
+
+        tempRenames.push({
+          tempFileName,
+          targetFileName: entry.targetFileName,
+          oldRelativePath: toRelativePath(entry.currentFileName),
+        });
+      }
+
+      for (const { tempFileName, targetFileName, oldRelativePath } of tempRenames) {
+        const tempFilePath = path.join(directory, tempFileName);
+        const targetFilePath = path.join(directory, targetFileName);
+
+        await fs.rename(tempFilePath, targetFilePath);
+        await fs
+          .rename(resolvePreviewFilePath(tempFilePath), resolvePreviewFilePath(targetFilePath))
+          .catch(() => {});
+
+        invalidateMetadataCacheEntry(oldRelativePath);
+        invalidateMetadataCacheEntry(toRelativePath(targetFileName));
+        await removeFirstSeenCacheEntry(oldRelativePath);
+      }
+
+      const finalFileNames = renamePlan.map((entry) => entry.targetFileName).sort();
+
       const reviewedGroups = await readReviewedDuplicateGroups(rootPath);
       const remainingReviewedGroups = reviewedGroups.filter(
         (reviewedGroup) =>
@@ -254,10 +258,10 @@ export const POST = async (request: Request) => {
       };
 
       await writeReviewedDuplicateGroups(rootPath, [...remainingReviewedGroups, newReviewedGroup]);
-    });
 
-    return Response.json({ style, characterName, poseBaseName, fileNames: finalFileNames });
-  } catch {
-    return new Response("Could not validate duplicate group", { status: 500 });
-  }
+      return Response.json({ style, characterName, poseBaseName, fileNames: finalFileNames });
+    } catch {
+      return new Response("Could not validate duplicate group", { status: 500 });
+    }
+  });
 };
