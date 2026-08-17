@@ -94,8 +94,10 @@ export const GET = async (request: Request) => {
   if (wantsPreview) {
     try {
       return await respondWithFile(request, resolvePreviewFilePath(filePath), "image/jpeg");
-    } catch {
-      // No preview generated yet for this image; fall back to the full-resolution PNG.
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+        return new Response("Could not read preview image", { status: 500 });
+      }
     }
   }
 
