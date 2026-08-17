@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
 import {
@@ -92,11 +92,15 @@ export const GET = async (request: Request) => {
   }
 
   if (wantsPreview) {
-    try {
-      return await respondWithFile(request, resolvePreviewFilePath(filePath), "image/jpeg");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
-        return new Response("Could not read preview image", { status: 500 });
+    const previewFilePath = resolvePreviewFilePath(filePath);
+
+    if (existsSync(previewFilePath)) {
+      try {
+        return await respondWithFile(request, resolvePreviewFilePath(filePath), "image/jpeg");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+          return new Response("Could not read preview image", { status: 500 });
+        }
       }
     }
   }
