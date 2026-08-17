@@ -13,6 +13,7 @@ services:
       SD_CACHE_DIR: /cache
       SD_PASSWORD: ${SD_PASSWORD:-}
       #SD_PASSWORD_SALT: ${SD_PASSWORD_SALT}
+      SD_ALLOW_DELETE: ${SD_ALLOW_DELETE:-}
     volumes:
       - ${SD_IMAGES_HOST_PATH:-./images}:/data:ro
       - ${SD_CACHE_HOST_PATH:-./cache}:/cache:rw
