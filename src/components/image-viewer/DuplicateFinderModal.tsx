@@ -17,7 +17,7 @@ import {
   Radio,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import type { IDuplicateGroup, IImageItem } from "@/types/library";
 import { LazyImage } from "@/components/image-viewer/LazyImage";
 import { formatStyleLabel } from "@/components/image-viewer/utils";
@@ -235,13 +235,20 @@ export function DuplicateFinderModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [validatingGroupId, setValidatingGroupId] = useState<string | null>(null);
   const [groupErrors, setGroupErrors] = useState<Record<string, string>>({});
+  // Bumped on every new load and whenever the dialog closes, so a response for a superseded
+  // (or since-closed) request can be detected and ignored instead of overwriting fresher state.
+  const loadRequestIdRef = useRef(0);
 
   const loadGroups = useCallback(async () => {
+    const requestId = ++loadRequestIdRef.current;
     setIsLoading(true);
     setLoadError(null);
 
     try {
       const response = await fetch("/api/duplicates", { cache: "no-store" });
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
 
       if (!response.ok) {
         setLoadError("Could not load duplicate groups. Try again.");
@@ -249,14 +256,22 @@ export function DuplicateFinderModal({
       }
 
       const data = (await response.json()) as { groups: IDuplicateGroup[] };
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
+
       setGroups(data.groups);
       setSelections(
         Object.fromEntries(data.groups.map((group) => [group.id, buildDefaultSelection(group)])),
       );
     } catch {
-      setLoadError("Could not load duplicate groups. Try again.");
+      if (requestId === loadRequestIdRef.current) {
+        setLoadError("Could not load duplicate groups. Try again.");
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === loadRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
@@ -271,6 +286,7 @@ export function DuplicateFinderModal({
 
     return () => {
       globalThis.window.clearTimeout(timer);
+      loadRequestIdRef.current += 1;
     };
   }, [open, loadGroups]);
 
