@@ -121,10 +121,14 @@ const generatePreviewForFile = async (pngFilePath) => {
     return false;
   }
 
+  const maxSize = Math.max(
+    1,
+    Number.parseInt(process.env.SD_PREVIEW_MAX_DIMENSION ?? "640", 10) || 640,
+  );
   await sharp(pngFilePath)
     .resize({
-      width: Number(process.env.SD_PREVIEW_MAX_DIMENSION ?? "640"),
-      height: Number(process.env.SD_PREVIEW_MAX_DIMENSION ?? "640"),
+      width: maxSize,
+      height: maxSize,
       fit: "inside",
       withoutEnlargement: true,
     })
