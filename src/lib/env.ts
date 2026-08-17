@@ -5,6 +5,8 @@ import {
   SD_IMAGES_ROOT_ENV_KEY,
   SD_PASSWORD_ENV_KEY,
   SD_PASSWORD_SALT_ENV_KEY,
+  SD_PREVIEW_JPEG_QUALITY_ENV_KEY,
+  SD_PREVIEW_MAX_DIMENSION_ENV_KEY,
 } from "@/lib/env-keys";
 
 let hasLoadedEnvFiles = false;
@@ -15,6 +17,8 @@ const SD_ENV_KEYS = [
   SD_CACHE_DIR_ENV_KEY,
   SD_PASSWORD_ENV_KEY,
   SD_PASSWORD_SALT_ENV_KEY,
+  SD_PREVIEW_JPEG_QUALITY_ENV_KEY,
+  SD_PREVIEW_MAX_DIMENSION_ENV_KEY,
 ] as const;
 
 const logDetectedEnvVars = (): void => {

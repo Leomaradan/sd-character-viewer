@@ -79,11 +79,17 @@ This script walks every PNG under `characters/`, and for each one it skips image
 
 `GET /api/image` responses (both variants) carry `Cache-Control: public, max-age=86400, must-revalidate`, an `ETag`, and a `Last-Modified` header derived from the served file's size and modification time. Browsers revalidate with `If-None-Match`/`If-Modified-Since` and get a bodyless `304` when the file hasn't changed, so repeat views (scrolling back, reopening a character) cost a small header round trip instead of a full re-download. The cache key is tied to file `mtime`/size rather than the first-seen timestamp, because `firstSeenAt` never changes when a file is overwritten in place under the same name (e.g. regenerating a pose), which would make a stale image cache forever.
 
-## Environment Variable
+## Environment Variables
 
-Set `SD_IMAGES_ROOT` to the host directory that contains the `characters` folder.
-
-Set `SD_CACHE_DIR` to a writable directory used to persist discovery cache files (for the `new` image filter). If not set, the app defaults to `.cache/sd-character-viewer` under the working directory.
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `SD_IMAGES_ROOT` | Yes | — | Host directory that contains the `characters` folder. |
+| `SD_CACHE_DIR` | No | `.cache/sd-character-viewer` (relative to the working directory) | Writable directory used to persist the discovery cache that powers the `new` image filter. |
+| `SD_PASSWORD` | No | — | Enables password-protected access when set. Leave unset to run without a login screen. |
+| `SD_PASSWORD_SALT` | Only when `SD_PASSWORD` is set | — | Salt used to hash the configured password. The app reports a configuration error at startup if `SD_PASSWORD` is set without this. |
+| `SD_ALLOW_DELETE` | No | `false` | Enables destructive image actions: deleting an image, "Redraw" (renumbers a regenerated pose), and the Duplicate Finder's "Validate" action (deletes unselected duplicates and renumbers the ones kept). Accepts `true`, `1`, or `yes` (case-insensitive); anything else is treated as disabled. |
+| `SD_PREVIEW_MAX_DIMENSION` | No | `640` | Longest edge, in pixels, of generated preview thumbnails. Used by the [preview sync script](#preview-thumbnails). |
+| `SD_PREVIEW_JPEG_QUALITY` | No | `70` | JPEG quality (1-100) used for preview thumbnails. Used by the [preview sync script](#preview-thumbnails). |
 
 Priority order used by the app:
 
@@ -95,6 +101,9 @@ Example:
 ```bash
 export SD_IMAGES_ROOT=/data/stable-diffusion
 export SD_CACHE_DIR=/var/lib/sd-character-viewer/cache
+export SD_PASSWORD=your-password
+export SD_PASSWORD_SALT=some-random-string
+export SD_ALLOW_DELETE=true
 ```
 
 Local development example in `.env.local`:
@@ -102,6 +111,9 @@ Local development example in `.env.local`:
 ```bash
 SD_IMAGES_ROOT=/absolute/path/to/your/images/root
 SD_CACHE_DIR=/absolute/path/to/your/cache/dir
+SD_PASSWORD=your-password
+SD_PASSWORD_SALT=some-random-string
+SD_ALLOW_DELETE=true
 ```
 
 ## Run
@@ -123,10 +135,14 @@ docker run --rm -p 3000:3000 \
 	-e SD_IMAGES_ROOT=/data \
 	-e SD_CACHE_DIR=/cache \
 	-e SD_PASSWORD=your-password \
+	-e SD_PASSWORD_SALT=some-random-string \
+	-e SD_ALLOW_DELETE=true \
 	-v /absolute/path/to/your/images/root:/data:ro \
 	-v /absolute/path/to/your/cache/dir:/cache:rw \
 	sd-character-viewer
 ```
+
+`SD_PASSWORD_SALT` is required whenever `SD_PASSWORD` is set; `SD_ALLOW_DELETE` is optional and can be dropped to keep destructive image actions disabled.
 
 Run with Docker Compose:
 
@@ -136,6 +152,8 @@ Run with Docker Compose:
 SD_IMAGES_HOST_PATH=/absolute/path/to/your/images/root
 SD_CACHE_HOST_PATH=/absolute/path/to/your/cache/dir
 SD_PASSWORD=your-password
+SD_PASSWORD_SALT=some-random-string
+SD_ALLOW_DELETE=true
 ```
 
 2. Start the app:

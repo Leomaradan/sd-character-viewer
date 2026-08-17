@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { ImageViewerApp } from "@/components/ImageViewerApp";
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
 import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
+import packageJson from "../../package.json";
 
 const Home = async () => {
   await connection();
@@ -12,7 +13,7 @@ const Home = async () => {
 
   return (
     <Suspense>
-      <ImageViewerApp canDeleteImage={canDeleteImage} />
+      <ImageViewerApp canDeleteImage={canDeleteImage} appVersion={packageJson.version} />
     </Suspense>
   );
 };

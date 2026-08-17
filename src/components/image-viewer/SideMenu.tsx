@@ -2,6 +2,7 @@
 
 import {
   Box,
+  Button,
   FormControlLabel,
   List,
   ListItemButton,
@@ -13,6 +14,7 @@ import {
   Typography,
 } from "@mui/material";
 import BrightnessAutoIcon from "@mui/icons-material/BrightnessAuto";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import DirectionsRunIcon from "@mui/icons-material/DirectionsRun";
 import LightModeIcon from "@mui/icons-material/LightMode";
@@ -43,6 +45,14 @@ const CACHE_UNAVAILABLE_TEXT_SX = { display: "block", mt: 1, opacity: 0.6 };
 const SORT_ORDER_SECTION_SX = { mt: 2 };
 const SORT_ORDER_TOGGLE_SX = { mt: 0.5, width: "100%" };
 const SORT_ORDER_BUTTON_SX = { flex: 1 };
+const TOOLS_SECTION_SX = {
+  mt: 2,
+  pt: 2,
+  borderTop: "1px solid",
+  borderColor: "divider",
+};
+const DUPLICATE_FINDER_BUTTON_SX = { mt: 0.5, width: "100%", justifyContent: "flex-start" };
+const APP_VERSION_SX = { display: "block", mt: 1.5, textAlign: "center", opacity: 0.5 };
 
 interface ISideMenuProps {
   majorFilter: TMajorFilter;
@@ -52,6 +62,9 @@ interface ISideMenuProps {
   characterSortOrder?: TCharacterSortOrder;
   onCharacterSortOrderChange?: (nextSortOrder: TCharacterSortOrder) => void;
   library: ILibraryData;
+  canManageDuplicates?: boolean;
+  onOpenDuplicateFinder?: () => void;
+  appVersion?: string;
 }
 
 export const SideMenu = ({
@@ -62,6 +75,9 @@ export const SideMenu = ({
   characterSortOrder = "name",
   onCharacterSortOrderChange,
   library,
+  canManageDuplicates = false,
+  onOpenDuplicateFinder,
+  appVersion,
 }: Readonly<ISideMenuProps>) => {
   const { mode, setMode } = useColorScheme();
 
@@ -174,6 +190,22 @@ export const SideMenu = ({
         </Box>
       </Box>
 
+      {canManageDuplicates && (
+        <Box sx={TOOLS_SECTION_SX}>
+          <Typography variant="overline">Tools</Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<ContentCopyIcon />}
+            onClick={onOpenDuplicateFinder}
+            disabled={!onOpenDuplicateFinder}
+            sx={DUPLICATE_FINDER_BUTTON_SX}
+          >
+            Duplicate Finder
+          </Button>
+        </Box>
+      )}
+
       <Box sx={THEME_SECTION_SX}>
         <Typography variant="overline">Theme</Typography>
         <ToggleButtonGroup
@@ -193,6 +225,12 @@ export const SideMenu = ({
             <DarkModeIcon fontSize="small" />
           </ToggleButton>
         </ToggleButtonGroup>
+
+        {appVersion && (
+          <Typography variant="caption" sx={APP_VERSION_SX}>
+            v{appVersion}
+          </Typography>
+        )}
       </Box>
     </Box>
   );

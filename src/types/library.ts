@@ -47,6 +47,14 @@ export interface IPosePatternFilter {
   flags?: string;
 }
 
+export interface IDuplicateGroup {
+  id: string;
+  style: string;
+  characterName: string;
+  poseBaseName: string;
+  images: IImageItem[];
+}
+
 export interface ILibraryData {
   rootConfigured: boolean;
   rootPath: string | null;

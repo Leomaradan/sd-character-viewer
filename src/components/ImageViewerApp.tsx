@@ -44,6 +44,7 @@ import { formatStyleLabel } from "@/components/image-viewer/utils";
 import type { IImageItem, ILibraryData, TCharacterSortOrder, TMajorFilter } from "@/types/library";
 import { ImageViewerBody } from "./ImageViewerBody";
 import { ImageDetailModal } from "@/components/image-viewer/ImageDetailModal";
+import { DuplicateFinderModal } from "@/components/image-viewer/DuplicateFinderModal";
 import { ScrollToTopButton } from "@/components/image-viewer/ScrollToTopButton";
 
 const MAIN_STYLES = { minHeight: "100vh", bgcolor: "background.default" };
@@ -110,9 +111,10 @@ type TAuthStatus = "checking" | "misconfigured" | "required" | "authenticated" |
 
 interface IImageViewerAppProps {
   canDeleteImage?: boolean;
+  appVersion?: string;
 }
 
-export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps) => {
+export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageViewerAppProps) => {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -135,6 +137,7 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [selectedImageForModal, setSelectedImageForModal] = useState<IImageItem | null>(null);
   const [modalFilteredImages, setModalFilteredImages] = useState<IImageItem[]>([]);
+  const [isDuplicateFinderOpen, setIsDuplicateFinderOpen] = useState(false);
   const [library, setLibrary] = useState<ILibraryData>(DEFAULT_LIBRARY);
   const modalHistoryPushed = useRef(false);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
@@ -193,6 +196,19 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
       modalHistoryPushed.current = false;
       history.back();
     }
+  }, []);
+
+  const handleOpenDuplicateFinder = useCallback(() => {
+    closeMobileDrawer();
+    setIsDuplicateFinderOpen(true);
+  }, [closeMobileDrawer]);
+
+  const handleCloseDuplicateFinder = useCallback(() => {
+    setIsDuplicateFinderOpen(false);
+  }, []);
+
+  const handleDuplicateChangesApplied = useCallback(() => {
+    setLibraryRefreshToken((currentToken) => currentToken + 1);
   }, []);
 
   const handleImageDeleted = useCallback(() => {
@@ -557,6 +573,9 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
           characterSortOrder={characterSortOrder}
           onCharacterSortOrderChange={handleCharacterSortOrderChange}
           library={library}
+          canManageDuplicates={canDeleteImage}
+          onOpenDuplicateFinder={handleOpenDuplicateFinder}
+          appVersion={appVersion}
         />
       </Drawer>
 
@@ -571,6 +590,9 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
             characterSortOrder={characterSortOrder}
             onCharacterSortOrderChange={handleCharacterSortOrderChange}
             library={library}
+            canManageDuplicates={canDeleteImage}
+            onOpenDuplicateFinder={handleOpenDuplicateFinder}
+            appVersion={appVersion}
           />
         </Drawer>
       )}
@@ -610,6 +632,13 @@ export const ImageViewerApp = ({ canDeleteImage = false }: IImageViewerAppProps)
         canNavigateNext={canNavigateModalNext}
         onNavigatePrevious={handleModalPrevious}
         onNavigateNext={handleModalNext}
+        styleLabel={styleLabel}
+      />
+
+      <DuplicateFinderModal
+        open={isDuplicateFinderOpen}
+        onClose={handleCloseDuplicateFinder}
+        onChangesApplied={handleDuplicateChangesApplied}
         styleLabel={styleLabel}
       />
 
