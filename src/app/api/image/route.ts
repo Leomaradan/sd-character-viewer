@@ -56,7 +56,7 @@ const respondWithFile = async (
   contentType: string,
 ): Promise<Response> => {
   const stat = await fs.stat(filePath);
-  const lastModifiedMs = Math.trunc(stat.mtimeMs);
+  const lastModifiedMs = Math.floor(stat.mtimeMs / 1000) * 1000;
   const etag = buildEntityTag(stat);
   const cacheHeaders = {
     "Cache-Control": buildCacheControl(),
