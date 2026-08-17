@@ -1,8 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:fs", () => ({
+  existsSync: vi.fn(),
   promises: {
     readFile: vi.fn(),
+    stat: vi.fn(),
     unlink: vi.fn(),
     rename: vi.fn(),
     readdir: vi.fn(),
@@ -17,6 +19,7 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/image-library", () => ({
   resolveImageFilePath: vi.fn(),
+  resolvePreviewFilePath: vi.fn((filePath: string) => filePath.replace(/\.png$/i, ".preview.jpg")),
   removeFirstSeenCacheEntry: vi.fn(),
 }));
 
@@ -29,12 +32,16 @@ vi.mock("@/lib/env", () => ({
   readBooleanEnvFlag: vi.fn(),
 }));
 
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import * as auth from "@/lib/auth";
 import { resolveImageFilePath, removeFirstSeenCacheEntry } from "@/lib/image-library";
 import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
 import * as env from "@/lib/env";
 import { DELETE, GET, PATCH } from "./route";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("/api/image", () => {
   it("GET returns unauthorized when auth fails", async () => {
@@ -59,27 +66,130 @@ describe("/api/image", () => {
     expect(response.status).toBe(400);
   });
 
-  it("GET returns image bytes", async () => {
+  it("GET returns image bytes with cache-validation headers", async () => {
     const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
     const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
     const readFileMock = vi.mocked(fs.readFile);
+    const statMock = vi.mocked(fs.stat);
     isPasswordProtectionEnabledMock.mockReturnValue(false);
     resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
+    statMock.mockResolvedValue({ size: 3, mtimeMs: 1_700_000_000_000 } as never);
     readFileMock.mockResolvedValue(Buffer.from([1, 2, 3]));
 
     const response = await GET(new Request("http://localhost/api/image?path=ok.png"));
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("image/png");
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=86400, must-revalidate");
+    expect(response.headers.get("ETag")).toBe('"3-18bcfe56800"');
+    expect(response.headers.get("Last-Modified")).toBe(new Date(1_700_000_000_000).toUTCString());
+  });
+
+  it("GET uses private Cache-Control when password protection is enabled", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const isAuthenticatedRequestMock = vi.mocked(auth.isAuthenticatedRequest);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const readFileMock = vi.mocked(fs.readFile);
+    const statMock = vi.mocked(fs.stat);
+    isPasswordProtectionEnabledMock.mockReturnValue(true);
+    isAuthenticatedRequestMock.mockReturnValue(true);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
+    statMock.mockResolvedValue({ size: 3, mtimeMs: 1_700_000_000_000 } as never);
+    readFileMock.mockResolvedValue(Buffer.from([1, 2, 3]));
+
+    const response = await GET(new Request("http://localhost/api/image?path=a.png"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, max-age=86400, must-revalidate");
+  });
+
+  it("GET returns 304 when If-None-Match matches the current ETag", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const readFileMock = vi.mocked(fs.readFile);
+    const statMock = vi.mocked(fs.stat);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
+    statMock.mockResolvedValue({ size: 3, mtimeMs: 1_700_000_000_000 } as never);
+
+    const response = await GET(
+      new Request("http://localhost/api/image?path=ok.png", {
+        headers: { "If-None-Match": '"3-18bcfe56800"' },
+      }),
+    );
+
+    expect(response.status).toBe(304);
+    expect(readFileMock).not.toHaveBeenCalled();
+  });
+
+  it("GET returns preview bytes when variant=preview and a preview exists", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const readFileMock = vi.mocked(fs.readFile);
+    const statMock = vi.mocked(fs.stat);
+    const existsSyncMock = vi.mocked(existsSync);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
+    existsSyncMock.mockReturnValue(true);
+    statMock.mockResolvedValue({ size: 3, mtimeMs: 1_700_000_000_000 } as never);
+    readFileMock.mockResolvedValue(Buffer.from([4, 5, 6]));
+
+    const response = await GET(
+      new Request("http://localhost/api/image?path=ok.png&variant=preview"),
+    );
+
+    expect(existsSyncMock).toHaveBeenCalledWith("/tmp/a.preview.jpg");
+    expect(statMock).toHaveBeenCalledWith("/tmp/a.preview.jpg");
+    expect(readFileMock).toHaveBeenCalledWith("/tmp/a.preview.jpg");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/jpeg");
+  });
+
+  it("GET falls back to the full PNG when variant=preview but no preview exists", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const readFileMock = vi.mocked(fs.readFile);
+    const statMock = vi.mocked(fs.stat);
+    const existsSyncMock = vi.mocked(existsSync);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
+    existsSyncMock.mockReturnValue(false);
+    statMock.mockResolvedValue({ size: 3, mtimeMs: 1_700_000_000_000 } as never);
+    readFileMock.mockResolvedValue(Buffer.from([1, 2, 3]));
+
+    const response = await GET(
+      new Request("http://localhost/api/image?path=ok.png&variant=preview"),
+    );
+
+    expect(statMock).not.toHaveBeenCalledWith("/tmp/a.preview.jpg");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+  });
+
+  it("GET returns 500 when an existing preview fails to read for a reason other than a missing file", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const statMock = vi.mocked(fs.stat);
+    const existsSyncMock = vi.mocked(existsSync);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
+    existsSyncMock.mockReturnValue(true);
+    statMock.mockRejectedValue(Object.assign(new Error("denied"), { code: "EACCES" }));
+
+    const response = await GET(
+      new Request("http://localhost/api/image?path=ok.png&variant=preview"),
+    );
+
+    expect(response.status).toBe(500);
   });
 
   it("GET returns 404 when file read fails", async () => {
     const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
     const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
-    const readFileMock = vi.mocked(fs.readFile);
+    const statMock = vi.mocked(fs.stat);
     isPasswordProtectionEnabledMock.mockReturnValue(false);
     resolveImageFilePathMock.mockReturnValue("/tmp/missing.png");
-    readFileMock.mockRejectedValue(new Error("missing"));
+    statMock.mockRejectedValue(new Error("missing"));
 
     const response = await GET(new Request("http://localhost/api/image?path=missing.png"));
 
@@ -161,8 +271,33 @@ describe("/api/image", () => {
     const response = await DELETE(new Request("http://localhost/api/image?path=ok.png"));
 
     expect(unlinkMock).toHaveBeenCalledWith("/tmp/a.png");
+    expect(unlinkMock).toHaveBeenCalledWith("/tmp/a.preview.jpg");
     expect(invalidateMetadataCacheEntryMock).toHaveBeenCalledWith("ok.png");
     expect(removeFirstSeenCacheEntryMock).toHaveBeenCalledWith("ok.png");
+    expect(response.status).toBe(204);
+  });
+
+  it("DELETE succeeds even when no preview file exists", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const readBooleanEnvFlagMock = vi.mocked(env.readBooleanEnvFlag);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const unlinkMock = vi.mocked(fs.unlink);
+    const removeFirstSeenCacheEntryMock = vi.mocked(removeFirstSeenCacheEntry);
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    readBooleanEnvFlagMock.mockReturnValue(true);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
+    removeFirstSeenCacheEntryMock.mockResolvedValue(undefined);
+    unlinkMock.mockImplementation((requestedPath) => {
+      if (requestedPath === "/tmp/a.preview.jpg") {
+        return Promise.reject(new Error("missing"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const response = await DELETE(new Request("http://localhost/api/image?path=ok.png"));
+
     expect(response.status).toBe(204);
   });
 
@@ -256,8 +391,36 @@ describe("/api/image PATCH", () => {
 
     expect(response.status).toBe(200);
     expect(renameMock).toHaveBeenCalledWith("/tmp/ImageA.png", "/tmp/ImageA 2.png");
+    expect(renameMock).toHaveBeenCalledWith("/tmp/ImageA.preview.jpg", "/tmp/ImageA 2.preview.jpg");
     const data = (await response.json()) as { newPath: string };
     expect(data.newPath).toBe("ImageA 2.png");
+  });
+
+  it("PATCH succeeds even when no preview file exists to rename", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const readBooleanEnvFlagMock = vi.mocked(env.readBooleanEnvFlag);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const renameMock = vi.mocked(fs.rename);
+    const readdirMock = vi.mocked(fs.readdir);
+    const removeFirstSeenCacheEntryMock = vi.mocked(removeFirstSeenCacheEntry);
+
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    readBooleanEnvFlagMock.mockReturnValue(true);
+    resolveImageFilePathMock.mockReturnValue("/tmp/ImageA.png");
+    readdirMock.mockResolvedValue([]);
+    removeFirstSeenCacheEntryMock.mockResolvedValue(undefined);
+    renameMock.mockImplementation((from) => {
+      if (from === "/tmp/ImageA.preview.jpg") {
+        return Promise.reject(new Error("missing"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const response = await PATCH(new Request("http://localhost/api/image?path=ImageA.png"));
+
+    expect(response.status).toBe(200);
   });
 
   it("PATCH skips numbers already used by existing renamed files", async () => {

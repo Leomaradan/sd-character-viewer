@@ -20,6 +20,12 @@ describe("image-viewer utils", () => {
     );
   });
 
+  it("builds encoded preview image URL", () => {
+    expect(getImageUrl("characters/3d/A B/Base.png", { preview: true })).toBe(
+      "/api/image?path=characters%2F3d%2FA%20B%2FBase.png&variant=preview",
+    );
+  });
+
   it("formats style labels", () => {
     expect(formatStyleLabel("3d")).toBe("3D");
     expect(formatStyleLabel("anime")).toBe("Anime");

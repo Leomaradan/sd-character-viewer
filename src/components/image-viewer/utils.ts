@@ -1,7 +1,8 @@
 import type { IImageItem, IPosePatternFilter } from "@/types/library";
 
-export const getImageUrl = (relativePath: string): string => {
-  return `/api/image?path=${encodeURIComponent(relativePath)}`;
+export const getImageUrl = (relativePath: string, options?: { preview?: boolean }): string => {
+  const variantParam = options?.preview ? "&variant=preview" : "";
+  return `/api/image?path=${encodeURIComponent(relativePath)}${variantParam}`;
 };
 
 export const formatStyleLabel = (

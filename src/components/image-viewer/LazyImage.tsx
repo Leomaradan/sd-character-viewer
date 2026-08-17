@@ -10,6 +10,7 @@ interface ILazyImageProps {
   alt: string;
   sx: SxProps<Theme>;
   imgSx?: SxProps<Theme>;
+  usePreview?: boolean;
 }
 
 const IMAGE_SX: SxProps<Theme> = {
@@ -19,7 +20,13 @@ const IMAGE_SX: SxProps<Theme> = {
   display: "block",
 };
 
-export const LazyImage = ({ relativePath, alt, sx, imgSx }: Readonly<ILazyImageProps>) => {
+export const LazyImage = ({
+  relativePath,
+  alt,
+  sx,
+  imgSx,
+  usePreview = false,
+}: Readonly<ILazyImageProps>) => {
   const imageContainerRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(false);
   const mergedImgSx = useMemo(() => (imgSx ? { ...IMAGE_SX, ...imgSx } : IMAGE_SX), [imgSx]);
@@ -58,7 +65,7 @@ export const LazyImage = ({ relativePath, alt, sx, imgSx }: Readonly<ILazyImageP
       {shouldLoad ? (
         <Box
           component="img"
-          src={getImageUrl(relativePath)}
+          src={getImageUrl(relativePath, { preview: usePreview })}
           alt={alt}
           loading="lazy"
           decoding="async"
