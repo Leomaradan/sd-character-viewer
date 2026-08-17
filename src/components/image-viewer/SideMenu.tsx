@@ -198,6 +198,7 @@ export const SideMenu = ({
             size="small"
             startIcon={<ContentCopyIcon />}
             onClick={onOpenDuplicateFinder}
+            disabled={!onOpenDuplicateFinder}
             sx={DUPLICATE_FINDER_BUTTON_SX}
           >
             Duplicate Finder
