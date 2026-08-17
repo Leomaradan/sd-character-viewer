@@ -149,6 +149,53 @@ describe("POST /api/duplicates", () => {
     expect(response.status).toBe(403);
   });
 
+  it("returns 400 when the image library root is not configured", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({ primaryRelativePath: "a.png", additionalKeptRelativePaths: [] }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 when the request body is not valid JSON", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    process.env.SD_IMAGES_ROOT = "/tmp/sd-dup-post-malformed-json";
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: "{not-json",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 when primaryRelativePath is missing", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    process.env.SD_IMAGES_ROOT = "/tmp/sd-dup-post-missing-primary";
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
   it("returns 400 on an invalid request body", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
@@ -163,6 +210,63 @@ describe("POST /api/duplicates", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  it("returns 400 for an invalid additional kept image path", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    process.env.SD_IMAGES_ROOT = "/tmp/sd-dup-post-bad-additional-path";
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          primaryRelativePath: "characters/3d/Anna/Base.png",
+          additionalKeptRelativePaths: ["../secret.png"],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 when kept images span different character folders", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    process.env.SD_IMAGES_ROOT = "/tmp/sd-dup-post-mismatched-directory";
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          primaryRelativePath: "characters/3d/Anna/Base.png",
+          additionalKeptRelativePaths: ["characters/3d/Bob/Base 2.png"],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 500 when the character folder cannot be read", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    process.env.SD_IMAGES_ROOT = "/tmp/sd-dup-post-unreadable-directory";
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          primaryRelativePath: "characters/3d/Anna/Base.png",
+          additionalKeptRelativePaths: [],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
   });
 
   it("returns 400 for an invalid image path", async () => {
@@ -320,5 +424,164 @@ describe("POST /api/duplicates", () => {
 
     const remainingFiles = (await fs.readdir(annaDir)).sort();
     expect(remainingFiles).toEqual(["Base 2.png", "Base.png"]);
+  });
+
+  it("replaces a group's prior reviewed record while leaving unrelated ones untouched", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+
+    const tempRoot = "/tmp/sd-dup-post-replace-reviewed";
+    const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
+    await fs.mkdir(annaDir, { recursive: true });
+    await fs.writeFile(path.join(annaDir, "Base.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 2.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 3.png"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "duplicate-reviews.json"),
+      JSON.stringify([
+        { style: "3d", characterName: "Bob", poseBaseName: "Base", fileNames: ["Base.png"] },
+        {
+          style: "3d",
+          characterName: "Anna",
+          poseBaseName: "Base",
+          fileNames: ["Base.png", "Base 2.png"],
+        },
+      ]),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          primaryRelativePath: "characters/3d/Anna/Base.png",
+          additionalKeptRelativePaths: [
+            "characters/3d/Anna/Base 2.png",
+            "characters/3d/Anna/Base 3.png",
+          ],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const reviewedRaw = await fs.readFile(path.join(tempRoot, "duplicate-reviews.json"), "utf8");
+    const reviewed = JSON.parse(reviewedRaw as string) as Array<{
+      characterName: string;
+      fileNames: string[];
+    }>;
+
+    expect(reviewed).toEqual([
+      { style: "3d", characterName: "Bob", poseBaseName: "Base", fileNames: ["Base.png"] },
+      {
+        style: "3d",
+        characterName: "Anna",
+        poseBaseName: "Base",
+        fileNames: ["Base 2.png", "Base 3.png", "Base.png"],
+      },
+    ]);
+  });
+
+  it("renumbers additional kept files without gaps, ordered by their original variant", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+
+    const tempRoot = "/tmp/sd-dup-post-variant-order";
+    const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
+    await fs.mkdir(annaDir, { recursive: true });
+    await fs.writeFile(path.join(annaDir, "Base 3.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 4.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 8.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          primaryRelativePath: "characters/3d/Anna/Base 3.png",
+          // Listed out of variant order on purpose, to exercise the numeric comparator.
+          additionalKeptRelativePaths: [
+            "characters/3d/Anna/Base 8.png",
+            "characters/3d/Anna/Base 4.png",
+          ],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      style: "3d",
+      characterName: "Anna",
+      poseBaseName: "Base",
+      fileNames: ["Base 2.png", "Base 3.png", "Base.png"],
+    });
+
+    const remainingFiles = (await fs.readdir(annaDir)).sort();
+    expect(remainingFiles).toEqual(["Base 2.png", "Base 3.png", "Base.png"]);
+  });
+
+  it("breaks ties by filename when two kept files share the same pose variant", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+
+    const tempRoot = "/tmp/sd-dup-post-variant-tie";
+    const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
+    await fs.mkdir(annaDir, { recursive: true });
+    // "Base.png" and "Base 01.png" both parse to poseVariant 1 (no/zero-padded suffix).
+    await fs.writeFile(path.join(annaDir, "Base.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 01.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 5.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          primaryRelativePath: "characters/3d/Anna/Base 5.png",
+          additionalKeptRelativePaths: [
+            "characters/3d/Anna/Base 01.png",
+            "characters/3d/Anna/Base.png",
+          ],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const remainingFiles = (await fs.readdir(annaDir)).sort();
+    expect(remainingFiles).toEqual(["Base 2.png", "Base 3.png", "Base.png"]);
+  });
+
+  it("returns 500 when a file operation fails mid-validation", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+
+    const tempRoot = "/tmp/sd-dup-post-mutation-failure";
+    const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
+    await fs.mkdir(annaDir, { recursive: true });
+    await fs.writeFile(path.join(annaDir, "Base.png"), "");
+    // A directory sharing the pose group's naming, but not a file: unlinking it fails.
+    await fs.mkdir(path.join(annaDir, "Base 2.png"));
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          primaryRelativePath: "characters/3d/Anna/Base.png",
+          additionalKeptRelativePaths: [],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
   });
 });
