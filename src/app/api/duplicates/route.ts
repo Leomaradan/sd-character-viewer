@@ -21,6 +21,21 @@ import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 
 export const dynamic = "force-dynamic";
 
+// Serializes read-modify-write access to duplicate-reviews.json per root path, since concurrent
+// validations (e.g. two groups submitted in quick succession) would otherwise race and one
+// write could clobber the other's reviewed-group entry.
+const reviewedGroupsWriteQueues = new Map<string, Promise<unknown>>();
+
+const withReviewedGroupsLock = <T>(rootPath: string, task: () => Promise<T>): Promise<T> => {
+  const previousTask = reviewedGroupsWriteQueues.get(rootPath) ?? Promise.resolve();
+  const nextTask = previousTask.then(task, task);
+  reviewedGroupsWriteQueues.set(
+    rootPath,
+    nextTask.catch(() => {}),
+  );
+  return nextTask;
+};
+
 const isDuplicateManagementAllowed = (): boolean => {
   ensureLocalEnvLoaded();
   return readBooleanEnvFlag(process.env[SD_ALLOW_DELETE_ENV_KEY]);
@@ -220,24 +235,26 @@ export const POST = async (request: Request) => {
 
     const finalFileNames = renamePlan.map((entry) => entry.targetFileName).sort();
 
-    const reviewedGroups = await readReviewedDuplicateGroups(rootPath);
-    const remainingReviewedGroups = reviewedGroups.filter(
-      (reviewedGroup) =>
-        !(
-          reviewedGroup.style === style &&
-          reviewedGroup.characterName === characterName &&
-          reviewedGroup.poseBaseName === poseBaseName
-        ),
-    );
+    await withReviewedGroupsLock(rootPath, async () => {
+      const reviewedGroups = await readReviewedDuplicateGroups(rootPath);
+      const remainingReviewedGroups = reviewedGroups.filter(
+        (reviewedGroup) =>
+          !(
+            reviewedGroup.style === style &&
+            reviewedGroup.characterName === characterName &&
+            reviewedGroup.poseBaseName === poseBaseName
+          ),
+      );
 
-    const newReviewedGroup: IReviewedDuplicateGroup = {
-      style,
-      characterName,
-      poseBaseName,
-      fileNames: finalFileNames,
-    };
+      const newReviewedGroup: IReviewedDuplicateGroup = {
+        style,
+        characterName,
+        poseBaseName,
+        fileNames: finalFileNames,
+      };
 
-    await writeReviewedDuplicateGroups(rootPath, [...remainingReviewedGroups, newReviewedGroup]);
+      await writeReviewedDuplicateGroups(rootPath, [...remainingReviewedGroups, newReviewedGroup]);
+    });
 
     return Response.json({ style, characterName, poseBaseName, fileNames: finalFileNames });
   } catch {

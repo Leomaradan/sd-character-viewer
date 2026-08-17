@@ -236,4 +236,44 @@ describe("POST /api/duplicates", () => {
       },
     ]);
   });
+
+  it("does not lose a reviewed record when two different groups are validated concurrently", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+
+    const tempRoot = "/tmp/sd-dup-post-concurrent";
+    const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
+    const bobDir = path.join(tempRoot, "characters", "3d", "Bob");
+    await fs.mkdir(annaDir, { recursive: true });
+    await fs.mkdir(bobDir, { recursive: true });
+    await fs.writeFile(path.join(annaDir, "Base.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 2.png"), "");
+    await fs.writeFile(path.join(bobDir, "Base.png"), "");
+    await fs.writeFile(path.join(bobDir, "Base 2.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const buildRequest = (characterName: string) =>
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          primaryRelativePath: `characters/3d/${characterName}/Base.png`,
+          additionalKeptRelativePaths: [`characters/3d/${characterName}/Base 2.png`],
+        }),
+      });
+
+    const [annaResponse, bobResponse] = await Promise.all([
+      POST(buildRequest("Anna")),
+      POST(buildRequest("Bob")),
+    ]);
+
+    expect(annaResponse.status).toBe(200);
+    expect(bobResponse.status).toBe(200);
+
+    const reviewedRaw = await fs.readFile(path.join(tempRoot, "duplicate-reviews.json"), "utf8");
+    const reviewed = JSON.parse(reviewedRaw as string) as Array<{ characterName: string }>;
+
+    expect(reviewed.map((entry) => entry.characterName).sort()).toEqual(["Anna", "Bob"]);
+  });
 });
