@@ -74,7 +74,13 @@ export const LazyImage = ({
     };
   }, [shouldLoad]);
 
-  const imageUrl = getImageUrl(relativePath, { preview: usePreview });
+  const imageUrls = useMemo(
+    () => ({
+      preview: getImageUrl(relativePath, { preview: usePreview }),
+      full: getImageUrl(relativePath, { preview: false }),
+    }),
+    [relativePath, usePreview],
+  );
 
   useEffect(() => {
     if (!useMagnifier || !shouldLoad) {
@@ -110,28 +116,34 @@ export const LazyImage = ({
     preloadImage.onload = () => {
       if (isMounted) {
         setNaturalSize({
-          url: imageUrl,
+          url: imageUrls.full,
           width: preloadImage.naturalWidth,
           height: preloadImage.naturalHeight,
         });
       }
     };
-    preloadImage.src = imageUrl;
+    preloadImage.src = imageUrls.full;
 
     return () => {
       isMounted = false;
     };
-  }, [useMagnifier, shouldLoad, imageUrl]);
+  }, [useMagnifier, shouldLoad, imageUrls.full]);
 
   const magnifierSize = useMemo(() => {
     if (
       !containerSize ||
-      !naturalSize ||
-      naturalSize.url !== imageUrl ||
+      naturalSize?.url !== imageUrls.full ||
       !containerSize.width ||
       !containerSize.height
     ) {
       return null;
+    }
+
+    if (usePreview) {
+      return {
+        width: naturalSize.width,
+        height: naturalSize.height,
+      };
     }
 
     const scale = Math.min(
@@ -143,16 +155,16 @@ export const LazyImage = ({
       width: Math.round(naturalSize.width * scale),
       height: Math.round(naturalSize.height * scale),
     };
-  }, [containerSize, naturalSize, imageUrl]);
+  }, [containerSize, naturalSize, imageUrls.full, usePreview]);
 
   const mainImage = useMemo(
     () =>
       magnifierSize
-        ? { alt, src: imageUrl, width: magnifierSize.width, height: magnifierSize.height }
+        ? { alt, src: imageUrls.preview, width: magnifierSize.width, height: magnifierSize.height }
         : null,
-    [alt, imageUrl, magnifierSize],
+    [alt, imageUrls.preview, magnifierSize],
   );
-  const zoomImage = useMemo(() => ({ src: imageUrl }), [imageUrl]);
+  const zoomImage = useMemo(() => ({ src: imageUrls.full }), [imageUrls.full]);
 
   if (useMagnifier) {
     return (
@@ -170,7 +182,7 @@ export const LazyImage = ({
         <Box
           component="img"
           className="image-container"
-          src={imageUrl}
+          src={imageUrls.preview}
           alt={alt}
           loading="lazy"
           decoding="async"
