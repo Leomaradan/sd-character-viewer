@@ -116,6 +116,7 @@ const DuplicateImageItem = ({
           alt={`${image.characterName} ${image.poseName}`}
           sx={IMAGE_FILL_SX}
           usePreview
+          useMagnifier
         />
       </Box>
       <Typography variant="caption" sx={FILE_NAME_SX}>
