@@ -10,3 +10,13 @@ body {
   font-family: var(--font-body), "Segoe UI", sans-serif;
   margin: 0;
 }
+
+/* easy-magnify sets an invalid inline width/height ("full") on its main image,
+   which browsers ignore, leaving it at natural size and cropped by the
+   container's overflow: hidden. Force it to behave like object-fit: contain. */
+.EasyImageZoomOnMoveImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}

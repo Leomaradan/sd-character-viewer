@@ -29,6 +29,7 @@
     "@mui/material-nextjs": "^9.3.0",
     "@next/env": "16.3.1",
     "ajv": "^8.20.0",
+    "easy-magnify": "^1.1.4",
     "next": "16.3.1",
     "png-chunk-text": "^1.0.0",
     "png-chunks-extract": "^1.0.0",
