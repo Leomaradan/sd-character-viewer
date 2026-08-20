@@ -4,7 +4,7 @@ import { Box, Card, CardActionArea, CardContent, Typography } from "@mui/materia
 import StarIcon from "@mui/icons-material/Star";
 import { useCallback } from "react";
 import type { IImageItem } from "@/types/library";
-import { LazyImage } from "@/components/image-viewer/LazyImage";
+import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 import { formatStyleLabel } from "@/components/image-viewer/utils";
 
 interface IImageCardProps {
@@ -53,7 +53,7 @@ export const ImageCard = ({
             relativePath={image.relativePath}
             alt={`${image.characterName} ${image.poseName}`}
             sx={IMAGE_CARD}
-            usePreview
+            mode="preview"
           />
           {showNewBadge && image.isNew && (
             <Box sx={NEW_BADGE_SX} aria-label="New image">

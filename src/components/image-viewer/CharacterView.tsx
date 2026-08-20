@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Card, CardActionArea, CardContent, Typography } from "@mui/material";
-import { LazyImage } from "@/components/image-viewer/LazyImage";
+import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 import type { ICharacterSummary } from "@/types/library";
 import { useCallback, useMemo } from "react";
 
@@ -52,7 +52,7 @@ export const CharacterView = ({
               relativePath={thumbnailPath}
               alt={`${character.name} base`}
               sx={LAZY_IMAGE_SX}
-              usePreview
+              mode="preview"
             />
           ) : (
             <Typography variant="body2" color="text.secondary">

@@ -23,7 +23,7 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IImageItem } from "@/types/library";
-import { LazyImage } from "@/components/image-viewer/LazyImage";
+import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 import { formatStyleLabel, getImageUrl } from "@/components/image-viewer/utils";
 import { ImageDetailMetadata } from "./ImageDetailMetadata";
 import { CAPTION_SX, META_TITLE_SX } from "./constants";
@@ -417,7 +417,7 @@ export function ImageDetailModal({
                   alt={`${image.characterName} ${image.poseName}`}
                   sx={LAZY_IMAGE_SX}
                   imgSx={LAZY_IMAGE_IMG_SX}
-                  useMagnifier
+                  mode="magnifier"
                 />
               </Box>
               {canDeleteImage && <Box sx={MOBILE_ACTIONS_SX}>{imageActions}</Box>}

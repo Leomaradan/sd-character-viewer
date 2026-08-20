@@ -19,7 +19,7 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import type { IDuplicateGroup, IImageItem } from "@/types/library";
-import { LazyImage } from "@/components/image-viewer/LazyImage";
+import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 import { formatStyleLabel } from "@/components/image-viewer/utils";
 
 const DIALOG_SX = { "& .MuiDialog-paper": { height: "90vh" } };
@@ -115,8 +115,7 @@ const DuplicateImageItem = ({
           relativePath={image.relativePath}
           alt={`${image.characterName} ${image.poseName}`}
           sx={IMAGE_FILL_SX}
-          usePreview
-          useMagnifier
+          mode="magnifier"
         />
       </Box>
       <Typography variant="caption" sx={FILE_NAME_SX}>

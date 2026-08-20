@@ -6,13 +6,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getImageUrl } from "@/components/image-viewer/utils";
 import { EasyZoomOnMove } from "easy-magnify";
 
-interface ILazyImageProps {
+interface ILazyImageMagnifierProps {
   relativePath: string;
   alt: string;
   sx: SxProps<Theme>;
-  imgSx?: SxProps<Theme>;
-  usePreview?: boolean;
-  useMagnifier?: boolean;
 }
 
 interface IDimensions {
@@ -24,26 +21,18 @@ interface INaturalSize extends IDimensions {
   url: string;
 }
 
-const IMAGE_SX: SxProps<Theme> = {
-  width: "100%",
-  height: "100%",
-  objectFit: "cover",
-  display: "block",
-};
+const FALLBACK_IMAGE_SX: SxProps<Theme> = { width: "100%", height: "100%", objectFit: "cover" };
 
-export const LazyImage = ({
+export const LazyImageMagnifier = ({
   relativePath,
   alt,
   sx,
-  imgSx,
-  usePreview = false,
-  useMagnifier = false,
-}: Readonly<ILazyImageProps>) => {
+}: Readonly<ILazyImageMagnifierProps>) => {
   const imageContainerRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(false);
-  const mergedImgSx = useMemo(() => (imgSx ? { ...IMAGE_SX, ...imgSx } : IMAGE_SX), [imgSx]);
   const [containerSize, setContainerSize] = useState<IDimensions | null>(null);
   const [naturalSize, setNaturalSize] = useState<INaturalSize | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     if (shouldLoad) {
@@ -74,16 +63,10 @@ export const LazyImage = ({
     };
   }, [shouldLoad]);
 
-  const imageUrls = useMemo(
-    () => ({
-      preview: getImageUrl(relativePath, { preview: usePreview }),
-      full: getImageUrl(relativePath, { preview: false }),
-    }),
-    [relativePath, usePreview],
-  );
+  const imageUrl = useMemo(() => getImageUrl(relativePath, { preview: false }), [relativePath]);
 
   useEffect(() => {
-    if (!useMagnifier || !shouldLoad) {
+    if (!shouldLoad) {
       return;
     }
 
@@ -104,10 +87,10 @@ export const LazyImage = ({
     return () => {
       resizeObserver.disconnect();
     };
-  }, [useMagnifier, shouldLoad]);
+  }, [shouldLoad]);
 
   useEffect(() => {
-    if (!useMagnifier || !shouldLoad) {
+    if (!shouldLoad) {
       return;
     }
 
@@ -115,35 +98,34 @@ export const LazyImage = ({
     const preloadImage = new globalThis.Image();
     preloadImage.onload = () => {
       if (isMounted) {
+        setLoadError(false);
         setNaturalSize({
-          url: imageUrls.full,
+          url: imageUrl,
           width: preloadImage.naturalWidth,
           height: preloadImage.naturalHeight,
         });
       }
     };
-    preloadImage.src = imageUrls.full;
+    preloadImage.onerror = () => {
+      if (isMounted) {
+        setLoadError(true);
+      }
+    };
+    preloadImage.src = imageUrl;
 
     return () => {
       isMounted = false;
     };
-  }, [useMagnifier, shouldLoad, imageUrls.full]);
+  }, [shouldLoad, imageUrl]);
 
   const magnifierSize = useMemo(() => {
     if (
       !containerSize ||
-      naturalSize?.url !== imageUrls.full ||
+      naturalSize?.url !== imageUrl ||
       !containerSize.width ||
       !containerSize.height
     ) {
       return null;
-    }
-
-    if (usePreview) {
-      return {
-        width: naturalSize.width,
-        height: naturalSize.height,
-      };
     }
 
     const scale = Math.min(
@@ -155,39 +137,24 @@ export const LazyImage = ({
       width: Math.round(naturalSize.width * scale),
       height: Math.round(naturalSize.height * scale),
     };
-  }, [containerSize, naturalSize, imageUrls.full, usePreview]);
+  }, [containerSize, naturalSize, imageUrl]);
 
   const mainImage = useMemo(
     () =>
       magnifierSize
-        ? { alt, src: imageUrls.preview, width: magnifierSize.width, height: magnifierSize.height }
+        ? { alt, src: imageUrl, width: magnifierSize.width, height: magnifierSize.height }
         : null,
-    [alt, imageUrls.preview, magnifierSize],
+    [alt, imageUrl, magnifierSize],
   );
-  const zoomImage = useMemo(() => ({ src: imageUrls.full }), [imageUrls.full]);
-
-  if (useMagnifier) {
-    return (
-      <Box ref={imageContainerRef} sx={sx}>
-        {shouldLoad && mainImage ? (
-          <EasyZoomOnMove mainImage={mainImage} zoomImage={zoomImage} />
-        ) : null}
-      </Box>
-    );
-  }
+  const zoomImage = useMemo(() => ({ src: imageUrl }), [imageUrl]);
 
   return (
     <Box ref={imageContainerRef} sx={sx}>
-      {shouldLoad ? (
-        <Box
-          component="img"
-          className="image-container"
-          src={imageUrls.preview}
-          alt={alt}
-          loading="lazy"
-          decoding="async"
-          sx={mergedImgSx}
-        />
+      {shouldLoad && mainImage ? (
+        <EasyZoomOnMove mainImage={mainImage} zoomImage={zoomImage} />
+      ) : null}
+      {shouldLoad && loadError ? (
+        <Box component="img" src={imageUrl} alt={alt} sx={FALLBACK_IMAGE_SX} />
       ) : null}
     </Box>
   );
