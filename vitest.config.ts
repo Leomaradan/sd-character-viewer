@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
-import path from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   test: {
@@ -18,16 +19,16 @@ export default defineConfig({
       reporter: [["lcovonly"], ["html"], ["cobertura"], ["text-summary"]],
       thresholds: {
         autoUpdate: (newThreshold) => Math.floor(newThreshold),
-        statements: 95,
+        statements: 96,
         branches: 85,
-        functions: 98,
-        lines: 95,
+        functions: 99,
+        lines: 96,
       },
     },
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "src"),
+      "@": resolve(dirname(fileURLToPath(import.meta.url)), "src"),
     },
   },
 });

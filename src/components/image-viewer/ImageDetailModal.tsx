@@ -23,7 +23,7 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IImageItem } from "@/types/library";
-import { LazyImage } from "@/components/image-viewer/LazyImage";
+import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 import { formatStyleLabel, getImageUrl } from "@/components/image-viewer/utils";
 import { ImageDetailMetadata } from "./ImageDetailMetadata";
 import { CAPTION_SX, META_TITLE_SX } from "./constants";
@@ -66,12 +66,18 @@ const IMAGE_CONTAINER_SX = {
   flex: 1,
   display: "flex",
   flexDirection: { xs: "column", sm: "row" },
-  alignItems: "center",
+  alignItems: "stretch",
   justifyContent: "center",
   overflow: "hidden",
 };
 const IMAGE_VIEW_SX = { flex: 1, width: "100%", minHeight: 0 };
-const LAZY_IMAGE_SX = { width: "100%", height: "100%" };
+const LAZY_IMAGE_SX = {
+  width: "100%",
+  height: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
 const LAZY_IMAGE_IMG_SX = { objectFit: "contain" };
 const SIDEBAR_SX = {
   width: 280,
@@ -411,6 +417,7 @@ export function ImageDetailModal({
                   alt={`${image.characterName} ${image.poseName}`}
                   sx={LAZY_IMAGE_SX}
                   imgSx={LAZY_IMAGE_IMG_SX}
+                  mode="magnifier"
                 />
               </Box>
               {canDeleteImage && <Box sx={MOBILE_ACTIONS_SX}>{imageActions}</Box>}

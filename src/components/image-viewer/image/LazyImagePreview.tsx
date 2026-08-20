@@ -5,7 +5,7 @@ import type { SxProps, Theme } from "@mui/material/styles";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getImageUrl } from "@/components/image-viewer/utils";
 
-interface ILazyImageProps {
+interface ILazyImagePreviewProps {
   relativePath: string;
   alt: string;
   sx: SxProps<Theme>;
@@ -20,13 +20,13 @@ const IMAGE_SX: SxProps<Theme> = {
   display: "block",
 };
 
-export const LazyImage = ({
+export const LazyImagePreview = ({
   relativePath,
   alt,
   sx,
   imgSx,
   usePreview = false,
-}: Readonly<ILazyImageProps>) => {
+}: Readonly<ILazyImagePreviewProps>) => {
   const imageContainerRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(false);
   const mergedImgSx = useMemo(() => (imgSx ? { ...IMAGE_SX, ...imgSx } : IMAGE_SX), [imgSx]);
@@ -60,12 +60,18 @@ export const LazyImage = ({
     };
   }, [shouldLoad]);
 
+  const imageUrl = useMemo(
+    () => getImageUrl(relativePath, { preview: usePreview }),
+    [relativePath, usePreview],
+  );
+
   return (
     <Box ref={imageContainerRef} sx={sx}>
       {shouldLoad ? (
         <Box
           component="img"
-          src={getImageUrl(relativePath, { preview: usePreview })}
+          className="image-container"
+          src={imageUrl}
           alt={alt}
           loading="lazy"
           decoding="async"
