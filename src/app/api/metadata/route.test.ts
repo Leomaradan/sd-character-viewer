@@ -27,8 +27,10 @@ vi.mock("@/lib/image-library", () => ({
 import { promises as fs } from "node:fs";
 import { decode } from "png-chunk-text";
 import extractChunks from "png-chunks-extract";
+
 import * as auth from "@/lib/auth";
 import { resolveImageFilePath } from "@/lib/image-library";
+
 import { GET, invalidateMetadataCacheEntry } from "./route";
 
 describe("/api/metadata GET", () => {

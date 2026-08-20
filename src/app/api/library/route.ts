@@ -1,5 +1,5 @@
-import { readImageLibrary } from "@/lib/image-library";
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
+import { readImageLibrary } from "@/lib/image-library";
 
 export const dynamic = "force-dynamic";
 

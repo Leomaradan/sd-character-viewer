@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
+import nextEnv from "@next/env";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import nextEnv from "@next/env";
 import sharp from "sharp";
 
 const { loadEnvConfig } = nextEnv;

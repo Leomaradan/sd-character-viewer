@@ -5,6 +5,7 @@ vi.mock("@next/env", () => ({
 }));
 
 import { loadEnvConfig } from "@next/env";
+
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
 
 describe("env", () => {

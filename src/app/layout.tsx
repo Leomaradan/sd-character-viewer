@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
+
 import { Roboto } from "next/font/google";
+import { cookies } from "next/headers";
+
 import { AppProviders } from "@/components/AppProviders";
 import {
   COLOR_SCHEME_STORAGE_KEY,

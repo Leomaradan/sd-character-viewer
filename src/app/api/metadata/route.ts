@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import { decode } from "png-chunk-text";
 import extractChunks from "png-chunks-extract";
+
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
 import { resolveImageFilePath } from "@/lib/image-library";
 

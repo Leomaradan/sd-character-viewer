@@ -1,10 +1,11 @@
+import { describe, it, expect } from "vitest";
+
 import {
   COLOR_SCHEME_STORAGE_KEY,
   MODE_STORAGE_KEY,
   parseColorMode,
   parseColorScheme,
 } from "@/lib/color-scheme-storage";
-import { describe, it, expect } from "vitest";
 
 describe("color scheme storage constants", () => {
   it("exposes stable storage keys", () => {
