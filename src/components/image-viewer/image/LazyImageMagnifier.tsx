@@ -36,12 +36,12 @@ export const LazyImageMagnifier = ({
 
   useEffect(() => {
     if (shouldLoad) {
-      return;
+      return () => {};
     }
 
     const element = imageContainerRef.current;
     if (!element) {
-      return;
+      return () => {};
     }
 
     const observer = new IntersectionObserver(
@@ -67,12 +67,12 @@ export const LazyImageMagnifier = ({
 
   useEffect(() => {
     if (!shouldLoad) {
-      return;
+      return () => {};
     }
 
     const element = imageContainerRef.current;
     if (!element) {
-      return;
+      return () => {};
     }
 
     const updateContainerSize = () => {
@@ -91,7 +91,7 @@ export const LazyImageMagnifier = ({
 
   useEffect(() => {
     if (!shouldLoad) {
-      return;
+      return () => {};
     }
 
     let isMounted = true;

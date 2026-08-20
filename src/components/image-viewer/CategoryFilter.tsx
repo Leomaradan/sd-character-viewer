@@ -20,7 +20,7 @@ const FILTER_DROPDOWN_SX = { minWidth: 280, maxWidth: 420 };
 interface ICategoryFilterProps {
   metadataFilterOptions: IMetadataFilterOption[];
   selectedMetadataFilterId: string;
-  onMetadataFilterChange: (event: SelectChangeEvent<string>) => void;
+  onMetadataFilterChange: (event: SelectChangeEvent) => void;
   onClearMetadataFilter: () => void;
   prefix: string;
 }

@@ -19,7 +19,7 @@ interface IStylesViewProps {
   styleFilteredImages: IImageItem[];
   showNewBadge: boolean;
   onStyleSelect: (style: string) => void;
-  onMetadataFilterChange: (event: SelectChangeEvent<string>) => void;
+  onMetadataFilterChange: (event: SelectChangeEvent) => void;
   onClearMetadataFilter: () => void;
   onStyleSearchTextChange: (value: string) => void;
   onImageSelect: (image: IImageItem) => void;

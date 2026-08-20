@@ -29,16 +29,17 @@ export const LazyImagePreview = ({
 }: Readonly<ILazyImagePreviewProps>) => {
   const imageContainerRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(false);
+  // oxlint-disable-next-line typescript/no-misused-spread
   const mergedImgSx = useMemo(() => (imgSx ? { ...IMAGE_SX, ...imgSx } : IMAGE_SX), [imgSx]);
 
   useEffect(() => {
     if (shouldLoad) {
-      return;
+      return () => {};
     }
 
     const element = imageContainerRef.current;
     if (!element) {
-      return;
+      return () => {};
     }
 
     const observer = new IntersectionObserver(

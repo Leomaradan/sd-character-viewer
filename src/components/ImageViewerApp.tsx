@@ -151,6 +151,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [majorFilter, selectedCharacter]);
 
   const updateQueryParams = useCallback(

@@ -58,7 +58,9 @@ const compareNatural = (a: string, b: string): number => {
 };
 
 const ucFirst = (str: string): string => {
-  if (!str) return str;
+  if (!str) {
+    return str;
+  }
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
@@ -233,6 +235,7 @@ export const ImageViewerBody = ({
       isMounted = false;
     };
   }, [
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
     reloadToken,
     validateFilters,
     selectedMetadataFilterId,
@@ -452,7 +455,7 @@ export const ImageViewerBody = ({
   );
 
   const onMetadataFilterChange = useCallback(
-    (event: SelectChangeEvent<string>) => {
+    (event: SelectChangeEvent) => {
       setSelectedMetadataFilterId(event.target.value);
     },
     [setSelectedMetadataFilterId],

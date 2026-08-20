@@ -32,6 +32,7 @@ export const POST = async (request: Request) => {
   let parsedBody: ILoginBody;
 
   try {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     parsedBody = (await request.json()) as ILoginBody;
   } catch {
     return new Response("Invalid payload", { status: 400 });

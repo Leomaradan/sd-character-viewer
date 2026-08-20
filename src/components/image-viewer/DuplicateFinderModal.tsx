@@ -255,6 +255,7 @@ export function DuplicateFinderModal({
         return;
       }
 
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       const data = (await response.json()) as { groups: IDuplicateGroup[] };
       if (requestId !== loadRequestIdRef.current) {
         return;
@@ -277,7 +278,7 @@ export function DuplicateFinderModal({
 
   useEffect(() => {
     if (!open) {
-      return;
+      return () => {};
     }
 
     const timer = globalThis.window.setTimeout(() => {
