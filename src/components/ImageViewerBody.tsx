@@ -1,18 +1,10 @@
 "use client";
 
-import { Alert, Box, CircularProgress } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material";
+
+import { Alert, Box, CircularProgress } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CharactersView } from "@/components/image-viewer/CharactersView";
-import { DEFAULT_LIBRARY } from "@/components/image-viewer/constants";
-import { EmptyState } from "@/components/image-viewer/EmptyState";
-import { PosesView } from "@/components/image-viewer/PosesView";
-import { StylesView } from "@/components/image-viewer/StylesView";
-import {
-  buildPoseFilterOptions,
-  buildPoseOptions,
-  formatStyleLabel,
-} from "@/components/image-viewer/utils";
+
 import type {
   ICharacterSummary,
   IImageItem,
@@ -21,6 +13,17 @@ import type {
   TCharacterSortOrder,
   TMajorFilter,
 } from "@/types/library";
+
+import { CharactersView } from "@/components/image-viewer/charactersView/CharactersView";
+import { DEFAULT_LIBRARY } from "@/components/image-viewer/common/constants";
+import {
+  buildPoseFilterOptions,
+  buildPoseOptions,
+  formatStyleLabel,
+} from "@/components/image-viewer/common/utils";
+import { EmptyState } from "@/components/image-viewer/layout/EmptyState";
+import { PosesView } from "@/components/image-viewer/posesView/PosesView";
+import { StylesView } from "@/components/image-viewer/stylesView/StylesView";
 
 interface IImageViewerBodyProps {
   majorFilter: TMajorFilter;

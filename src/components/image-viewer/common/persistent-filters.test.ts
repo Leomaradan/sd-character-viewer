@@ -1,3 +1,5 @@
+import { describe, expect, it } from "vitest";
+
 import {
   buildNextQueryString,
   metadataFilterIdToQueryChanges,
@@ -8,8 +10,7 @@ import {
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
   parseStyleViewStyle,
-} from "@/components/image-viewer/persistent-filters";
-import { describe, expect, it } from "vitest";
+} from "@/components/image-viewer/common/persistent-filters";
 
 describe("persistent filters", () => {
   describe("parseSelectedPoseFilters", () => {

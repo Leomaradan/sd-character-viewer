@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+
 import type { IPosePatternFilter } from "@/types/library";
+
 import { buildPoseFilterOptions, buildPoseOptions, formatStyleLabel, getImageUrl } from "./utils";
 
 const POSE_PATTERN_FILTERS: IPosePatternFilter[] = [

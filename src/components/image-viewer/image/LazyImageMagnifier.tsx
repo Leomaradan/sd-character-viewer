@@ -1,10 +1,12 @@
 "use client";
 
-import { Box } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { getImageUrl } from "@/components/image-viewer/utils";
+
+import { Box } from "@mui/material";
 import { EasyZoomOnMove } from "easy-magnify";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { getImageUrl } from "@/components/image-viewer/common/utils";
 
 interface ILazyImageMagnifierProps {
   relativePath: string;

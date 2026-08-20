@@ -1,12 +1,12 @@
 "use client";
 
-import CloseIcon from "@mui/icons-material/Close";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
-import RefreshIcon from "@mui/icons-material/Refresh";
 import InfoIcon from "@mui/icons-material/Info";
 import PhotoIcon from "@mui/icons-material/Photo";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import {
   Alert,
   Box,
@@ -22,11 +22,14 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import type { IImageItem } from "@/types/library";
+
+import { formatStyleLabel, getImageUrl } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
-import { formatStyleLabel, getImageUrl } from "@/components/image-viewer/utils";
+
+import { CAPTION_SX, META_TITLE_SX } from "../common/constants";
 import { ImageDetailMetadata } from "./ImageDetailMetadata";
-import { CAPTION_SX, META_TITLE_SX } from "./constants";
 
 const DIALOG_SX = { "& .MuiDialog-paper": { height: "95vh", m: 1 } };
 const DIALOG_CONTENT_SX = { p: 0, bgcolor: "#000", display: "flex", overflow: "hidden" };

@@ -1,5 +1,6 @@
 "use client";
 
+import CloseIcon from "@mui/icons-material/Close";
 import {
   Box,
   FormControl,
@@ -10,7 +11,7 @@ import {
   type SelectChangeEvent,
   Typography,
 } from "@mui/material";
-import CloseIcon from "@mui/icons-material/Close";
+
 import type { IMetadataFilterOption } from "@/types/library";
 
 const FILTER_TITLE_SX = { color: "text.secondary", fontWeight: 700, mb: 1 };

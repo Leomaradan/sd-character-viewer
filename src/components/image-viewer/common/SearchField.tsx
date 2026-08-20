@@ -1,5 +1,5 @@
-import { InputAdornment, IconButton } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
+import { InputAdornment, IconButton } from "@mui/material";
 import { useCallback } from "react";
 
 interface ISearchFieldProps {

@@ -4,8 +4,10 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DuplicateFinderModal } from "@/components/image-viewer/DuplicateFinderModal";
+
 import type { IDuplicateGroup, IImageItem } from "@/types/library";
+
+import { DuplicateFinderModal } from "./DuplicateFinderModal";
 
 const buildImage = (
   overrides: Partial<IImageItem> & Pick<IImageItem, "relativePath" | "characterName">,

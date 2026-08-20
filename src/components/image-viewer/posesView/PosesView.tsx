@@ -1,14 +1,17 @@
 "use client";
 
 import { Box, Chip, type SelectChangeEvent, Stack, TextField } from "@mui/material";
-import { ImageCard } from "@/components/image-viewer/ImageCard";
-import type { IImageItem, IMetadataFilterOption } from "@/types/library";
-import { FLEXWRAP, GRID, STACK_SPACING } from "./constants";
 import { useCallback, useMemo } from "react";
-import { SearchField } from "./SearchField";
+
+import type { IImageItem, IMetadataFilterOption } from "@/types/library";
+
+import { ImageCard } from "@/components/image-viewer/image/ImageCard";
+
+import { CategoryFilter } from "../common/CategoryFilter";
+import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
+import { SearchField } from "../common/SearchField";
+import { StyleView } from "../stylesView/StyleView";
 import { PoseView } from "./PoseView";
-import { StyleView } from "./StyleView";
-import { CategoryFilter } from "./CategoryFilter";
 
 interface IPoseOption {
   value: string;

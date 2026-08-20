@@ -1,7 +1,7 @@
 "use client";
 
-import CloseIcon from "@mui/icons-material/Close";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CloseIcon from "@mui/icons-material/Close";
 import {
   Alert,
   Box,
@@ -18,9 +18,11 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+
 import type { IDuplicateGroup, IImageItem } from "@/types/library";
+
+import { formatStyleLabel } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
-import { formatStyleLabel } from "@/components/image-viewer/utils";
 
 const DIALOG_SX = { "& .MuiDialog-paper": { height: "90vh" } };
 const DIALOG_TITLE_SX = { display: "flex", alignItems: "center", justifyContent: "space-between" };

@@ -51,7 +51,7 @@ export const parseStyleViewStyle = (queryParams: IQueryParamsReader): string => 
 
 export const parsePoseViewStyle = (queryParams: IQueryParamsReader): string => {
   const rawValue = queryParams.get("poseStyle")?.trim();
-  return rawValue ? rawValue : "--all--";
+  return rawValue || "--all--";
 };
 
 export const normalizePoseFilters = (poses: string[]): string[] => {

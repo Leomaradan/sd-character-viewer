@@ -1,11 +1,13 @@
 "use client";
 
-import { Box, Card, CardActionArea, CardContent, Typography } from "@mui/material";
 import StarIcon from "@mui/icons-material/Star";
+import { Box, Card, CardActionArea, CardContent, Typography } from "@mui/material";
 import { useCallback } from "react";
+
 import type { IImageItem } from "@/types/library";
+
+import { formatStyleLabel } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
-import { formatStyleLabel } from "@/components/image-viewer/utils";
 
 interface IImageCardProps {
   image: IImageItem;

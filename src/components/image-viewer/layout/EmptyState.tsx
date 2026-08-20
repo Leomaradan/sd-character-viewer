@@ -1,7 +1,8 @@
 "use client";
 
 import { Card, CardContent, Typography } from "@mui/material";
-import { BORDER_STYLE_DASHED, MARGIN_TOP_1 } from "./constants";
+
+import { BORDER_STYLE_DASHED, MARGIN_TOP_1 } from "../common/constants";
 
 interface IEmptyStateProps {
   title: string;

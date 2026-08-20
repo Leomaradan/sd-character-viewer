@@ -1,13 +1,16 @@
 "use client";
 
 import { Box, type SelectChangeEvent, Stack, TextField } from "@mui/material";
-import { ImageCard } from "@/components/image-viewer/ImageCard";
-import type { IImageItem, IMetadataFilterOption } from "@/types/library";
-import { FLEXWRAP, GRID, STACK_SPACING } from "./constants";
-import { StyleView } from "./StyleView";
 import { useCallback, useMemo } from "react";
-import { SearchField } from "./SearchField";
-import { CategoryFilter } from "./CategoryFilter";
+
+import type { IImageItem, IMetadataFilterOption } from "@/types/library";
+
+import { ImageCard } from "@/components/image-viewer/image/ImageCard";
+
+import { CategoryFilter } from "../common/CategoryFilter";
+import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
+import { SearchField } from "../common/SearchField";
+import { StyleView } from "./StyleView";
 
 interface IStylesViewProps {
   styles: string[];

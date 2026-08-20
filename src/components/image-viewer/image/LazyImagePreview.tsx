@@ -1,9 +1,11 @@
 "use client";
 
-import { Box } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
+
+import { Box } from "@mui/material";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getImageUrl } from "@/components/image-viewer/utils";
+
+import { getImageUrl } from "@/components/image-viewer/common/utils";
 
 interface ILazyImagePreviewProps {
   relativePath: string;

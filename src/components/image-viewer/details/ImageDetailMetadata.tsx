@@ -1,5 +1,6 @@
 import { Box, Typography } from "@mui/material";
-import { CAPTION_SX, PARAMETERS_BOX_SX } from "./constants";
+
+import { CAPTION_SX, PARAMETERS_BOX_SX } from "../common/constants";
 
 interface IImageDetailMetadataProps {
   pngMetadata: string;
