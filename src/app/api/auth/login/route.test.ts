@@ -10,6 +10,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 import * as auth from "@/lib/auth";
+
 import { POST } from "./route";
 
 describe("POST /api/auth/login", () => {

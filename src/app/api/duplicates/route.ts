@@ -1,7 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+
+import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
+import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
+import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 import {
   findDuplicateGroups,
   getImagesRootPathFromEnv,
@@ -15,9 +19,6 @@ import {
   writeReviewedDuplicateGroups,
   type IReviewedDuplicateGroup,
 } from "@/lib/image-library";
-import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
-import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
-import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 
 export const dynamic = "force-dynamic";
 

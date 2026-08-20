@@ -12,8 +12,9 @@ vi.mock("@/lib/image-library", () => ({
 
 import * as auth from "@/lib/auth";
 import { readImageLibrary } from "@/lib/image-library";
-import { GET } from "./route";
 import { ILibraryData } from "@/types/library";
+
+import { GET } from "./route";
 
 describe("GET /api/library", () => {
   it("returns misconfigured payload", async () => {

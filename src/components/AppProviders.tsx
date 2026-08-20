@@ -1,14 +1,16 @@
 "use client";
 
 import { CssBaseline, ThemeProvider } from "@mui/material";
-import { type PropsWithChildren } from "react";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
-import theme from "../theme";
+import { type PropsWithChildren } from "react";
+
 import {
   COLOR_SCHEME_STORAGE_KEY,
   MODE_STORAGE_KEY,
   type TColorMode,
 } from "@/lib/color-scheme-storage";
+
+import theme from "../theme";
 
 const CACHE_KEY = { key: "css" };
 const ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365;

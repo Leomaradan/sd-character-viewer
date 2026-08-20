@@ -1,4 +1,5 @@
 import { scryptSync, timingSafeEqual } from "node:crypto";
+
 import { ensureLocalEnvLoaded } from "@/lib/env";
 import { SD_PASSWORD_ENV_KEY, SD_PASSWORD_SALT_ENV_KEY } from "@/lib/env-keys";
 export const AUTH_COOKIE_NAME = "sd_auth";

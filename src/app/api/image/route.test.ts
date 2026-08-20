@@ -33,10 +33,12 @@ vi.mock("@/lib/env", () => ({
 }));
 
 import { existsSync, promises as fs } from "node:fs";
-import * as auth from "@/lib/auth";
-import { resolveImageFilePath, removeFirstSeenCacheEntry } from "@/lib/image-library";
+
 import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
+import * as auth from "@/lib/auth";
 import * as env from "@/lib/env";
+import { resolveImageFilePath, removeFirstSeenCacheEntry } from "@/lib/image-library";
+
 import { DELETE, GET, PATCH } from "./route";
 
 beforeEach(() => {

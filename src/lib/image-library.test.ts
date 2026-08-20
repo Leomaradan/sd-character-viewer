@@ -10,9 +10,11 @@ vi.mock("node:fs/promises", async () => {
   return mockedFsPromisesModule.default ?? mockedFsPromisesModule;
 });
 
-import path from "node:path";
-import { promises as fs } from "node:fs";
 import { vol } from "memfs";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+
+import type { IImageItem } from "@/types/library";
 
 import {
   findDuplicateGroups,
@@ -24,7 +26,6 @@ import {
   resolvePreviewFilePath,
   writeReviewedDuplicateGroups,
 } from "@/lib/image-library";
-import type { IImageItem } from "@/types/library";
 
 beforeEach(() => {
   vol.reset();

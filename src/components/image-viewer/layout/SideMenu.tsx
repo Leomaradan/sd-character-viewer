@@ -1,5 +1,12 @@
 "use client";
 
+import BrightnessAutoIcon from "@mui/icons-material/BrightnessAuto";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import DirectionsRunIcon from "@mui/icons-material/DirectionsRun";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import PaletteIcon from "@mui/icons-material/Palette";
+import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import {
   Box,
   Button,
@@ -13,17 +20,12 @@ import {
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
-import BrightnessAutoIcon from "@mui/icons-material/BrightnessAuto";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import DarkModeIcon from "@mui/icons-material/DarkMode";
-import DirectionsRunIcon from "@mui/icons-material/DirectionsRun";
-import LightModeIcon from "@mui/icons-material/LightMode";
-import PaletteIcon from "@mui/icons-material/Palette";
-import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import { useColorScheme } from "@mui/material/styles";
-import type { ILibraryData, TCharacterSortOrder, TMajorFilter } from "@/types/library";
 import { useCallback, type ChangeEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { PADDING, MARGIN_BOTTOM, BORDER_RADIUS } from "./constants";
+
+import type { ILibraryData, TCharacterSortOrder, TMajorFilter } from "@/types/library";
+
+import { PADDING, MARGIN_BOTTOM, BORDER_RADIUS } from "../common/constants";
 
 const SIDEBAR_BOX_SX = { ...PADDING, display: "flex", flexDirection: "column", flex: 1 };
 const THEME_SECTION_SX = {

@@ -1,5 +1,7 @@
 "use client";
 
+import MenuIcon from "@mui/icons-material/Menu";
+import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import {
   Alert,
   AppBar,
@@ -15,8 +17,7 @@ import {
   Toolbar,
   Typography,
 } from "@mui/material";
-import MenuIcon from "@mui/icons-material/Menu";
-import MenuOpenIcon from "@mui/icons-material/MenuOpen";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -26,9 +27,10 @@ import {
   type ChangeEvent,
   type SubmitEvent,
 } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { SIDEBAR_WIDTH, DEFAULT_LIBRARY } from "@/components/image-viewer/constants";
-import { SideMenu } from "@/components/image-viewer/SideMenu";
+
+import type { IImageItem, ILibraryData, TCharacterSortOrder, TMajorFilter } from "@/types/library";
+
+import { SIDEBAR_WIDTH, DEFAULT_LIBRARY } from "@/components/image-viewer/common/constants";
 import {
   buildNextQueryString,
   metadataFilterIdToQueryChanges,
@@ -39,13 +41,14 @@ import {
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
   parseStyleViewStyle,
-} from "@/components/image-viewer/persistent-filters";
-import { formatStyleLabel } from "@/components/image-viewer/utils";
-import type { IImageItem, ILibraryData, TCharacterSortOrder, TMajorFilter } from "@/types/library";
+} from "@/components/image-viewer/common/persistent-filters";
+import { formatStyleLabel } from "@/components/image-viewer/common/utils";
+import { ImageDetailModal } from "@/components/image-viewer/details/ImageDetailModal";
+import { DuplicateFinderModal } from "@/components/image-viewer/duplicateFinder/DuplicateFinderModal";
+import { ScrollToTopButton } from "@/components/image-viewer/layout/ScrollToTopButton";
+import { SideMenu } from "@/components/image-viewer/layout/SideMenu";
+
 import { ImageViewerBody } from "./ImageViewerBody";
-import { ImageDetailModal } from "@/components/image-viewer/ImageDetailModal";
-import { DuplicateFinderModal } from "@/components/image-viewer/DuplicateFinderModal";
-import { ScrollToTopButton } from "@/components/image-viewer/ScrollToTopButton";
 
 const MAIN_STYLES = { minHeight: "100vh", bgcolor: "background.default" };
 const APP_BAR_STYLES = {

@@ -1,8 +1,9 @@
 "use client";
 
 import { Chip } from "@mui/material";
-import { formatStyleLabel } from "@/components/image-viewer/utils";
 import { useCallback } from "react";
+
+import { formatStyleLabel } from "@/components/image-viewer/common/utils";
 
 interface IStyleViewProps {
   style: string;

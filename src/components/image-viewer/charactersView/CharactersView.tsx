@@ -1,19 +1,22 @@
 "use client";
 
 import { Box, Chip, type SelectChangeEvent, Stack, Typography } from "@mui/material";
-import { ImageCard } from "@/components/image-viewer/ImageCard";
+import { useCallback, useMemo } from "react";
+
 import type {
   ICharacterSummary,
   IImageItem,
   IMetadataFilterOption,
   TCharacterSortOrder,
 } from "@/types/library";
-import { FLEXWRAP, GRID, STACK_SPACING } from "./constants";
-import { useCallback, useMemo } from "react";
-import { StyleView } from "./StyleView";
-import { PoseView } from "./PoseView";
+
+import { ImageCard } from "@/components/image-viewer/image/ImageCard";
+
+import { CategoryFilter } from "../common/CategoryFilter";
+import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
+import { PoseView } from "../posesView/PoseView";
+import { StyleView } from "../stylesView/StyleView";
 import { CharacterView } from "./CharacterView";
-import { CategoryFilter } from "./CategoryFilter";
 
 interface ICharactersViewProps {
   styles: string[];

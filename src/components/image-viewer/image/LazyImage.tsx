@@ -1,8 +1,9 @@
 "use client";
 
 import type { SxProps, Theme } from "@mui/material/styles";
-import { LazyImagePreview } from "./LazyImagePreview";
+
 import { LazyImageMagnifier } from "./LazyImageMagnifier";
+import { LazyImagePreview } from "./LazyImagePreview";
 
 interface ILazyImageProps {
   relativePath: string;
