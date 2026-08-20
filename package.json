@@ -2,6 +2,7 @@
   "name": "sd-character-viewer",
   "version": "1.4.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
