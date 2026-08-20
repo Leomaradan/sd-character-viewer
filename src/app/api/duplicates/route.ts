@@ -90,6 +90,7 @@ export const POST = async (request: Request) => {
 
   let body: IValidateRequestBody;
   try {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     body = (await request.json()) as IValidateRequestBody;
   } catch {
     return new Response("Invalid request body", { status: 400 });
@@ -107,6 +108,7 @@ export const POST = async (request: Request) => {
     return new Response("Invalid request body", { status: 400 });
   }
 
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const additionalRelativePaths = [...new Set(rawAdditionalPaths as string[])].filter(
     (relativePath) => relativePath !== primaryRelativePath,
   );

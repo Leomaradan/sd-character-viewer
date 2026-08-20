@@ -212,6 +212,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
   try {
     fileContent = await fs.readFile(configPath, "utf8");
   } catch (error) {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return {
         styles: fallbackStyles,
@@ -333,6 +334,7 @@ const readPosePatternFilters = async (rootPath: string): Promise<IPosePatternFil
   try {
     fileContent = await fs.readFile(filtersPath, "utf8");
   } catch (error) {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return normalizePosePatternFilters(DEFAULT_POSE_PATTERN_FILTER_CONFIGS);
     }
@@ -365,6 +367,7 @@ const readCharactersMetadata = async (
   try {
     fileContent = await fs.readFile(metadataPath, "utf8");
   } catch (error) {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return new Map();
     }
@@ -678,6 +681,7 @@ const loadFirstSeenCache = async (
 
   try {
     const rawContent = await fs.readFile(cachePath, "utf8");
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const parsedContent = JSON.parse(rawContent) as Record<string, unknown>;
     const cacheMap = new Map<string, number>();
 
@@ -695,6 +699,7 @@ const loadFirstSeenCache = async (
 
     return { cache: cacheMap, available: true };
   } catch (error) {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return { cache: new Map<string, number>(), available: true };
     }

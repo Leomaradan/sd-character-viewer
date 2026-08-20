@@ -21,7 +21,7 @@ interface ICharactersViewProps {
   browseStyle: string;
   styleLabel: (style: string) => string;
   selectedCharacter: string | null;
-  onMetadataFilterChange: (event: SelectChangeEvent<string>) => void;
+  onMetadataFilterChange: (event: SelectChangeEvent) => void;
   onClearMetadataFilter: () => void;
   selectedMetadataFilterId: string;
   metadataFilterOptions: IMetadataFilterOption[];
@@ -167,8 +167,12 @@ export const CharactersView = ({
       }
     }
     const letters = [...map.keys()].sort((a, b) => {
-      if (a === "#") return 1;
-      if (b === "#") return -1;
+      if (a === "#") {
+        return 1;
+      }
+      if (b === "#") {
+        return -1;
+      }
       return a.localeCompare(b);
     });
     return letters.map((letter) => ({ letter, characters: map.get(letter)! }));

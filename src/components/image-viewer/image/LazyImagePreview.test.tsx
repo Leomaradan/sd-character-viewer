@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+// oxlint-disable-next-line import/no-unassigned-import
 import "@testing-library/jest-dom/vitest";
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

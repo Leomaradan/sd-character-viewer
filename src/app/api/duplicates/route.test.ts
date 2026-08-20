@@ -324,7 +324,7 @@ describe("POST /api/duplicates", () => {
     expect(remainingFiles).toEqual(["Base 2.png", "Base.png"]);
 
     const reviewedRaw = await fs.readFile(path.join(tempRoot, "duplicate-reviews.json"), "utf8");
-    const reviewed = JSON.parse(reviewedRaw as string) as Array<{
+    const reviewed = JSON.parse(reviewedRaw) as Array<{
       style: string;
       characterName: string;
       poseBaseName: string;
@@ -376,7 +376,7 @@ describe("POST /api/duplicates", () => {
     expect(bobResponse.status).toBe(200);
 
     const reviewedRaw = await fs.readFile(path.join(tempRoot, "duplicate-reviews.json"), "utf8");
-    const reviewed = JSON.parse(reviewedRaw as string) as Array<{ characterName: string }>;
+    const reviewed = JSON.parse(reviewedRaw) as Array<{ characterName: string }>;
 
     expect(reviewed.map((entry) => entry.characterName).sort()).toEqual(["Anna", "Bob"]);
   });
@@ -419,7 +419,7 @@ describe("POST /api/duplicates", () => {
     // Whichever request runs first fully wins; the other must observe its result (files it
     // referenced may already be gone) rather than partially interleaving with it. Neither
     // outcome should be a 500 caused by racing filesystem operations.
-    const statuses = [firstResponse.status, secondResponse.status].sort();
+    const statuses = [firstResponse.status, secondResponse.status].sort((a, b) => a - b);
     expect(statuses).toEqual([200, 400]);
 
     const remainingFiles = (await fs.readdir(annaDir)).sort();
@@ -468,7 +468,7 @@ describe("POST /api/duplicates", () => {
     expect(response.status).toBe(200);
 
     const reviewedRaw = await fs.readFile(path.join(tempRoot, "duplicate-reviews.json"), "utf8");
-    const reviewed = JSON.parse(reviewedRaw as string) as Array<{
+    const reviewed = JSON.parse(reviewedRaw) as Array<{
       characterName: string;
       fileNames: string[];
     }>;

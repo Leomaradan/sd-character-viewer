@@ -29,7 +29,7 @@ interface IPosesViewProps {
   onClearPoses: () => void;
   onTogglePose: (pose: string) => void;
   onPoseStyleChange: (style: string) => void;
-  onMetadataFilterChange: (event: SelectChangeEvent<string>) => void;
+  onMetadataFilterChange: (event: SelectChangeEvent) => void;
   onClearMetadataFilter: () => void;
   onCharacterSearchChange: (value: string) => void;
   onImageSelect: (image: IImageItem) => void;

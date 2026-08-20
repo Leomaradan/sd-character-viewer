@@ -98,6 +98,7 @@ export const GET = async (request: Request) => {
       try {
         return await respondWithFile(request, resolvePreviewFilePath(filePath), "image/jpeg");
       } catch (error) {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
           return new Response("Could not read preview image", { status: 500 });
         }
@@ -152,13 +153,14 @@ const findNextAvailableNumber = async (
   extension: string,
 ): Promise<number> => {
   const entries = await fs.readdir(directory);
+  const replaceToken = String.raw`\$&`;
   const pattern = new RegExp(
-    `^${baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+(\\d+)${extension.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+    String.raw`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, replaceToken)}\s+(\d+)${extension.replace(/[.*+?^${}()|[\]\\]/g, replaceToken)}$`,
   );
 
   let maxNumber = 1;
   for (const entry of entries) {
-    const match = entry.match(pattern);
+    const match = new RegExp(pattern).exec(entry);
     if (match) {
       const num = Number.parseInt(match[1], 10);
       if (num >= maxNumber) {

@@ -165,7 +165,7 @@ export function ImageDetailModal({
 
   useEffect(() => {
     if (!image || isConfirmOpen || isDeleting) {
-      return;
+      return () => {};
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -195,12 +195,15 @@ export function ImageDetailModal({
   ]);
 
   useEffect(() => {
-    if (!relativePath) return;
+    if (!relativePath) {
+      return () => {};
+    }
 
     let isMounted = true;
 
     fetch(`/api/metadata?path=${encodeURIComponent(relativePath)}`)
       .then((res) =>
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         res.ok ? (res.json() as Promise<Record<string, string>>) : Promise.resolve(null),
       )
       .then((data) => {
@@ -229,7 +232,9 @@ export function ImageDetailModal({
   }, []);
 
   const handleConfirmDelete = useCallback(async () => {
-    if (!relativePath) return;
+    if (!relativePath) {
+      return;
+    }
 
     setIsDeleting(true);
     setDeleteError(null);
@@ -256,7 +261,9 @@ export function ImageDetailModal({
   }, [relativePath, onDeleteSuccess]);
 
   const handleRedrawClick = useCallback(async () => {
-    if (!relativePath) return;
+    if (!relativePath) {
+      return;
+    }
 
     setIsRedrawing(true);
     setRedrawError(null);
@@ -271,6 +278,7 @@ export function ImageDetailModal({
         return;
       }
 
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       (await response.json()) as { newPath: string };
       onDeleteSuccess?.();
     } catch {
@@ -500,7 +508,7 @@ export function ImageDetailModal({
           <Button onClick={handleConfirmClose} disabled={isDeleting}>
             Cancel
           </Button>
-          <Button onClick={handleConfirmDelete} color="error" disabled={isDeleting} autoFocus>
+          <Button onClick={handleConfirmDelete} color="error" disabled={isDeleting}>
             {isDeleting ? <CircularProgress size={18} /> : "Delete"}
           </Button>
         </DialogActions>

@@ -9,6 +9,7 @@ import {
   parseColorScheme,
 } from "@/lib/color-scheme-storage";
 
+// oxlint-disable-next-line import/no-unassigned-import
 import "./globals.css";
 
 const roboto = Roboto({
