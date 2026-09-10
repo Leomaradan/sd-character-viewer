@@ -14,7 +14,7 @@ import { vol } from "memfs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import type { IImageItem } from "@/types/library";
+import type { IImageItem, ILibraryData } from "@/types/library";
 
 import {
   findDuplicateGroups,
@@ -22,6 +22,7 @@ import {
   parsePoseName,
   readImageLibrary,
   readReviewedDuplicateGroups,
+  removeLibraryIndexCache,
   resolveImageFilePath,
   resolvePreviewFilePath,
   writeReviewedDuplicateGroups,
@@ -298,6 +299,18 @@ describe("readImageLibrary with characters metadata", () => {
     expect(anna?.category).toBe("Hero");
     expect(anna?.serie).toBe("Sample");
     expect(anna?.tags).toEqual(["Action", "Main"]);
+    expect(library.metadataFilterOptions).toEqual([
+      { id: "tag::Action", type: "tag", value: "Action", label: "Action" },
+      { id: "category::Hero", type: "category", value: "Hero", label: "Hero" },
+      { id: "tag::Main", type: "tag", value: "Main", label: "Main" },
+      { id: "serie::Sample", type: "serie", value: "Sample", label: "Sample" },
+    ]);
+    expect(library.characterMetadataFilterIdsByName.Anna).toEqual([
+      "category::Hero",
+      "serie::Sample",
+      "tag::Action",
+      "tag::Main",
+    ]);
   });
 
   it("accepts metadata entries with extra keys", async () => {
@@ -494,6 +507,140 @@ describe("readImageLibrary with characters metadata", () => {
       .catch(() => false);
 
     expect(cacheExists).toBe(true);
+
+    delete process.env.SD_CACHE_DIR;
+  });
+
+  it("uses a matching library index cache instead of indexing image files", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-05T00:00:00.000Z"));
+
+    const tempRoot = "/tmp/sd-library-index-cache-hit";
+    const tempCacheDir = "/tmp/sd-cache-library-index-hit";
+    const charactersRoot = path.join(tempRoot, "characters");
+    const characterDir = path.join(charactersRoot, "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const cacheFilePath = path.join(tempCacheDir, `${rootHash}.library-index.json`);
+    const toSnapshot = async (absolutePath: string) => ({
+      relativePath: path.relative(tempRoot, absolutePath).split(path.sep).join(path.posix.sep),
+      modifiedAt: Math.trunc((await fs.stat(absolutePath)).mtimeMs),
+    });
+    const cachedLibrary: ILibraryData = {
+      rootConfigured: true,
+      rootPath: tempRoot,
+      defaultStyle: "3d",
+      styles: ["3d"],
+      styleLabels: {},
+      images: [
+        {
+          id: "cached",
+          style: "3d",
+          characterName: "Anna",
+          poseName: "Base",
+          poseBaseName: "Base",
+          poseVariant: 1,
+          relativePath: "characters/3d/Anna/Base.png",
+          isNew: true,
+          firstSeenAt: new Date("2026-01-01T00:00:00.000Z").getTime(),
+          modifiedAt: 123,
+          posePatternFilterIds: [],
+        },
+      ],
+      characters: [],
+      poses: [],
+      posePatternFilters: [],
+      poseFilterOptions: [],
+      metadataFilterOptions: [],
+      characterMetadataFilterIdsByName: {},
+      warning: null,
+      cacheAvailable: true,
+    };
+
+    await fs.mkdir(tempCacheDir, { recursive: true });
+    await fs.writeFile(
+      cacheFilePath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          rootPath: path.resolve(tempRoot),
+          generatedAt: Date.now(),
+          configFiles: [],
+          directories: await Promise.all([
+            toSnapshot(charactersRoot),
+            toSnapshot(path.join(charactersRoot, "3d")),
+            toSnapshot(characterDir),
+          ]),
+          library: cachedLibrary,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    const library = await readImageLibrary();
+
+    expect(library.images).toHaveLength(1);
+    expect(library.images[0]).toEqual(
+      expect.objectContaining({ id: "cached", isNew: false, modifiedAt: 123 }),
+    );
+    expect(library.cacheAvailable).toBe(true);
+
+    delete process.env.SD_CACHE_DIR;
+  });
+
+  it("ignores a library index cache with an incompatible version", async () => {
+    const tempRoot = "/tmp/sd-library-index-cache-version-mismatch";
+    const tempCacheDir = "/tmp/sd-cache-library-index-version-mismatch";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const cacheFilePath = path.join(tempCacheDir, `${rootHash}.library-index.json`);
+    await fs.mkdir(tempCacheDir, { recursive: true });
+    await fs.writeFile(
+      cacheFilePath,
+      JSON.stringify({
+        version: 0,
+        rootPath: path.resolve(tempRoot),
+        library: { rootConfigured: true, images: [] },
+      }),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    const library = await readImageLibrary();
+
+    expect(library.images.map((image) => image.relativePath)).toEqual([
+      "characters/3d/Anna/Base.png",
+    ]);
+
+    delete process.env.SD_CACHE_DIR;
+  });
+
+  it("removes the library index cache when configured", async () => {
+    const tempRoot = "/tmp/sd-library-index-cache-remove";
+    const tempCacheDir = "/tmp/sd-cache-library-index-remove";
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const cacheFilePath = path.join(tempCacheDir, `${rootHash}.library-index.json`);
+
+    await fs.mkdir(tempCacheDir, { recursive: true });
+    await fs.writeFile(cacheFilePath, "{}\n");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    await removeLibraryIndexCache();
+
+    await expect(fs.stat(cacheFilePath)).rejects.toThrow("ENOENT: no such file or directory");
 
     delete process.env.SD_CACHE_DIR;
   });

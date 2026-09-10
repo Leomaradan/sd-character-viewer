@@ -38,11 +38,13 @@ beforeEach(() => {
   vol.reset();
   vi.clearAllMocks();
   delete process.env.SD_IMAGES_ROOT;
+  delete process.env.SD_CACHE_DIR;
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
   delete process.env.SD_IMAGES_ROOT;
+  delete process.env.SD_CACHE_DIR;
 });
 
 describe("GET /api/duplicates", () => {
@@ -296,13 +298,19 @@ describe("POST /api/duplicates", () => {
     vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
 
     const tempRoot = "/tmp/sd-dup-post-validate";
+    const tempCacheDir = "/tmp/sd-dup-post-validate-cache";
     const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
     await fs.mkdir(annaDir, { recursive: true });
     await fs.writeFile(path.join(annaDir, "Base.png"), "");
     await fs.writeFile(path.join(annaDir, "Base 2.png"), "");
     await fs.writeFile(path.join(annaDir, "Base 3.png"), "");
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const libraryIndexCachePath = path.join(tempCacheDir, `${rootHash}.library-index.json`);
+    await fs.mkdir(tempCacheDir, { recursive: true });
+    await fs.writeFile(libraryIndexCachePath, "{}\n");
 
     process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
 
     const response = await POST(
       new Request("http://localhost/api/duplicates", {
@@ -324,6 +332,9 @@ describe("POST /api/duplicates", () => {
 
     const remainingFiles = (await fs.readdir(annaDir)).sort();
     expect(remainingFiles).toEqual(["Base 2.png", "Base.png"]);
+    await expect(fs.stat(libraryIndexCachePath)).rejects.toThrow(
+      "ENOENT: no such file or directory",
+    );
 
     const reviewedRaw = await fs.readFile(path.join(tempRoot, "duplicate-reviews.json"), "utf8");
     const reviewed = JSON.parse(reviewedRaw) as Array<{
