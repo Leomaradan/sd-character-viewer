@@ -22,15 +22,15 @@ const buildImage = (
   ...overrides,
 });
 
-const buildGroup = (id: string, characterName: string): IDuplicateGroup => ({
+const buildGroup = (id: string, characterName: string, style = "3d"): IDuplicateGroup => ({
   id,
-  style: "3d",
+  style,
   characterName,
   poseBaseName: "Base",
   images: [
-    buildImage({ relativePath: `characters/3d/${characterName}/Base.png`, characterName }),
+    buildImage({ relativePath: `characters/${style}/${characterName}/Base.png`, characterName }),
     buildImage({
-      relativePath: `characters/3d/${characterName}/Base 2.png`,
+      relativePath: `characters/${style}/${characterName}/Base 2.png`,
       characterName,
       poseVariant: 2,
     }),
@@ -174,6 +174,27 @@ describe("DuplicateFinderModal", () => {
     expect(screen.getByText(/Anna - Base/)).toBeInTheDocument();
     // MUI Dialog content is portalled to document.body, so query there rather than `container`.
     expect(document.body.querySelectorAll(".MuiDivider-root")).toHaveLength(1);
+  });
+
+  it("filters visible groups by style", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          groups: [buildGroup("group-a", "Anna", "3d"), buildGroup("group-b", "Bob", "anime")],
+        }),
+    });
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} />);
+
+    await screen.findByText(/Anna - Base/);
+    expect(screen.getByText(/Bob - Base/)).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByLabelText("Style"));
+    fireEvent.click(await screen.findByRole("option", { name: "Anime" }));
+
+    expect(screen.queryByText(/Anna - Base/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Bob - Base/)).toBeInTheDocument();
   });
 
   it("lets the user change the primary image and toggle which images are kept", async () => {
