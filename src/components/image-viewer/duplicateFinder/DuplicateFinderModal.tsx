@@ -125,6 +125,7 @@ const DuplicateImageItem = ({
           relativePath={image.relativePath}
           alt={`${image.characterName} ${image.poseName}`}
           sx={IMAGE_FILL_SX}
+          modifiedAt={image.modifiedAt}
         />
       </Box>
       <Typography variant="caption" sx={FILE_NAME_SX}>

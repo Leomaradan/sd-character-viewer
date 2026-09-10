@@ -41,6 +41,16 @@ describe("LazyImagePreview", () => {
     expect(screen.queryByAltText("Anna")).not.toBeInTheDocument();
   });
 
+  it("disconnects the observer when unmounted before loading", () => {
+    const { unmount } = render(
+      <LazyImagePreview relativePath="characters/3d/Anna/Base.png" alt="Anna" sx={emptySx} />,
+    );
+
+    unmount();
+
+    expect(disconnectSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the full-resolution image once it intersects the viewport", () => {
     render(<LazyImagePreview relativePath="characters/3d/Anna/Base.png" alt="Anna" sx={emptySx} />);
 
@@ -70,6 +80,26 @@ describe("LazyImagePreview", () => {
     expect(screen.getByAltText("Anna")).toHaveAttribute(
       "src",
       "/api/image?path=characters%2F3d%2FAnna%2FBase.png&variant=preview",
+    );
+  });
+
+  it("includes the modified timestamp in the image URL", () => {
+    render(
+      <LazyImagePreview
+        relativePath="characters/3d/Anna/Base.png"
+        alt="Anna"
+        sx={emptySx}
+        modifiedAt={1_700_000_000_123}
+      />,
+    );
+
+    act(() => {
+      intersectionCallback([{ isIntersecting: true }]);
+    });
+
+    expect(screen.getByAltText("Anna")).toHaveAttribute(
+      "src",
+      "/api/image?path=characters%2F3d%2FAnna%2FBase.png&t=1700000000123",
     );
   });
 

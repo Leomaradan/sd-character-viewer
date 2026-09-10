@@ -55,6 +55,7 @@ export const ImageCard = ({
             relativePath={image.relativePath}
             alt={`${image.characterName} ${image.poseName}`}
             sx={IMAGE_CARD}
+            modifiedAt={image.modifiedAt}
             mode="preview"
           />
           {showNewBadge && image.isNew && (

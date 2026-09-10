@@ -1,8 +1,16 @@
 import type { IImageItem, IPosePatternFilter } from "@/types/library";
 
-export const getImageUrl = (relativePath: string, options?: { preview?: boolean }): string => {
+export const getImageUrl = (
+  relativePath: string,
+  options?: { preview?: boolean; timestamp?: number | null },
+): string => {
+  const timestamp = options?.timestamp;
+  const timestampParam =
+    typeof timestamp === "number" && Number.isFinite(timestamp)
+      ? `&t=${Math.trunc(timestamp)}`
+      : "";
   const variantParam = options?.preview ? "&variant=preview" : "";
-  return `/api/image?path=${encodeURIComponent(relativePath)}${variantParam}`;
+  return `/api/image?path=${encodeURIComponent(relativePath)}${timestampParam}${variantParam}`;
 };
 
 export const formatStyleLabel = (

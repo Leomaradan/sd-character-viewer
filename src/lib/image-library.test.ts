@@ -510,6 +510,7 @@ const buildImage = (
   poseVariant: 1,
   isNew: false,
   firstSeenAt: 0,
+  modifiedAt: 0,
   ...overrides,
 });
 

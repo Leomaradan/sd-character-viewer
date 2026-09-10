@@ -44,6 +44,7 @@ interface ICharacterAccumulator {
   styles: Set<string>;
   poses: Set<string>;
   thumbnailsByStyle: Partial<Record<string, string>>;
+  thumbnailModifiedAtByStyle: Partial<Record<string, number>>;
 }
 
 interface ICharacterMetadata {
@@ -581,6 +582,7 @@ const toCharacterSummary = (
     poseCount: accumulator.poses.size,
     styles: [...accumulator.styles].sort(compareNatural),
     thumbnailsByStyle: accumulator.thumbnailsByStyle,
+    thumbnailModifiedAtByStyle: accumulator.thumbnailModifiedAtByStyle,
     category: null,
     serie: null,
     tags: [],
@@ -644,7 +646,12 @@ const createLibraryIndexState = (): ILibraryIndexState => {
   };
 };
 
-const buildImageItem = (style: string, characterName: string, pngFile: string): IImageItem => {
+const buildImageItem = (
+  style: string,
+  characterName: string,
+  pngFile: string,
+  modifiedAt: number,
+): IImageItem => {
   const parsedPose = parsePoseName(pngFile);
   const relativePath = normalizeRelativePath(
     path.join("characters", style, characterName, pngFile),
@@ -660,6 +667,7 @@ const buildImageItem = (style: string, characterName: string, pngFile: string): 
     relativePath,
     isNew: false,
     firstSeenAt: 0,
+    modifiedAt,
   };
 };
 
@@ -784,6 +792,7 @@ const updateCharacterAccumulator = (
 
     if (isBasePose && !existingCharacter.thumbnailsByStyle[imageItem.style]) {
       existingCharacter.thumbnailsByStyle[imageItem.style] = imageItem.relativePath;
+      existingCharacter.thumbnailModifiedAtByStyle[imageItem.style] = imageItem.modifiedAt;
     }
 
     return;
@@ -795,6 +804,7 @@ const updateCharacterAccumulator = (
     styles: new Set([imageItem.style]),
     poses: new Set([imageItem.poseBaseName]),
     thumbnailsByStyle: isBasePose ? { [imageItem.style]: imageItem.relativePath } : {},
+    thumbnailModifiedAtByStyle: isBasePose ? { [imageItem.style]: imageItem.modifiedAt } : {},
   };
 
   characterMap.set(imageItem.characterName, characterAccumulator);
@@ -822,7 +832,9 @@ const indexCharacterFolder = async (
   const pngFiles = await listPngFiles(characterFolderPath);
 
   for (const pngFile of pngFiles) {
-    const imageItem = buildImageItem(style, characterName, pngFile);
+    const imagePath = path.join(characterFolderPath, pngFile);
+    const stat = await fs.stat(imagePath);
+    const imageItem = buildImageItem(style, characterName, pngFile, Math.trunc(stat.mtimeMs));
     state.imageItems.push(imageItem);
     updateCharacterAccumulator(state.characterMap, imageItem);
     incrementPoseCounter(state.poseCounter, imageItem.poseBaseName);

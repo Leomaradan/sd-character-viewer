@@ -14,6 +14,7 @@ export interface IImageItem {
   relativePath: string;
   isNew: boolean;
   firstSeenAt: number;
+  modifiedAt: number;
 }
 
 export interface ICharacterSummary {
@@ -22,6 +23,7 @@ export interface ICharacterSummary {
   poseCount: number;
   styles: string[];
   thumbnailsByStyle: Partial<Record<string, string>>;
+  thumbnailModifiedAtByStyle: Partial<Record<string, number>>;
   category: string | null;
   serie: string | null;
   tags: string[];
