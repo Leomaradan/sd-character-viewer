@@ -547,6 +547,15 @@ describe("findDuplicateGroups", () => {
 
     expect(findDuplicateGroups(images)).toEqual([]);
   });
+
+  it("excludes groups missing their first image (variant 1)", () => {
+    const images: IImageItem[] = [
+      buildImage({ relativePath: "characters/3d/Anna/Base 2.png", poseVariant: 2 }),
+      buildImage({ relativePath: "characters/3d/Anna/Base 3.png", poseVariant: 3 }),
+    ];
+
+    expect(findDuplicateGroups(images)).toEqual([]);
+  });
 });
 
 describe("isDuplicateGroupReviewed", () => {

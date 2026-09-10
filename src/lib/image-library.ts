@@ -486,6 +486,13 @@ export const findDuplicateGroups = (images: IImageItem[]): IDuplicateGroup[] => 
       continue;
     }
 
+    // A group without its first image (e.g. "Base 2.png"/"Base 3.png" but no "Base.png")
+    // isn't a duplicate group, just a set of gaps in numbering.
+    const hasFirstImage = groupImages.some((image) => image.poseVariant === 1);
+    if (!hasFirstImage) {
+      continue;
+    }
+
     const sortedImages = [...groupImages].sort((a, b) => {
       if (a.poseVariant !== b.poseVariant) {
         return a.poseVariant - b.poseVariant;
