@@ -371,7 +371,7 @@ export const POST = async (request: Request) => {
         characterName,
         toRelativePath,
       });
-    } catch(error) {
+    } catch (error) {
       console.error("Error validating duplicate group:", error);
       return new Response("Could not validate duplicate group", { status: 500 });
     }
