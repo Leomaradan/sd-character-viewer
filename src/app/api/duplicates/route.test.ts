@@ -343,6 +343,49 @@ describe("POST /api/duplicates", () => {
     ]);
   });
 
+  it("deletes every image in the group and keeps none when rejectAll is true", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+
+    const tempRoot = "/tmp/sd-dup-post-reject-all";
+    const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
+    await fs.mkdir(annaDir, { recursive: true });
+    await fs.writeFile(path.join(annaDir, "Base.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 2.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 3.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          primaryRelativePath: "characters/3d/Anna/Base.png",
+          additionalKeptRelativePaths: [],
+          rejectAll: true,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      style: "3d",
+      characterName: "Anna",
+      poseBaseName: "Base",
+      fileNames: [],
+    });
+
+    const remainingFiles = await fs.readdir(annaDir);
+    expect(remainingFiles).toEqual([]);
+
+    await expect(
+      fs.readFile(path.join(tempRoot, "duplicate-reviews.json"), "utf8"),
+    ).rejects.toThrow(
+      "ENOENT: no such file or directory, open '/tmp/sd-dup-post-reject-all/duplicate-reviews.json'",
+    );
+  });
+
   it("does not lose a reviewed record when two different groups are validated concurrently", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);

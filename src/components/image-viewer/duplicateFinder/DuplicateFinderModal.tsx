@@ -9,7 +9,9 @@ import {
   Checkbox,
   CircularProgress,
   Dialog,
+  DialogActions,
   DialogContent,
+  DialogContentText,
   DialogTitle,
   Divider,
   FormControlLabel,
@@ -160,6 +162,7 @@ interface IDuplicateGroupCardProps {
   onPrimaryChange: (groupId: string, relativePath: string) => void;
   onKeptToggle: (groupId: string, relativePath: string, checked: boolean) => void;
   onValidate: (group: IDuplicateGroup) => void;
+  onReject: (group: IDuplicateGroup) => void;
 }
 
 const DuplicateGroupCard = ({
@@ -172,10 +175,15 @@ const DuplicateGroupCard = ({
   onPrimaryChange,
   onKeptToggle,
   onValidate,
+  onReject,
 }: Readonly<IDuplicateGroupCardProps>) => {
   const handleValidateClick = useCallback(() => {
     onValidate(group);
   }, [onValidate, group]);
+
+  const handleRejectClick = useCallback(() => {
+    onReject(group);
+  }, [onReject, group]);
 
   return (
     <Box sx={GROUP_BOX_SX}>
@@ -212,6 +220,9 @@ const DuplicateGroupCard = ({
         <Button variant="contained" onClick={handleValidateClick} disabled={isValidating}>
           {isValidating ? <CircularProgress size={18} /> : "Validate"}
         </Button>
+        <Button color="error" onClick={handleRejectClick} disabled={isValidating}>
+          Reject group
+        </Button>
       </Box>
 
       {groupError && (
@@ -237,6 +248,7 @@ export function DuplicateFinderModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [validatingGroupId, setValidatingGroupId] = useState<string | null>(null);
   const [groupErrors, setGroupErrors] = useState<Record<string, string>>({});
+  const [pendingRejectGroup, setPendingRejectGroup] = useState<IDuplicateGroup | null>(null);
   // Bumped on every new load and whenever the dialog closes, so a response for a superseded
   // (or since-closed) request can be detected and ignored instead of overwriting fresher state.
   const loadRequestIdRef = useRef(0);
@@ -372,6 +384,55 @@ export function DuplicateFinderModal({
     [selections, onChangesApplied],
   );
 
+  const handleReject = useCallback((group: IDuplicateGroup) => {
+    setPendingRejectGroup(group);
+  }, []);
+
+  const handleRejectCancel = useCallback(() => {
+    setPendingRejectGroup(null);
+  }, []);
+
+  const handleRejectConfirm = useCallback(async () => {
+    const group = pendingRejectGroup;
+    if (!group) {
+      return;
+    }
+
+    setValidatingGroupId(group.id);
+    setGroupErrors((prev) => ({ ...prev, [group.id]: "" }));
+
+    try {
+      const response = await fetch("/api/duplicates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          primaryRelativePath: group.images[0].relativePath,
+          additionalKeptRelativePaths: [],
+          rejectAll: true,
+        }),
+      });
+
+      if (!response.ok) {
+        setGroupErrors((prev) => ({
+          ...prev,
+          [group.id]: "Could not reject this group. Try again.",
+        }));
+        return;
+      }
+
+      setGroups((prev) => prev.filter((candidate) => candidate.id !== group.id));
+      onChangesApplied?.();
+    } catch {
+      setGroupErrors((prev) => ({
+        ...prev,
+        [group.id]: "Could not reject this group. Try again.",
+      }));
+    } finally {
+      setValidatingGroupId(null);
+      setPendingRejectGroup(null);
+    }
+  }, [pendingRejectGroup, onChangesApplied]);
+
   const groupCount = groups.length;
 
   return (
@@ -412,9 +473,28 @@ export function DuplicateFinderModal({
               onPrimaryChange={handlePrimaryChange}
               onKeptToggle={handleKeptToggle}
               onValidate={handleValidate}
+              onReject={handleReject}
             />
           ))}
       </DialogContent>
+
+      <Dialog open={pendingRejectGroup !== null} onClose={handleRejectCancel}>
+        <DialogTitle>Reject group?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This will permanently delete all {pendingRejectGroup?.images.length} images in this
+            group. This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleRejectCancel} disabled={validatingGroupId !== null}>
+            Cancel
+          </Button>
+          <Button onClick={handleRejectConfirm} color="error" disabled={validatingGroupId !== null}>
+            {validatingGroupId !== null ? <CircularProgress size={18} /> : "Reject group"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }
