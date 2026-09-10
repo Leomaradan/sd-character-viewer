@@ -13,6 +13,7 @@ import {
   parsePoseName,
   readImageLibrary,
   readReviewedDuplicateGroups,
+  removeLibraryIndexCache,
   removeFirstSeenCacheEntry,
   resolveImageFilePath,
   resolvePreviewFilePath,
@@ -354,6 +355,8 @@ export const POST = async (request: Request) => {
         await removeFirstSeenCacheEntry(relativePath);
       }
 
+      await removeLibraryIndexCache();
+
       if (rejectAll) {
         return Response.json({ style, characterName, poseBaseName, fileNames: [] });
       }
@@ -368,7 +371,8 @@ export const POST = async (request: Request) => {
         characterName,
         toRelativePath,
       });
-    } catch {
+    } catch(error) {
+      console.error("Error validating duplicate group:", error);
       return new Response("Could not validate duplicate group", { status: 500 });
     }
   });

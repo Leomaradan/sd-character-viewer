@@ -10,6 +10,8 @@ import {
   type IDuplicateGroup,
   type IImageItem,
   type ILibraryData,
+  type IMetadataFilterOption,
+  type IPoseFilterOption,
   type IPosePatternFilter,
   type IPoseSummary,
 } from "@/types/library";
@@ -19,6 +21,8 @@ const PNG_EXTENSION = ".png";
 const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
+const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
+const LIBRARY_INDEX_CACHE_VERSION = 1;
 const PREVIEW_FILE_SUFFIX = ".preview.jpg";
 const LIBRARY_CONFIG_FILE_NAME = "config.json";
 const CHARACTERS_CONFIG_FILE_NAME = "characters.json";
@@ -70,6 +74,20 @@ interface IPosePatternFilterConfig {
   label: string;
   pattern: string;
   flags?: string;
+}
+
+interface ICacheFileSnapshot {
+  relativePath: string;
+  modifiedAt: number;
+}
+
+interface ILibraryIndexCacheFile {
+  version: number;
+  rootPath: string;
+  generatedAt: number;
+  configFiles: ICacheFileSnapshot[];
+  directories: ICacheFileSnapshot[];
+  library: ILibraryData;
 }
 
 export interface IReviewedDuplicateGroup {
@@ -273,6 +291,14 @@ const compareNatural = (a: string, b: string): number => {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 };
 
+const ucFirst = (value: string): string => {
+  if (!value) {
+    return value;
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+
 const sanitizePoseName = (rawPoseName: string): string => {
   return rawPoseName.replace(/[_-]+/g, " ").trim();
 };
@@ -288,6 +314,75 @@ const normalizeMetadataTags = (tags: string[] | undefined): string[] => {
 
   return [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag !== ""))].sort(
     compareNatural,
+  );
+};
+
+const toMetadataFilterIds = (
+  character: Pick<ICharacterSummary, "category" | "serie" | "tags">,
+): string[] => {
+  const filterIds: string[] = [];
+
+  if (character.category?.trim()) {
+    filterIds.push(`category::${character.category}`);
+  }
+
+  if (character.serie?.trim()) {
+    filterIds.push(`serie::${character.serie}`);
+  }
+
+  for (const tag of character.tags) {
+    if (tag.trim()) {
+      filterIds.push(`tag::${tag}`);
+    }
+  }
+
+  return filterIds;
+};
+
+const buildMetadataFilterOptions = (characters: ICharacterSummary[]): IMetadataFilterOption[] => {
+  const categories = new Set(
+    characters
+      .map((character) => character.category)
+      .filter((category): category is string => Boolean(category?.trim())),
+  );
+  const series = new Set(
+    characters
+      .map((character) => character.serie)
+      .filter((serie): serie is string => Boolean(serie?.trim())),
+  );
+  const tags = new Set(
+    characters.flatMap((character) => character.tags).filter((tag) => Boolean(tag?.trim())),
+  );
+
+  const categoryFilters = [...categories].map((category) => ({
+    id: `category::${category}`,
+    type: "category" as const,
+    value: category,
+    label: category,
+  }));
+  const serieFilters = [...series].map((serie) => ({
+    id: `serie::${serie}`,
+    type: "serie" as const,
+    value: serie,
+    label: serie,
+  }));
+  const tagFilters = [...tags].map((tag) => ({
+    id: `tag::${tag}`,
+    type: "tag" as const,
+    value: tag,
+    label: ucFirst(tag),
+  }));
+
+  return [...categoryFilters, ...serieFilters, ...tagFilters].sort((a, b) =>
+    compareNatural(a.label, b.label),
+  );
+};
+
+const buildCharacterMetadataFilterIdsByName = (
+  characters: ICharacterSummary[],
+): Record<string, string[]> => {
+  return Object.fromEntries(
+    characters.map((character) => [character.name, toMetadataFilterIds(character)]),
   );
 };
 
@@ -441,19 +536,18 @@ export const parsePoseName = (
   const extension = path.extname(fileName);
   const withoutExtension = fileName.slice(0, Math.max(0, fileName.length - extension.length));
   const cleanName = sanitizePoseName(withoutExtension);
-  const poseRegex = /^(.*?)(\d+)?$/;
-  const poseMatch = poseRegex.exec(cleanName);
+  let variantStartIndex = cleanName.length;
 
-  if (!poseMatch) {
-    return {
-      poseName: cleanName,
-      poseBaseName: cleanName,
-      poseVariant: 1,
-    };
+  while (variantStartIndex > 0) {
+    const charCode = cleanName.codePointAt(variantStartIndex - 1) ?? 0;
+    if (charCode < 48 || charCode > 57) {
+      break;
+    }
+    variantStartIndex -= 1;
   }
 
-  const poseBaseName = (poseMatch[1] ?? cleanName).trim();
-  const variantRaw = poseMatch[2];
+  const poseBaseName = cleanName.slice(0, variantStartIndex).trim();
+  const variantRaw = cleanName.slice(variantStartIndex);
 
   return {
     poseName: cleanName,
@@ -616,6 +710,43 @@ const toPoseSummaries = (poseCounter: Map<string, number>): IPoseSummary[] => {
     .sort((a, b) => compareNatural(a.name, b.name));
 };
 
+const buildPoseFilterOptions = (
+  poses: IPoseSummary[],
+  posePatternFilters: IPosePatternFilter[],
+): IPoseFilterOption[] => {
+  const poseOptions = poses.map((pose) => ({ value: pose.name, label: pose.name }));
+  const patternOptions = posePatternFilters.map((filter) => ({
+    value: filter.id,
+    label: filter.label,
+  }));
+
+  return [...poseOptions, ...patternOptions];
+};
+
+const applyPosePatternFilterIds = (
+  imageItems: IImageItem[],
+  posePatternFilters: IPosePatternFilter[],
+): void => {
+  const compiledPatternFilters = posePatternFilters
+    .map((filter) => {
+      try {
+        return { id: filter.id, regex: new RegExp(filter.pattern, filter.flags) };
+      } catch {
+        return null;
+      }
+    })
+    .filter((filter): filter is { id: string; regex: RegExp } => filter !== null);
+
+  for (const imageItem of imageItems) {
+    imageItem.posePatternFilterIds = compiledPatternFilters
+      .filter((filter) => {
+        filter.regex.lastIndex = 0;
+        return filter.regex.test(imageItem.poseBaseName);
+      })
+      .map((filter) => filter.id);
+  }
+};
+
 const createEmptyLibraryData = (
   rootConfigured: boolean,
   rootPath: string | null,
@@ -633,6 +764,9 @@ const createEmptyLibraryData = (
     characters: [],
     poses: [],
     posePatternFilters: normalizePosePatternFilters(DEFAULT_POSE_PATTERN_FILTER_CONFIGS),
+    poseFilterOptions: [],
+    metadataFilterOptions: [],
+    characterMetadataFilterIdsByName: {},
     warning,
     cacheAvailable,
   };
@@ -668,12 +802,13 @@ const buildImageItem = (
     isNew: false,
     firstSeenAt: 0,
     modifiedAt,
+    posePatternFilterIds: [],
   };
 };
 
-const toCacheFileNameForRoot = (rootPath: string): string => {
+const toCacheFileNameForRoot = (rootPath: string, suffix: string): string => {
   const rootHash = Buffer.from(path.resolve(rootPath)).toString("base64url");
-  return `${rootHash}${FIRST_SEEN_CACHE_FILE_SUFFIX}`;
+  return `${rootHash}${suffix}`;
 };
 
 const getCacheDirectoryPath = (): string => {
@@ -687,7 +822,181 @@ const getCacheDirectoryPath = (): string => {
 };
 
 const getFirstSeenCachePath = (rootPath: string): string => {
-  return path.join(getCacheDirectoryPath(), toCacheFileNameForRoot(rootPath));
+  return path.join(
+    getCacheDirectoryPath(),
+    toCacheFileNameForRoot(rootPath, FIRST_SEEN_CACHE_FILE_SUFFIX),
+  );
+};
+
+const getLibraryIndexCachePath = (rootPath: string): string => {
+  return path.join(
+    getCacheDirectoryPath(),
+    toCacheFileNameForRoot(rootPath, LIBRARY_INDEX_CACHE_FILE_SUFFIX),
+  );
+};
+
+const toRelativeCachePath = (rootPath: string, absolutePath: string): string => {
+  return normalizeRelativePath(path.relative(rootPath, absolutePath));
+};
+
+const getFileSnapshot = async (
+  rootPath: string,
+  absolutePath: string,
+): Promise<ICacheFileSnapshot | null> => {
+  const stat = await fs.stat(absolutePath).catch(() => null);
+  if (!stat?.isFile()) {
+    return null;
+  }
+
+  return {
+    relativePath: toRelativeCachePath(rootPath, absolutePath),
+    modifiedAt: Math.trunc(stat.mtimeMs),
+  };
+};
+
+const collectConfigFileSnapshots = async (rootPath: string): Promise<ICacheFileSnapshot[]> => {
+  const configPaths = [
+    path.join(rootPath, LIBRARY_CONFIG_FILE_NAME),
+    path.join(rootPath, POSE_FILTERS_FILE_NAME),
+    path.join(rootPath, "characters", CHARACTERS_CONFIG_FILE_NAME),
+  ];
+  const snapshots = await Promise.all(
+    configPaths.map((configPath) => getFileSnapshot(rootPath, configPath)),
+  );
+  return snapshots.filter((snapshot): snapshot is ICacheFileSnapshot => snapshot !== null);
+};
+
+const collectDirectorySnapshots = async (
+  rootPath: string,
+  directoryPath: string,
+): Promise<ICacheFileSnapshot[]> => {
+  const directoryStat = await fs.stat(directoryPath);
+  const snapshots: ICacheFileSnapshot[] = [
+    {
+      relativePath: toRelativeCachePath(rootPath, directoryPath),
+      modifiedAt: Math.trunc(directoryStat.mtimeMs),
+    },
+  ];
+  const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const childSnapshots = await collectDirectorySnapshots(
+      rootPath,
+      path.join(directoryPath, entry.name),
+    );
+    snapshots.push(...childSnapshots);
+  }
+
+  return snapshots.sort((a, b) => compareNatural(a.relativePath, b.relativePath));
+};
+
+const areSnapshotsEqual = (
+  currentSnapshots: ICacheFileSnapshot[],
+  cachedSnapshots: ICacheFileSnapshot[],
+): boolean => {
+  if (currentSnapshots.length !== cachedSnapshots.length) {
+    return false;
+  }
+
+  return currentSnapshots.every((snapshot, index) => {
+    const cachedSnapshot = cachedSnapshots[index];
+    return (
+      cachedSnapshot?.relativePath === snapshot.relativePath &&
+      cachedSnapshot.modifiedAt === snapshot.modifiedAt
+    );
+  });
+};
+
+const refreshCachedLibrary = (library: ILibraryData): ILibraryData => {
+  const now = Date.now();
+  return {
+    ...library,
+    images: library.images.map((image) => ({
+      ...image,
+      isNew: now - image.firstSeenAt <= NEW_IMAGE_WINDOW_MS,
+    })),
+    cacheAvailable: true,
+  };
+};
+
+const readLibraryIndexCache = async (
+  rootPath: string,
+  charactersRootPath: string,
+): Promise<ILibraryData | null> => {
+  const cachePath = getLibraryIndexCachePath(rootPath);
+
+  try {
+    const rawContent = await fs.readFile(cachePath, "utf8");
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const cacheFile = JSON.parse(rawContent) as ILibraryIndexCacheFile;
+
+    if (
+      cacheFile.version !== LIBRARY_INDEX_CACHE_VERSION ||
+      cacheFile.rootPath !== path.resolve(rootPath) ||
+      !cacheFile.library?.rootConfigured
+    ) {
+      return null;
+    }
+
+    const [configFiles, directories] = await Promise.all([
+      collectConfigFileSnapshots(rootPath),
+      collectDirectorySnapshots(rootPath, charactersRootPath),
+    ]);
+
+    if (
+      !areSnapshotsEqual(configFiles, cacheFile.configFiles) ||
+      !areSnapshotsEqual(directories, cacheFile.directories)
+    ) {
+      return null;
+    }
+
+    return refreshCachedLibrary(cacheFile.library);
+  } catch {
+    return null;
+  }
+};
+
+const writeLibraryIndexCache = async (
+  rootPath: string,
+  charactersRootPath: string,
+  library: ILibraryData,
+): Promise<boolean> => {
+  const cachePath = getLibraryIndexCachePath(rootPath);
+
+  try {
+    const [configFiles, directories] = await Promise.all([
+      collectConfigFileSnapshots(rootPath),
+      collectDirectorySnapshots(rootPath, charactersRootPath),
+    ]);
+    const cacheFile: ILibraryIndexCacheFile = {
+      version: LIBRARY_INDEX_CACHE_VERSION,
+      rootPath: path.resolve(rootPath),
+      generatedAt: Date.now(),
+      configFiles,
+      directories,
+      library: { ...library, cacheAvailable: true },
+    };
+
+    await fs.mkdir(path.dirname(cachePath), { recursive: true });
+    await fs.writeFile(cachePath, `${JSON.stringify(cacheFile, null, 2)}\n`, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const removeLibraryIndexCache = async (): Promise<void> => {
+  const rootPath = getImagesRootPathFromEnv();
+
+  if (!rootPath) {
+    return;
+  }
+
+  await fs.unlink(getLibraryIndexCachePath(rootPath)).catch(() => {});
 };
 
 const loadFirstSeenCache = async (
@@ -912,6 +1221,9 @@ const toLibraryData = (
     .sort((a, b) => compareNatural(a.name, b.name));
 
   const poses = toPoseSummaries(state.poseCounter);
+  const metadataFilterOptions = buildMetadataFilterOptions(characters);
+  const characterMetadataFilterIdsByName = buildCharacterMetadataFilterIdsByName(characters);
+  const poseFilterOptions = buildPoseFilterOptions(poses, posePatternFilters);
 
   return {
     rootConfigured: true,
@@ -923,6 +1235,9 @@ const toLibraryData = (
     characters,
     poses,
     posePatternFilters,
+    poseFilterOptions,
+    metadataFilterOptions,
+    characterMetadataFilterIdsByName,
     warning: null,
     cacheAvailable,
   };
@@ -955,6 +1270,11 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
   const charactersRootPath = path.join(rootPath, "characters");
   let metadataByCharacter = new Map<string, ICharacterMetadataSummary>();
   const posePatternFilters = await readPosePatternFilters(rootPath);
+
+  const cachedLibrary = await readLibraryIndexCache(rootPath, charactersRootPath);
+  if (cachedLibrary) {
+    return cachedLibrary;
+  }
 
   try {
     metadataByCharacter = await readCharactersMetadata(rootPath);
@@ -997,6 +1317,7 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
   }
 
   sortImageItems(indexState.imageItems);
+  applyPosePatternFilterIds(indexState.imageItems, posePatternFilters);
   const { cache: firstSeenCache, available: cacheReadable } = await loadFirstSeenCache(rootPath);
   const hasCacheChanges = markNewImages(indexState.imageItems, Date.now(), firstSeenCache);
 
@@ -1007,7 +1328,7 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
 
   const cacheAvailable = cacheReadable && cacheWritable;
 
-  return toLibraryData(
+  const library = toLibraryData(
     rootPath,
     effectiveStyleConfig,
     indexState,
@@ -1015,6 +1336,10 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
     posePatternFilters,
     cacheAvailable,
   );
+
+  const libraryCacheWritable = await writeLibraryIndexCache(rootPath, charactersRootPath, library);
+
+  return { ...library, cacheAvailable: cacheAvailable && libraryCacheWritable };
 };
 
 export const resolveImageFilePath = (relativePath: string): string | null => {

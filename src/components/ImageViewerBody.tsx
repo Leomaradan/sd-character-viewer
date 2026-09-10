@@ -5,22 +5,11 @@ import type { SelectChangeEvent } from "@mui/material";
 import { Alert, Box, CircularProgress } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type {
-  ICharacterSummary,
-  IImageItem,
-  ILibraryData,
-  IMetadataFilterOption,
-  TCharacterSortOrder,
-  TMajorFilter,
-} from "@/types/library";
+import type { IImageItem, ILibraryData, TCharacterSortOrder, TMajorFilter } from "@/types/library";
 
 import { CharactersView } from "@/components/image-viewer/charactersView/CharactersView";
 import { DEFAULT_LIBRARY } from "@/components/image-viewer/common/constants";
-import {
-  buildPoseFilterOptions,
-  buildPoseOptions,
-  formatStyleLabel,
-} from "@/components/image-viewer/common/utils";
+import { buildPoseOptions, formatStyleLabel } from "@/components/image-viewer/common/utils";
 import { EmptyState } from "@/components/image-viewer/layout/EmptyState";
 import { PosesView } from "@/components/image-viewer/posesView/PosesView";
 import { StylesView } from "@/components/image-viewer/stylesView/StylesView";
@@ -54,56 +43,6 @@ const PROGRESS_CONTAINER = {
   alignItems: "center",
   justifyContent: "center",
   py: 12,
-};
-
-const compareNatural = (a: string, b: string): number => {
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
-};
-
-const ucFirst = (str: string): string => {
-  if (!str) {
-    return str;
-  }
-  return str.charAt(0).toUpperCase() + str.slice(1);
-};
-
-const buildMetadataFilterOptions = (characters: ICharacterSummary[]): IMetadataFilterOption[] => {
-  const categories = new Set(
-    characters
-      .map((character) => character.category)
-      .filter((category): category is string => Boolean(category?.trim())),
-  );
-  const series = new Set(
-    characters
-      .map((character) => character.serie)
-      .filter((serie): serie is string => Boolean(serie?.trim())),
-  );
-  const tags = new Set(
-    characters.flatMap((character) => character.tags).filter((tag) => Boolean(tag?.trim())),
-  );
-
-  const categoryFilters = [...categories].map((category) => ({
-    id: `category::${category}`,
-    type: "category" as const,
-    value: category,
-    label: category,
-  }));
-  const serieFilters = [...series].map((serie) => ({
-    id: `serie::${serie}`,
-    type: "serie" as const,
-    value: serie,
-    label: serie,
-  }));
-  const tagFilters = [...tags].map((tag) => ({
-    id: `tag::${tag}`,
-    type: "tag" as const,
-    value: tag,
-    label: ucFirst(tag),
-  }));
-
-  return [...categoryFilters, ...serieFilters, ...tagFilters].sort((a, b) =>
-    compareNatural(a.label, b.label),
-  );
 };
 
 export const ImageViewerBody = ({
@@ -162,18 +101,13 @@ export const ImageViewerBody = ({
 
   const validateFilters = useCallback(
     (lib: ILibraryData, currentMetadataFilterId: string, currentPoseFilters: string[]) => {
-      const validMetadataFilterIds = new Set(
-        buildMetadataFilterOptions(lib.characters).map((option) => option.id),
-      );
+      const validMetadataFilterIds = new Set(lib.metadataFilterOptions.map((option) => option.id));
 
       const nextMetadataFilterId = validMetadataFilterIds.has(currentMetadataFilterId)
         ? currentMetadataFilterId
         : "";
 
-      const validPoseOptions = new Set(lib.poses.map((pose) => pose.name));
-      for (const posePatternFilter of lib.posePatternFilters) {
-        validPoseOptions.add(posePatternFilter.id);
-      }
+      const validPoseOptions = new Set(lib.poseFilterOptions.map((option) => option.value));
 
       const nextPoseFilters = currentPoseFilters.filter((pose) => validPoseOptions.has(pose));
 
@@ -262,9 +196,7 @@ export const ImageViewerBody = ({
     );
   }, [library.characters, library.defaultStyle, filteredImages]);
 
-  const metadataFilterOptions = useMemo((): IMetadataFilterOption[] => {
-    return buildMetadataFilterOptions(library.characters);
-  }, [library.characters]);
+  const metadataFilterOptions = library.metadataFilterOptions;
 
   const styleLabel = useCallback(
     (style: string) => formatStyleLabel(style, library.styleLabels),
@@ -274,15 +206,6 @@ export const ImageViewerBody = ({
   const metadataFilterById = useMemo(() => {
     return new Map(metadataFilterOptions.map((option) => [option.id, option]));
   }, [metadataFilterOptions]);
-
-  const characterMetadataByName = useMemo(() => {
-    return new Map(
-      library.characters.map((character) => [
-        character.name,
-        { category: character.category, serie: character.serie, tags: character.tags },
-      ]),
-    );
-  }, [library.characters]);
 
   const effectiveStyleMetadataFilterId = useMemo(() => {
     if (!selectedMetadataFilterId) {
@@ -333,18 +256,11 @@ export const ImageViewerBody = ({
           ? true
           : image.characterName.toLowerCase().includes(normalizedSearchText) ||
             image.poseBaseName.toLowerCase().includes(normalizedSearchText);
-      const characterMetadata = characterMetadataByName.get(image.characterName);
-      let matchesMetadata = true;
-
-      if (selectedMetadataFilter) {
-        if (selectedMetadataFilter.type === "category") {
-          matchesMetadata = characterMetadata?.category === selectedMetadataFilter.value;
-        } else if (selectedMetadataFilter.type === "serie") {
-          matchesMetadata = characterMetadata?.serie === selectedMetadataFilter.value;
-        } else {
-          matchesMetadata = characterMetadata?.tags.includes(selectedMetadataFilter.value) ?? false;
-        }
-      }
+      const matchesMetadata = selectedMetadataFilter
+        ? (library.characterMetadataFilterIdsByName[image.characterName]?.includes(
+            selectedMetadataFilter.id,
+          ) ?? false)
+        : true;
 
       return matchesStyle && matchesSearchText && matchesMetadata;
     });
@@ -355,46 +271,25 @@ export const ImageViewerBody = ({
 
     return matchingImages;
   }, [
-    characterMetadataByName,
     characterSortOrder,
     effectiveStyleMetadataFilterId,
     effectiveStyleViewStyle,
     filteredImages,
     metadataFilterById,
     styleViewSearchText,
+    library.characterMetadataFilterIdsByName,
   ]);
-
-  const posePatternFiltersById = useMemo(() => {
-    const filtersById = new Map<string, { label: string; regex: RegExp }>();
-
-    for (const filter of library.posePatternFilters) {
-      try {
-        filtersById.set(filter.id, {
-          label: filter.label,
-          regex: new RegExp(filter.pattern, filter.flags),
-        });
-      } catch {
-        // Ignore invalid patterns to keep filtering resilient.
-      }
-    }
-
-    return filtersById;
-  }, [library.posePatternFilters]);
 
   const poseFilteredImages = useMemo(() => {
     const normalizedCharacterSearch = poseViewCharacterSearch.trim().toLowerCase();
     const selectedPoses = new Set(selectedPoseFilters);
     const isAllPosesSelected = selectedPoses.size === 0;
-    const selectedPatternFilters = [...selectedPoses]
-      .map((selectedPose) => posePatternFiltersById.get(selectedPose))
-      .filter((filter): filter is { label: string; regex: RegExp } => Boolean(filter));
     const selectedMetadataFilter = metadataFilterById.get(effectivePoseMetadataFilterId);
 
     const matchingImages = filteredImages.filter((image) => {
-      const matchesPatternPose = selectedPatternFilters.some((filter) => {
-        filter.regex.lastIndex = 0;
-        return filter.regex.test(image.poseBaseName);
-      });
+      const matchesPatternPose = image.posePatternFilterIds.some((filterId) =>
+        selectedPoses.has(filterId),
+      );
       const matchesPose =
         isAllPosesSelected || selectedPoses.has(image.poseBaseName) || matchesPatternPose;
       const matchesStyle =
@@ -403,18 +298,11 @@ export const ImageViewerBody = ({
         normalizedCharacterSearch.length === 0
           ? true
           : image.characterName.toLowerCase().includes(normalizedCharacterSearch);
-      const characterMetadata = characterMetadataByName.get(image.characterName);
-      let matchesMetadata = true;
-
-      if (selectedMetadataFilter) {
-        if (selectedMetadataFilter.type === "category") {
-          matchesMetadata = characterMetadata?.category === selectedMetadataFilter.value;
-        } else if (selectedMetadataFilter.type === "serie") {
-          matchesMetadata = characterMetadata?.serie === selectedMetadataFilter.value;
-        } else {
-          matchesMetadata = characterMetadata?.tags.includes(selectedMetadataFilter.value) ?? false;
-        }
-      }
+      const matchesMetadata = selectedMetadataFilter
+        ? (library.characterMetadataFilterIdsByName[image.characterName]?.includes(
+            selectedMetadataFilter.id,
+          ) ?? false)
+        : true;
 
       return matchesPose && matchesStyle && matchesCharacter && matchesMetadata;
     });
@@ -425,25 +313,17 @@ export const ImageViewerBody = ({
 
     return matchingImages;
   }, [
-    characterMetadataByName,
     characterSortOrder,
     effectivePoseMetadataFilterId,
     effectivePoseViewStyle,
     filteredImages,
     metadataFilterById,
-    posePatternFiltersById,
     poseViewCharacterSearch,
     selectedPoseFilters,
+    library.characterMetadataFilterIdsByName,
   ]);
 
-  const allPoseOptions = useMemo(() => {
-    const poseNames = new Set(filteredImages.map((image) => image.poseBaseName));
-    return [...poseNames].sort(compareNatural);
-  }, [filteredImages]);
-
-  const poseViewPoseOptions = useMemo(() => {
-    return buildPoseFilterOptions(allPoseOptions, library.posePatternFilters);
-  }, [allPoseOptions, library.posePatternFilters]);
+  const poseViewPoseOptions = library.poseFilterOptions;
 
   const togglePoseFilter = useCallback(
     (poseValue: string) => {

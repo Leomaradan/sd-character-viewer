@@ -21,6 +21,7 @@ vi.mock("@/lib/image-library", () => ({
   resolveImageFilePath: vi.fn(),
   resolvePreviewFilePath: vi.fn((filePath: string) => filePath.replace(/\.png$/i, ".preview.jpg")),
   removeFirstSeenCacheEntry: vi.fn(),
+  removeLibraryIndexCache: vi.fn(),
 }));
 
 vi.mock("@/app/api/metadata/route", () => ({

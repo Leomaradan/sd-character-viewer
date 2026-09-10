@@ -20,6 +20,7 @@ const buildImage = (
   isNew: false,
   firstSeenAt: 0,
   modifiedAt: 0,
+  posePatternFilterIds: [],
   ...overrides,
 });
 
