@@ -9,15 +9,22 @@ import {
   Checkbox,
   CircularProgress,
   Dialog,
+  DialogActions,
   DialogContent,
+  DialogContentText,
   DialogTitle,
   Divider,
+  FormControl,
   FormControlLabel,
   IconButton,
+  InputLabel,
+  MenuItem,
   Radio,
+  Select,
+  type SelectChangeEvent,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 import type { IDuplicateGroup, IImageItem } from "@/types/library";
 
@@ -36,13 +43,14 @@ const EMPTY_STATE_SX = {
   opacity: 0.7,
 };
 const LOADING_SX = { display: "flex", justifyContent: "center", py: 6 };
+const FILTER_BAR_SX = { mb: 3, display: "flex", alignItems: "center", gap: 2 };
+const STYLE_FILTER_SX = { minWidth: 220 };
 const GROUP_BOX_SX = { pb: 3, mb: 3 };
 const GROUP_HEADER_SX = { mb: 1.5 };
 const GROUP_TITLE_SX = { fontWeight: 600 };
 const GROUP_SUBTITLE_SX = { opacity: 0.7 };
 const IMAGES_ROW_SX = {
   display: "flex",
-  flexWrap: "wrap",
   gap: 2,
 };
 const IMAGE_ITEM_SX = {
@@ -50,7 +58,7 @@ const IMAGE_ITEM_SX = {
   flexDirection: "column",
   alignItems: "center",
 };
-const IMAGE_THUMB_SX = { width: "100%", aspectRatio: "3 / 4", borderRadius: 1, overflow: "hidden" };
+const IMAGE_THUMB_SX = { width: "50%", aspectRatio: "3 / 4", borderRadius: 1, overflow: "hidden" };
 const IMAGE_FILL_SX = { width: "100%", height: "100%" };
 const FILE_NAME_SX = { mt: 0.5, wordBreak: "break-word", textAlign: "center" };
 const GROUP_ACTIONS_SX = { mt: 2, display: "flex", alignItems: "center", gap: 2 };
@@ -117,7 +125,7 @@ const DuplicateImageItem = ({
           relativePath={image.relativePath}
           alt={`${image.characterName} ${image.poseName}`}
           sx={IMAGE_FILL_SX}
-          mode="magnifier"
+          modifiedAt={image.modifiedAt}
         />
       </Box>
       <Typography variant="caption" sx={FILE_NAME_SX}>
@@ -160,6 +168,7 @@ interface IDuplicateGroupCardProps {
   onPrimaryChange: (groupId: string, relativePath: string) => void;
   onKeptToggle: (groupId: string, relativePath: string, checked: boolean) => void;
   onValidate: (group: IDuplicateGroup) => void;
+  onReject: (group: IDuplicateGroup) => void;
 }
 
 const DuplicateGroupCard = ({
@@ -172,10 +181,15 @@ const DuplicateGroupCard = ({
   onPrimaryChange,
   onKeptToggle,
   onValidate,
+  onReject,
 }: Readonly<IDuplicateGroupCardProps>) => {
   const handleValidateClick = useCallback(() => {
     onValidate(group);
   }, [onValidate, group]);
+
+  const handleRejectClick = useCallback(() => {
+    onReject(group);
+  }, [onReject, group]);
 
   return (
     <Box sx={GROUP_BOX_SX}>
@@ -212,6 +226,9 @@ const DuplicateGroupCard = ({
         <Button variant="contained" onClick={handleValidateClick} disabled={isValidating}>
           {isValidating ? <CircularProgress size={18} /> : "Validate"}
         </Button>
+        <Button color="error" onClick={handleRejectClick} disabled={isValidating}>
+          Reject group
+        </Button>
       </Box>
 
       {groupError && (
@@ -237,6 +254,8 @@ export function DuplicateFinderModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [validatingGroupId, setValidatingGroupId] = useState<string | null>(null);
   const [groupErrors, setGroupErrors] = useState<Record<string, string>>({});
+  const [pendingRejectGroup, setPendingRejectGroup] = useState<IDuplicateGroup | null>(null);
+  const [selectedStyle, setSelectedStyle] = useState("");
   // Bumped on every new load and whenever the dialog closes, so a response for a superseded
   // (or since-closed) request can be detected and ignored instead of overwriting fresher state.
   const loadRequestIdRef = useRef(0);
@@ -372,7 +391,74 @@ export function DuplicateFinderModal({
     [selections, onChangesApplied],
   );
 
+  const handleReject = useCallback((group: IDuplicateGroup) => {
+    setPendingRejectGroup(group);
+  }, []);
+
+  const handleRejectCancel = useCallback(() => {
+    setPendingRejectGroup(null);
+  }, []);
+
+  const handleRejectConfirm = useCallback(async () => {
+    const group = pendingRejectGroup;
+    if (!group) {
+      return;
+    }
+
+    setValidatingGroupId(group.id);
+    setGroupErrors((prev) => ({ ...prev, [group.id]: "" }));
+
+    try {
+      const response = await fetch("/api/duplicates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          primaryRelativePath: group.images[0].relativePath,
+          additionalKeptRelativePaths: [],
+          rejectAll: true,
+        }),
+      });
+
+      if (!response.ok) {
+        setGroupErrors((prev) => ({
+          ...prev,
+          [group.id]: "Could not reject this group. Try again.",
+        }));
+        return;
+      }
+
+      setGroups((prev) => prev.filter((candidate) => candidate.id !== group.id));
+      onChangesApplied?.();
+    } catch {
+      setGroupErrors((prev) => ({
+        ...prev,
+        [group.id]: "Could not reject this group. Try again.",
+      }));
+    } finally {
+      setValidatingGroupId(null);
+      setPendingRejectGroup(null);
+    }
+  }, [pendingRejectGroup, onChangesApplied]);
+
+  const styleOptions = useMemo(
+    () =>
+      [...new Set(groups.map((group) => group.style))].sort((a, b) =>
+        styleLabel(a).localeCompare(styleLabel(b), undefined, { sensitivity: "base" }),
+      ),
+    [groups, styleLabel],
+  );
+
+  const visibleGroups = useMemo(
+    () => groups.filter((group) => !selectedStyle || group.style === selectedStyle),
+    [groups, selectedStyle],
+  );
+
+  const handleStyleFilterChange = useCallback((event: SelectChangeEvent) => {
+    setSelectedStyle(event.target.value);
+  }, []);
+
   const groupCount = groups.length;
+  const visibleGroupCount = visibleGroups.length;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth sx={DIALOG_SX}>
@@ -391,6 +477,27 @@ export function DuplicateFinderModal({
 
         {!isLoading && loadError && <Alert severity="error">{loadError}</Alert>}
 
+        {!isLoading && !loadError && groupCount > 0 && styleOptions.length > 1 && (
+          <Box sx={FILTER_BAR_SX}>
+            <FormControl size="small" sx={STYLE_FILTER_SX}>
+              <InputLabel id="duplicate-style-filter-label">Style</InputLabel>
+              <Select
+                labelId="duplicate-style-filter-label"
+                value={selectedStyle}
+                label="Style"
+                onChange={handleStyleFilterChange}
+              >
+                <MenuItem value="">All styles</MenuItem>
+                {styleOptions.map((style) => (
+                  <MenuItem key={style} value={style}>
+                    {styleLabel(style)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        )}
+
         {!isLoading && !loadError && groupCount === 0 && (
           <Box sx={EMPTY_STATE_SX}>
             <CheckCircleIcon fontSize="large" color="success" />
@@ -398,23 +505,48 @@ export function DuplicateFinderModal({
           </Box>
         )}
 
+        {!isLoading && !loadError && groupCount > 0 && visibleGroupCount === 0 && (
+          <Box sx={EMPTY_STATE_SX}>
+            <Typography variant="body1">No duplicate groups match this style.</Typography>
+          </Box>
+        )}
+
         {!isLoading &&
           !loadError &&
-          groups.map((group, index) => (
+          visibleGroups.map((group, index) => (
             <DuplicateGroupCard
               key={group.id}
               group={group}
               selection={selections[group.id] ?? buildDefaultSelection(group)}
               isValidating={validatingGroupId === group.id}
-              isLast={index === groupCount - 1}
+              isLast={index === visibleGroupCount - 1}
               groupError={groupErrors[group.id]}
               styleLabel={styleLabel}
               onPrimaryChange={handlePrimaryChange}
               onKeptToggle={handleKeptToggle}
               onValidate={handleValidate}
+              onReject={handleReject}
             />
           ))}
       </DialogContent>
+
+      <Dialog open={pendingRejectGroup !== null} onClose={handleRejectCancel}>
+        <DialogTitle>Reject group?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This will permanently delete all {pendingRejectGroup?.images.length} images in this
+            group. This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleRejectCancel} disabled={validatingGroupId !== null}>
+            Cancel
+          </Button>
+          <Button onClick={handleRejectConfirm} color="error" disabled={validatingGroupId !== null}>
+            {validatingGroupId !== null ? <CircularProgress size={18} /> : "Reject group"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }

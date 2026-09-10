@@ -14,6 +14,8 @@ export interface IImageItem {
   relativePath: string;
   isNew: boolean;
   firstSeenAt: number;
+  modifiedAt: number;
+  posePatternFilterIds: string[];
 }
 
 export interface ICharacterSummary {
@@ -22,6 +24,7 @@ export interface ICharacterSummary {
   poseCount: number;
   styles: string[];
   thumbnailsByStyle: Partial<Record<string, string>>;
+  thumbnailModifiedAtByStyle: Partial<Record<string, number>>;
   category: string | null;
   serie: string | null;
   tags: string[];
@@ -47,6 +50,11 @@ export interface IPosePatternFilter {
   flags?: string;
 }
 
+export interface IPoseFilterOption {
+  value: string;
+  label: string;
+}
+
 export interface IDuplicateGroup {
   id: string;
   style: string;
@@ -65,6 +73,9 @@ export interface ILibraryData {
   characters: ICharacterSummary[];
   poses: IPoseSummary[];
   posePatternFilters: IPosePatternFilter[];
+  poseFilterOptions: IPoseFilterOption[];
+  metadataFilterOptions: IMetadataFilterOption[];
+  characterMetadataFilterIdsByName: Record<string, string[]>;
   warning: string | null;
   cacheAvailable: boolean;
 }

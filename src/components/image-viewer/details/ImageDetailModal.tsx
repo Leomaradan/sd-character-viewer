@@ -427,6 +427,7 @@ export function ImageDetailModal({
                   relativePath={image.relativePath}
                   alt={`${image.characterName} ${image.poseName}`}
                   sx={LAZY_IMAGE_SX}
+                  modifiedAt={image.modifiedAt}
                   imgSx={LAZY_IMAGE_IMG_SX}
                   mode="magnifier"
                 />

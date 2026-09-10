@@ -12,6 +12,7 @@ interface ILazyImageMagnifierProps {
   relativePath: string;
   alt: string;
   sx: SxProps<Theme>;
+  modifiedAt?: number;
 }
 
 interface IDimensions {
@@ -29,6 +30,7 @@ export const LazyImageMagnifier = ({
   relativePath,
   alt,
   sx,
+  modifiedAt,
 }: Readonly<ILazyImageMagnifierProps>) => {
   const imageContainerRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(false);
@@ -65,7 +67,10 @@ export const LazyImageMagnifier = ({
     };
   }, [shouldLoad]);
 
-  const imageUrl = useMemo(() => getImageUrl(relativePath, { preview: false }), [relativePath]);
+  const imageUrl = useMemo(
+    () => getImageUrl(relativePath, { preview: false, timestamp: modifiedAt }),
+    [relativePath, modifiedAt],
+  );
 
   useEffect(() => {
     if (!shouldLoad) {

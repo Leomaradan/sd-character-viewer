@@ -28,6 +28,21 @@ describe("image-viewer utils", () => {
     );
   });
 
+  it("adds an image timestamp to the URL when provided", () => {
+    expect(getImageUrl("characters/3d/A B/Base.png", { timestamp: 1_700_000_000_123 })).toBe(
+      "/api/image?path=characters%2F3d%2FA%20B%2FBase.png&t=1700000000123",
+    );
+  });
+
+  it("keeps the preview variant when an image timestamp is provided", () => {
+    expect(
+      getImageUrl("characters/3d/A B/Base.png", {
+        preview: true,
+        timestamp: 1_700_000_000_123,
+      }),
+    ).toBe("/api/image?path=characters%2F3d%2FA%20B%2FBase.png&t=1700000000123&variant=preview");
+  });
+
   it("formats style labels", () => {
     expect(formatStyleLabel("3d")).toBe("3D");
     expect(formatStyleLabel("anime")).toBe("Anime");

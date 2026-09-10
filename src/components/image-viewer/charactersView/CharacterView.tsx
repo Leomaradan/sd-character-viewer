@@ -41,6 +41,18 @@ export const CharacterView = ({
     );
   }, [character, browseStyle, defaultStyle]);
 
+  const thumbnailModifiedAt = useMemo(() => {
+    if (!thumbnailPath) {
+      return undefined;
+    }
+
+    const thumbnailEntry = Object.entries(character.thumbnailsByStyle).find(
+      ([, currentPath]) => currentPath === thumbnailPath,
+    );
+
+    return thumbnailEntry ? character.thumbnailModifiedAtByStyle[thumbnailEntry[0]] : undefined;
+  }, [character, thumbnailPath]);
+
   const handleOnClick = useCallback(() => {
     onSelectCharacter(character.name);
   }, [character.name, onSelectCharacter]);
@@ -54,6 +66,7 @@ export const CharacterView = ({
               relativePath={thumbnailPath}
               alt={`${character.name} base`}
               sx={LAZY_IMAGE_SX}
+              modifiedAt={thumbnailModifiedAt}
               mode="preview"
             />
           ) : (

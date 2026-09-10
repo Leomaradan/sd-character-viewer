@@ -11,6 +11,7 @@ interface ILazyImagePreviewProps {
   relativePath: string;
   alt: string;
   sx: SxProps<Theme>;
+  modifiedAt?: number;
   imgSx?: SxProps<Theme>;
   usePreview?: boolean;
 }
@@ -26,6 +27,7 @@ export const LazyImagePreview = ({
   relativePath,
   alt,
   sx,
+  modifiedAt,
   imgSx,
   usePreview = false,
 }: Readonly<ILazyImagePreviewProps>) => {
@@ -64,8 +66,8 @@ export const LazyImagePreview = ({
   }, [shouldLoad]);
 
   const imageUrl = useMemo(
-    () => getImageUrl(relativePath, { preview: usePreview }),
-    [relativePath, usePreview],
+    () => getImageUrl(relativePath, { preview: usePreview, timestamp: modifiedAt }),
+    [relativePath, usePreview, modifiedAt],
   );
 
   return (

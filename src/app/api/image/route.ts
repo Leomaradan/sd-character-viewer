@@ -6,6 +6,7 @@ import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } 
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
 import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 import {
+  removeLibraryIndexCache,
   resolveImageFilePath,
   resolvePreviewFilePath,
   removeFirstSeenCacheEntry,
@@ -141,6 +142,7 @@ export const DELETE = async (request: Request) => {
     await fs.unlink(resolvePreviewFilePath(filePath)).catch(() => {});
     invalidateMetadataCacheEntry(requestedPath);
     await removeFirstSeenCacheEntry(requestedPath);
+    await removeLibraryIndexCache();
 
     return new Response(null, { status: 204 });
   } catch {
@@ -217,6 +219,7 @@ export const PATCH = async (request: Request) => {
     invalidateMetadataCacheEntry(oldRelativePath);
     invalidateMetadataCacheEntry(newRelativePath);
     await removeFirstSeenCacheEntry(oldRelativePath);
+    await removeLibraryIndexCache();
 
     return Response.json({ newPath: newRelativePath }, { status: 200 });
   } catch {

@@ -42,6 +42,9 @@ export const DEFAULT_LIBRARY: ILibraryData = {
   characters: [],
   poses: [],
   posePatternFilters: [],
+  poseFilterOptions: [],
+  metadataFilterOptions: [],
+  characterMetadataFilterIdsByName: {},
   warning: null,
   cacheAvailable: false,
 };

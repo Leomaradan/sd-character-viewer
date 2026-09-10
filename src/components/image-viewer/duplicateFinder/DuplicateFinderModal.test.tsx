@@ -19,18 +19,20 @@ const buildImage = (
   poseVariant: 1,
   isNew: false,
   firstSeenAt: 0,
+  modifiedAt: 0,
+  posePatternFilterIds: [],
   ...overrides,
 });
 
-const buildGroup = (id: string, characterName: string): IDuplicateGroup => ({
+const buildGroup = (id: string, characterName: string, style = "3d"): IDuplicateGroup => ({
   id,
-  style: "3d",
+  style,
   characterName,
   poseBaseName: "Base",
   images: [
-    buildImage({ relativePath: `characters/3d/${characterName}/Base.png`, characterName }),
+    buildImage({ relativePath: `characters/${style}/${characterName}/Base.png`, characterName }),
     buildImage({
-      relativePath: `characters/3d/${characterName}/Base 2.png`,
+      relativePath: `characters/${style}/${characterName}/Base 2.png`,
       characterName,
       poseVariant: 2,
     }),
@@ -176,6 +178,27 @@ describe("DuplicateFinderModal", () => {
     expect(document.body.querySelectorAll(".MuiDivider-root")).toHaveLength(1);
   });
 
+  it("filters visible groups by style", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          groups: [buildGroup("group-a", "Anna", "3d"), buildGroup("group-b", "Bob", "anime")],
+        }),
+    });
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} />);
+
+    await screen.findByText(/Anna - Base/);
+    expect(screen.getByText(/Bob - Base/)).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByLabelText("Style"));
+    fireEvent.click(await screen.findByRole("option", { name: "Anime" }));
+
+    expect(screen.queryByText(/Anna - Base/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Bob - Base/)).toBeInTheDocument();
+  });
+
   it("lets the user change the primary image and toggle which images are kept", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
@@ -277,6 +300,92 @@ describe("DuplicateFinderModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Validate" }));
 
     await screen.findByText("Could not validate this group. Try again.");
+    expect(screen.getByText(/Anna - Base/)).toBeInTheDocument();
+  });
+
+  it("closes the reject dialog without posting when cancel is clicked", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ groups: [buildGroup("group-a", "Anna")] }),
+    });
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} />);
+    await screen.findByText(/Anna - Base/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reject group" }));
+    expect(screen.getByRole("dialog", { name: "Reject group?" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Reject group?" })).not.toBeInTheDocument(),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes a group and notifies the parent after a successful rejection", async () => {
+    const onChangesApplied = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ groups: [buildGroup("group-a", "Anna")] }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} onChangesApplied={onChangesApplied} />);
+    await screen.findByText(/Anna - Base/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reject group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reject group" }));
+
+    await waitFor(() => expect(screen.queryByText(/Anna - Base/)).not.toBeInTheDocument());
+    expect(onChangesApplied).toHaveBeenCalledTimes(1);
+
+    const [, postCall] = fetchMock.mock.calls;
+    expect(postCall[0]).toBe("/api/duplicates");
+    expect(postCall[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({
+        primaryRelativePath: "characters/3d/Anna/Base.png",
+        additionalKeptRelativePaths: [],
+        rejectAll: true,
+      }),
+    });
+  });
+
+  it("shows a group-level error and keeps the group when rejection fails", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ groups: [buildGroup("group-a", "Anna")] }),
+      })
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({}) });
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} />);
+    await screen.findByText(/Anna - Base/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reject group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reject group" }));
+
+    await screen.findByText("Could not reject this group. Try again.");
+    expect(screen.getByText(/Anna - Base/)).toBeInTheDocument();
+  });
+
+  it("shows a group-level error when rejection throws", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ groups: [buildGroup("group-a", "Anna")] }),
+      })
+      .mockRejectedValueOnce(new Error("network down"));
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} />);
+    await screen.findByText(/Anna - Base/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reject group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reject group" }));
+
+    await screen.findByText("Could not reject this group. Try again.");
     expect(screen.getByText(/Anna - Base/)).toBeInTheDocument();
   });
 });

@@ -13,6 +13,7 @@ import {
   parsePoseName,
   readImageLibrary,
   readReviewedDuplicateGroups,
+  removeLibraryIndexCache,
   removeFirstSeenCacheEntry,
   resolveImageFilePath,
   resolvePreviewFilePath,
@@ -43,6 +44,114 @@ const isDuplicateManagementAllowed = (): boolean => {
   return readBooleanEnvFlag(process.env[SD_ALLOW_DELETE_ENV_KEY]);
 };
 
+// Renames the kept files into their final "<pose> N.png" sequence and records the reviewed
+// group, so the same file set won't reappear as a duplicate group after this validation.
+const finalizeKeptFiles = async (params: {
+  rootPath: string;
+  directory: string;
+  primaryFilePath: string;
+  additionalFilePaths: string[];
+  poseBaseName: string;
+  style: string;
+  characterName: string;
+  toRelativePath: (fileName: string) => string;
+}): Promise<Response> => {
+  const {
+    rootPath,
+    directory,
+    primaryFilePath,
+    additionalFilePaths,
+    poseBaseName,
+    style,
+    characterName,
+    toRelativePath,
+  } = params;
+
+  const orderedAdditionalFileNames = additionalFilePaths
+    .map((filePath) => path.basename(filePath))
+    .sort((a, b) => {
+      const variantA = parsePoseName(a).poseVariant;
+      const variantB = parsePoseName(b).poseVariant;
+      if (variantA !== variantB) {
+        return variantA - variantB;
+      }
+      return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+    });
+
+  const orderedKeptFileNames = [path.basename(primaryFilePath), ...orderedAdditionalFileNames];
+
+  const renamePlan = orderedKeptFileNames.map((fileName, index) => ({
+    currentFileName: fileName,
+    targetFileName: index === 0 ? `${poseBaseName}.png` : `${poseBaseName} ${index + 1}.png`,
+  }));
+
+  const pendingRenames = renamePlan.filter(
+    (entry) => entry.currentFileName !== entry.targetFileName,
+  );
+
+  const tempRenames: Array<{
+    tempFileName: string;
+    targetFileName: string;
+    oldRelativePath: string;
+  }> = [];
+
+  for (const entry of pendingRenames) {
+    const tempFileName = `.duplicate-finder-tmp-${randomUUID()}.png`;
+    const currentFilePath = path.join(directory, entry.currentFileName);
+    const tempFilePath = path.join(directory, tempFileName);
+
+    await fs.rename(currentFilePath, tempFilePath);
+    await fs
+      .rename(resolvePreviewFilePath(currentFilePath), resolvePreviewFilePath(tempFilePath))
+      .catch(() => {});
+
+    tempRenames.push({
+      tempFileName,
+      targetFileName: entry.targetFileName,
+      oldRelativePath: toRelativePath(entry.currentFileName),
+    });
+  }
+
+  for (const { tempFileName, targetFileName, oldRelativePath } of tempRenames) {
+    const tempFilePath = path.join(directory, tempFileName);
+    const targetFilePath = path.join(directory, targetFileName);
+
+    await fs.rename(tempFilePath, targetFilePath);
+    await fs
+      .rename(resolvePreviewFilePath(tempFilePath), resolvePreviewFilePath(targetFilePath))
+      .catch(() => {});
+
+    invalidateMetadataCacheEntry(oldRelativePath);
+    invalidateMetadataCacheEntry(toRelativePath(targetFileName));
+    await removeFirstSeenCacheEntry(oldRelativePath);
+  }
+
+  const finalFileNames = renamePlan
+    .map((entry) => entry.targetFileName)
+    .toSorted((a, b) => a.localeCompare(b));
+
+  const reviewedGroups = await readReviewedDuplicateGroups(rootPath);
+  const remainingReviewedGroups = reviewedGroups.filter(
+    (reviewedGroup) =>
+      !(
+        reviewedGroup.style === style &&
+        reviewedGroup.characterName === characterName &&
+        reviewedGroup.poseBaseName === poseBaseName
+      ),
+  );
+
+  const newReviewedGroup: IReviewedDuplicateGroup = {
+    style,
+    characterName,
+    poseBaseName,
+    fileNames: finalFileNames,
+  };
+
+  await writeReviewedDuplicateGroups(rootPath, [...remainingReviewedGroups, newReviewedGroup]);
+
+  return Response.json({ style, characterName, poseBaseName, fileNames: finalFileNames });
+};
+
 export const GET = async (request: Request) => {
   if (isMisconfigured()) {
     return Response.json({ misconfigured: true, required: true, authenticated: false });
@@ -69,26 +178,27 @@ export const GET = async (request: Request) => {
 interface IValidateRequestBody {
   primaryRelativePath?: unknown;
   additionalKeptRelativePaths?: unknown;
+  // When true, every image in the group (including primaryRelativePath) is deleted and nothing is kept.
+  rejectAll?: unknown;
 }
 
-export const POST = async (request: Request) => {
-  if (isMisconfigured()) {
-    return Response.json({ misconfigured: true, required: true, authenticated: false });
-  }
+interface IParsedValidateRequest {
+  directory: string;
+  primaryFilePath: string;
+  additionalFilePaths: string[];
+  characterName: string;
+  style: string;
+  poseBaseName: string;
+  rejectAll: boolean;
+  toRelativePath: (fileName: string) => string;
+  keptFileNames: string[];
+}
 
-  if (isPasswordProtectionEnabled() && !isAuthenticatedRequest(request)) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-
-  if (!isDuplicateManagementAllowed()) {
-    return new Response("Managing duplicates is disabled", { status: 403 });
-  }
-
-  const rootPath = getImagesRootPathFromEnv();
-  if (!rootPath) {
-    return new Response("Image library is not configured", { status: 400 });
-  }
-
+// Parses and validates the request body, returning either the parsed data needed to apply the
+// change, or an error Response to send back as-is.
+const parseValidateRequest = async (
+  request: Request,
+): Promise<IParsedValidateRequest | Response> => {
   let body: IValidateRequestBody;
   try {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -100,6 +210,7 @@ export const POST = async (request: Request) => {
   const primaryRelativePath =
     typeof body.primaryRelativePath === "string" ? body.primaryRelativePath : "";
   const rawAdditionalPaths = body.additionalKeptRelativePaths;
+  const rejectAll = body.rejectAll === true;
 
   if (
     !primaryRelativePath ||
@@ -110,9 +221,12 @@ export const POST = async (request: Request) => {
   }
 
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const additionalRelativePaths = [...new Set(rawAdditionalPaths as string[])].filter(
-    (relativePath) => relativePath !== primaryRelativePath,
-  );
+  const additionalRelativePaths = rejectAll
+    ? []
+    : // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      [...new Set(rawAdditionalPaths as string[])].filter(
+        (relativePath) => relativePath !== primaryRelativePath,
+      );
 
   const isCharacterImagePath = (value: string): boolean =>
     value.replaceAll("\\", "/").startsWith("characters/");
@@ -149,10 +263,60 @@ export const POST = async (request: Request) => {
   const toRelativePath = (fileName: string): string =>
     path.posix.join("characters", style, characterName, fileName);
 
-  const keptFileNames = [
-    path.basename(primaryFilePath),
-    ...additionalFilePaths.map((filePath) => path.basename(filePath)),
-  ];
+  const keptFileNames = rejectAll
+    ? []
+    : [
+        path.basename(primaryFilePath),
+        ...additionalFilePaths.map((filePath) => path.basename(filePath)),
+      ];
+
+  return {
+    directory,
+    primaryFilePath,
+    additionalFilePaths,
+    characterName,
+    style,
+    poseBaseName,
+    rejectAll,
+    toRelativePath,
+    keptFileNames,
+  };
+};
+
+export const POST = async (request: Request) => {
+  if (isMisconfigured()) {
+    return Response.json({ misconfigured: true, required: true, authenticated: false });
+  }
+
+  if (isPasswordProtectionEnabled() && !isAuthenticatedRequest(request)) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  if (!isDuplicateManagementAllowed()) {
+    return new Response("Managing duplicates is disabled", { status: 403 });
+  }
+
+  const rootPath = getImagesRootPathFromEnv();
+  if (!rootPath) {
+    return new Response("Image library is not configured", { status: 400 });
+  }
+
+  const parsed = await parseValidateRequest(request);
+  if (parsed instanceof Response) {
+    return parsed;
+  }
+
+  const {
+    directory,
+    primaryFilePath,
+    additionalFilePaths,
+    characterName,
+    style,
+    poseBaseName,
+    rejectAll,
+    toRelativePath,
+    keptFileNames,
+  } = parsed;
   const keptFileNameSet = new Set(keptFileNames);
 
   // Everything below reads and mutates this character's folder plus the shared
@@ -191,90 +355,24 @@ export const POST = async (request: Request) => {
         await removeFirstSeenCacheEntry(relativePath);
       }
 
-      const orderedAdditionalFileNames = additionalFilePaths
-        .map((filePath) => path.basename(filePath))
-        .sort((a, b) => {
-          const variantA = parsePoseName(a).poseVariant;
-          const variantB = parsePoseName(b).poseVariant;
-          if (variantA !== variantB) {
-            return variantA - variantB;
-          }
-          return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
-        });
+      await removeLibraryIndexCache();
 
-      const orderedKeptFileNames = [path.basename(primaryFilePath), ...orderedAdditionalFileNames];
-
-      const renamePlan = orderedKeptFileNames.map((fileName, index) => ({
-        currentFileName: fileName,
-        targetFileName: index === 0 ? `${poseBaseName}.png` : `${poseBaseName} ${index + 1}.png`,
-      }));
-
-      const pendingRenames = renamePlan.filter(
-        (entry) => entry.currentFileName !== entry.targetFileName,
-      );
-
-      const tempRenames: Array<{
-        tempFileName: string;
-        targetFileName: string;
-        oldRelativePath: string;
-      }> = [];
-
-      for (const entry of pendingRenames) {
-        const tempFileName = `.duplicate-finder-tmp-${randomUUID()}.png`;
-        const currentFilePath = path.join(directory, entry.currentFileName);
-        const tempFilePath = path.join(directory, tempFileName);
-
-        await fs.rename(currentFilePath, tempFilePath);
-        await fs
-          .rename(resolvePreviewFilePath(currentFilePath), resolvePreviewFilePath(tempFilePath))
-          .catch(() => {});
-
-        tempRenames.push({
-          tempFileName,
-          targetFileName: entry.targetFileName,
-          oldRelativePath: toRelativePath(entry.currentFileName),
-        });
+      if (rejectAll) {
+        return Response.json({ style, characterName, poseBaseName, fileNames: [] });
       }
 
-      for (const { tempFileName, targetFileName, oldRelativePath } of tempRenames) {
-        const tempFilePath = path.join(directory, tempFileName);
-        const targetFilePath = path.join(directory, targetFileName);
-
-        await fs.rename(tempFilePath, targetFilePath);
-        await fs
-          .rename(resolvePreviewFilePath(tempFilePath), resolvePreviewFilePath(targetFilePath))
-          .catch(() => {});
-
-        invalidateMetadataCacheEntry(oldRelativePath);
-        invalidateMetadataCacheEntry(toRelativePath(targetFileName));
-        await removeFirstSeenCacheEntry(oldRelativePath);
-      }
-
-      const finalFileNames = renamePlan
-        .map((entry) => entry.targetFileName)
-        .toSorted((a, b) => a.localeCompare(b));
-
-      const reviewedGroups = await readReviewedDuplicateGroups(rootPath);
-      const remainingReviewedGroups = reviewedGroups.filter(
-        (reviewedGroup) =>
-          !(
-            reviewedGroup.style === style &&
-            reviewedGroup.characterName === characterName &&
-            reviewedGroup.poseBaseName === poseBaseName
-          ),
-      );
-
-      const newReviewedGroup: IReviewedDuplicateGroup = {
+      return await finalizeKeptFiles({
+        rootPath,
+        directory,
+        primaryFilePath,
+        additionalFilePaths,
+        poseBaseName,
         style,
         characterName,
-        poseBaseName,
-        fileNames: finalFileNames,
-      };
-
-      await writeReviewedDuplicateGroups(rootPath, [...remainingReviewedGroups, newReviewedGroup]);
-
-      return Response.json({ style, characterName, poseBaseName, fileNames: finalFileNames });
-    } catch {
+        toRelativePath,
+      });
+    } catch (error) {
+      console.error("Error validating duplicate group:", error);
       return new Response("Could not validate duplicate group", { status: 500 });
     }
   });
