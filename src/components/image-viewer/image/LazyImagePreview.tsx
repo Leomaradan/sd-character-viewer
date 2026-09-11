@@ -3,7 +3,7 @@
 import type { SxProps, Theme } from "@mui/material/styles";
 
 import { Box } from "@mui/material";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 
 import { getImageUrl } from "@/components/image-viewer/common/utils";
 
@@ -14,6 +14,7 @@ interface ILazyImagePreviewProps {
   modifiedAt?: number;
   imgSx?: SxProps<Theme>;
   usePreview?: boolean;
+  onDimensionsKnown?: (width: number, height: number) => void;
 }
 
 const IMAGE_SX: SxProps<Theme> = {
@@ -30,6 +31,7 @@ export const LazyImagePreview = ({
   modifiedAt,
   imgSx,
   usePreview = false,
+  onDimensionsKnown,
 }: Readonly<ILazyImagePreviewProps>) => {
   const imageContainerRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(false);
@@ -69,6 +71,12 @@ export const LazyImagePreview = ({
     () => getImageUrl(relativePath, { preview: usePreview, timestamp: modifiedAt }),
     [relativePath, usePreview, modifiedAt],
   );
+  const handleLoad = useCallback(
+    (event: SyntheticEvent<HTMLImageElement>) => {
+      onDimensionsKnown?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
+    },
+    [onDimensionsKnown],
+  );
 
   return (
     <Box ref={imageContainerRef} sx={sx}>
@@ -81,6 +89,7 @@ export const LazyImagePreview = ({
           loading="lazy"
           decoding="async"
           sx={mergedImgSx}
+          onLoad={handleLoad}
         />
       ) : null}
     </Box>

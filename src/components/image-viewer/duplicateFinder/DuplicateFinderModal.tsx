@@ -49,17 +49,36 @@ const GROUP_BOX_SX = { pb: 3, mb: 3 };
 const GROUP_HEADER_SX = { mb: 1.5 };
 const GROUP_TITLE_SX = { fontWeight: 600 };
 const GROUP_SUBTITLE_SX = { opacity: 0.7 };
-const IMAGES_ROW_SX = {
-  display: "flex",
+const IMAGES_GRID_SX = {
+  display: "grid",
+  gridTemplateColumns: {
+    xs: "repeat(2, minmax(0, 1fr))",
+    md: "repeat(var(--duplicate-columns), minmax(0, 1fr))",
+  },
   gap: 2,
+  alignItems: "start",
 };
 const IMAGE_ITEM_SX = {
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
+  minWidth: 0,
 };
-const IMAGE_THUMB_SX = { width: "50%", aspectRatio: "3 / 4", borderRadius: 1, overflow: "hidden" };
-const IMAGE_FILL_SX = { width: "100%", height: "100%" };
+const IMAGE_THUMB_SX = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 1,
+  overflow: "hidden",
+};
+const IMAGE_FILL_SX = { width: "100%" };
+const IMAGE_UNCROPPED_SX = {
+  width: "100%",
+  height: "auto",
+  maxHeight: "65vh",
+  objectFit: "contain",
+};
 const FILE_NAME_SX = { mt: 0.5, wordBreak: "break-word", textAlign: "center" };
 const GROUP_ACTIONS_SX = { mt: 2, display: "flex", alignItems: "center", gap: 2 };
 const GROUP_ERROR_SX = { mt: 1 };
@@ -94,6 +113,7 @@ interface IDuplicateImageItemProps {
   isPrimary: boolean;
   isKept: boolean;
   isValidating: boolean;
+  onDimensionsKnown: (width: number, height: number) => void;
   onPrimaryChange: (groupId: string, relativePath: string) => void;
   onKeptToggle: (groupId: string, relativePath: string, checked: boolean) => void;
 }
@@ -104,6 +124,7 @@ const DuplicateImageItem = ({
   isPrimary,
   isKept,
   isValidating,
+  onDimensionsKnown,
   onPrimaryChange,
   onKeptToggle,
 }: Readonly<IDuplicateImageItemProps>) => {
@@ -125,7 +146,9 @@ const DuplicateImageItem = ({
           relativePath={image.relativePath}
           alt={`${image.characterName} ${image.poseName}`}
           sx={IMAGE_FILL_SX}
+          imgSx={IMAGE_UNCROPPED_SX}
           modifiedAt={image.modifiedAt}
+          onDimensionsKnown={onDimensionsKnown}
         />
       </Box>
       <Typography variant="caption" sx={FILE_NAME_SX}>
@@ -183,6 +206,7 @@ const DuplicateGroupCard = ({
   onValidate,
   onReject,
 }: Readonly<IDuplicateGroupCardProps>) => {
+  const [hasHorizontalImage, setHasHorizontalImage] = useState(false);
   const handleValidateClick = useCallback(() => {
     onValidate(group);
   }, [onValidate, group]);
@@ -190,6 +214,18 @@ const DuplicateGroupCard = ({
   const handleRejectClick = useCallback(() => {
     onReject(group);
   }, [onReject, group]);
+  const handleDimensionsKnown = useCallback((width: number, height: number) => {
+    if (width > height) {
+      setHasHorizontalImage(true);
+    }
+  }, []);
+  const columnCount = Math.min(group.images.length, hasHorizontalImage ? 3 : 4);
+
+  const style = useMemo(
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    () => ({ "--duplicate-columns": columnCount }) as React.CSSProperties,
+    [columnCount],
+  );
 
   return (
     <Box sx={GROUP_BOX_SX}>
@@ -202,7 +238,7 @@ const DuplicateGroupCard = ({
         </Typography>
       </Box>
 
-      <Box sx={IMAGES_ROW_SX}>
+      <Box sx={IMAGES_GRID_SX} style={style} data-testid={`duplicate-images-${group.id}`}>
         {group.images.map((image) => {
           const isPrimary = selection.primaryRelativePath === image.relativePath;
           const isKept = isPrimary || selection.keptRelativePaths.has(image.relativePath);
@@ -215,6 +251,7 @@ const DuplicateGroupCard = ({
               isPrimary={isPrimary}
               isKept={isKept}
               isValidating={isValidating}
+              onDimensionsKnown={handleDimensionsKnown}
               onPrimaryChange={onPrimaryChange}
               onKeptToggle={onKeptToggle}
             />

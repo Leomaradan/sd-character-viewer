@@ -12,6 +12,7 @@ interface ILazyImageProps {
   modifiedAt?: number;
   imgSx?: SxProps<Theme>;
   mode?: "preview" | "magnifier";
+  onDimensionsKnown?: (width: number, height: number) => void;
 }
 
 export const LazyImage = ({
@@ -21,6 +22,7 @@ export const LazyImage = ({
   modifiedAt,
   imgSx,
   mode,
+  onDimensionsKnown,
 }: Readonly<ILazyImageProps>) => {
   if (mode === "magnifier") {
     return (
@@ -36,6 +38,7 @@ export const LazyImage = ({
       modifiedAt={modifiedAt}
       imgSx={imgSx}
       usePreview={mode === "preview"}
+      onDimensionsKnown={onDimensionsKnown}
     />
   );
 };
