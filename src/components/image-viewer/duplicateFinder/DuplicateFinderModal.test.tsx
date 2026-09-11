@@ -61,7 +61,18 @@ describe("DuplicateFinderModal", () => {
     vi.stubGlobal(
       "IntersectionObserver",
       class {
-        observe() {}
+        private readonly callback: IntersectionObserverCallback;
+
+        constructor(callback: IntersectionObserverCallback) {
+          this.callback = callback;
+        }
+
+        observe(element: Element) {
+          this.callback(
+            [{ isIntersecting: true, target: element } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver,
+          );
+        }
         disconnect() {}
       },
     );
@@ -176,6 +187,41 @@ describe("DuplicateFinderModal", () => {
     expect(screen.getByText(/Anna - Base/)).toBeInTheDocument();
     // MUI Dialog content is portalled to document.body, so query there rather than `container`.
     expect(document.body.querySelectorAll(".MuiDivider-root")).toHaveLength(1);
+  });
+
+  it("uses orientation-aware rows and preserves image aspect ratios", async () => {
+    const group = buildGroup("group-a", "Anna");
+    group.images.push(
+      buildImage({
+        relativePath: "characters/3d/Anna/Base 3.png",
+        characterName: "Anna",
+        poseVariant: 3,
+      }),
+      buildImage({
+        relativePath: "characters/3d/Anna/Base 4.png",
+        characterName: "Anna",
+        poseVariant: 4,
+      }),
+    );
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ groups: [group] }),
+    });
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} />);
+
+    const images = await screen.findAllByRole("img");
+    const imageGrid = screen.getByTestId("duplicate-images-group-a");
+    expect(imageGrid.style.getPropertyValue("--duplicate-columns")).toBe("4");
+    expect(images[0]).toHaveStyle({ height: "auto", objectFit: "contain" });
+
+    Object.defineProperties(images[0], {
+      naturalWidth: { value: 1200, configurable: true },
+      naturalHeight: { value: 800, configurable: true },
+    });
+    fireEvent.load(images[0]);
+
+    expect(imageGrid.style.getPropertyValue("--duplicate-columns")).toBe("3");
   });
 
   it("filters visible groups by style", async () => {
