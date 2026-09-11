@@ -212,11 +212,15 @@ describe("readImageLibrary with characters metadata", () => {
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
 
     await fs.mkdir(characterDir, { recursive: true });
-    await fs.writeFile(path.join(characterDir, "With Bob.png"), "");
+    await Promise.all([
+      fs.writeFile(path.join(characterDir, "Cuddle with Paul.png"), ""),
+      fs.writeFile(path.join(characterDir, "Cuddle with Pauline.png"), ""),
+      fs.writeFile(path.join(characterDir, "Standing.png"), ""),
+    ]);
     await fs.writeFile(
       path.join(tempRoot, "pose-filters.json"),
       JSON.stringify([
-        { label: "With Somebody", pattern: "^With " },
+        { label: "Cuddle with Somebody", pattern: "^Cuddle with ", flags: "i" },
         { label: "Duo", pattern: "^Duo " },
         { label: "With Somebody CI", pattern: "^with ", flags: "i" },
       ]),
@@ -228,9 +232,20 @@ describe("readImageLibrary with characters metadata", () => {
 
     expect(library.posePatternFilters).toHaveLength(3);
     expect(library.posePatternFilters).toEqual([
-      expect.objectContaining({ label: "With Somebody", pattern: "^With " }),
+      expect.objectContaining({
+        label: "Cuddle with Somebody",
+        pattern: "^Cuddle with ",
+        flags: "i",
+      }),
       expect.objectContaining({ label: "Duo", pattern: "^Duo " }),
       expect.objectContaining({ label: "With Somebody CI", pattern: "^with ", flags: "i" }),
+    ]);
+    expect(library.poseFilterOptions).toEqual([
+      { value: "Standing", label: "Standing" },
+      {
+        value: library.posePatternFilters[0].id,
+        label: "Cuddle with Somebody",
+      },
     ]);
   });
 
@@ -564,7 +579,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 1,
+          version: 2,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],

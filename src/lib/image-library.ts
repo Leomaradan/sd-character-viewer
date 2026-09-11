@@ -22,7 +22,7 @@ const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
 const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
-const LIBRARY_INDEX_CACHE_VERSION = 1;
+const LIBRARY_INDEX_CACHE_VERSION = 2;
 const PREVIEW_FILE_SUFFIX = ".preview.jpg";
 const LIBRARY_CONFIG_FILE_NAME = "config.json";
 const CHARACTERS_CONFIG_FILE_NAME = "characters.json";
@@ -647,7 +647,9 @@ export const isDuplicateGroupReviewed = (
 };
 
 const listPngFiles = async (characterFolderPath: string): Promise<string[]> => {
-  const entries = await fs.readdir(characterFolderPath, { withFileTypes: true });
+  const entries = await fs.readdir(characterFolderPath, {
+    withFileTypes: true,
+  });
 
   return entries
     .filter((entry) => entry.isFile())
@@ -659,7 +661,9 @@ const resolveStyleFolders = async (
   charactersRootPath: string,
   configuredStyles: string[],
 ): Promise<string[]> => {
-  const styleEntries = await fs.readdir(charactersRootPath, { withFileTypes: true });
+  const styleEntries = await fs.readdir(charactersRootPath, {
+    withFileTypes: true,
+  });
 
   return configuredStyles.filter((style) => {
     return styleEntries.some((entry) => entry.isDirectory() && entry.name === style);
@@ -714,11 +718,35 @@ const buildPoseFilterOptions = (
   poses: IPoseSummary[],
   posePatternFilters: IPosePatternFilter[],
 ): IPoseFilterOption[] => {
-  const poseOptions = poses.map((pose) => ({ value: pose.name, label: pose.name }));
-  const patternOptions = posePatternFilters.map((filter) => ({
-    value: filter.id,
-    label: filter.label,
-  }));
+  const matchingPatternFilterIds = new Set<string>();
+  const compiledPatternFilters = posePatternFilters
+    .map((filter) => {
+      try {
+        return { ...filter, regex: new RegExp(filter.pattern, filter.flags) };
+      } catch {
+        return null;
+      }
+    })
+    .filter((filter): filter is IPosePatternFilter & { regex: RegExp } => filter !== null);
+
+  const poseOptions = poses.flatMap((pose) => {
+    const matchingFilters = compiledPatternFilters.filter((filter) => {
+      filter.regex.lastIndex = 0;
+      return filter.regex.test(pose.name);
+    });
+
+    for (const filter of matchingFilters) {
+      matchingPatternFilterIds.add(filter.id);
+    }
+
+    return matchingFilters.length === 0 ? [{ value: pose.name, label: pose.name }] : [];
+  });
+  const patternOptions = posePatternFilters
+    .filter((filter) => matchingPatternFilterIds.has(filter.id))
+    .map((filter) => ({
+      value: filter.id,
+      label: filter.label,
+    }));
 
   return [...poseOptions, ...patternOptions];
 };
@@ -730,7 +758,10 @@ const applyPosePatternFilterIds = (
   const compiledPatternFilters = posePatternFilters
     .map((filter) => {
       try {
-        return { id: filter.id, regex: new RegExp(filter.pattern, filter.flags) };
+        return {
+          id: filter.id,
+          regex: new RegExp(filter.pattern, filter.flags),
+        };
       } catch {
         return null;
       }
