@@ -130,15 +130,10 @@ export const CharactersView = ({
     const selectedOption = metadataFilterById.get(effectiveSelectedMetadataFilterId);
     const matchingCharacters = selectedOption
       ? charactersForBrowseStyle.filter((character) => {
-          if (selectedOption.type === "category") {
-            return character.category === selectedOption.value;
-          }
-
-          if (selectedOption.type === "tag") {
-            return character.tags.includes(selectedOption.value);
-          }
-
-          return character.serie === selectedOption.value;
+          const selectedValue = selectedOption.value.trim().toLowerCase();
+          return [character.category, character.serie, ...character.tags].some(
+            (value) => value?.trim().toLowerCase() === selectedValue,
+          );
         })
       : charactersForBrowseStyle;
 

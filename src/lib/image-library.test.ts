@@ -212,11 +212,15 @@ describe("readImageLibrary with characters metadata", () => {
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
 
     await fs.mkdir(characterDir, { recursive: true });
-    await fs.writeFile(path.join(characterDir, "With Bob.png"), "");
+    await Promise.all([
+      fs.writeFile(path.join(characterDir, "Cuddle with Paul.png"), ""),
+      fs.writeFile(path.join(characterDir, "Cuddle with Pauline.png"), ""),
+      fs.writeFile(path.join(characterDir, "Standing.png"), ""),
+    ]);
     await fs.writeFile(
       path.join(tempRoot, "pose-filters.json"),
       JSON.stringify([
-        { label: "With Somebody", pattern: "^With " },
+        { label: "Cuddle with Somebody", pattern: "^Cuddle with ", flags: "i" },
         { label: "Duo", pattern: "^Duo " },
         { label: "With Somebody CI", pattern: "^with ", flags: "i" },
       ]),
@@ -228,9 +232,20 @@ describe("readImageLibrary with characters metadata", () => {
 
     expect(library.posePatternFilters).toHaveLength(3);
     expect(library.posePatternFilters).toEqual([
-      expect.objectContaining({ label: "With Somebody", pattern: "^With " }),
+      expect.objectContaining({
+        label: "Cuddle with Somebody",
+        pattern: "^Cuddle with ",
+        flags: "i",
+      }),
       expect.objectContaining({ label: "Duo", pattern: "^Duo " }),
       expect.objectContaining({ label: "With Somebody CI", pattern: "^with ", flags: "i" }),
+    ]);
+    expect(library.poseFilterOptions).toEqual([
+      { value: "Standing", label: "Standing" },
+      {
+        value: library.posePatternFilters[0].id,
+        label: "Cuddle with Somebody",
+      },
     ]);
   });
 
@@ -275,10 +290,17 @@ describe("readImageLibrary with characters metadata", () => {
 
   it("loads category and serie from characters.json", async () => {
     const tempRoot = "/tmp/sd-library-read-metadata";
-    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+    const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
+    const beaDir = path.join(tempRoot, "characters", "3d", "Bea");
 
-    await fs.mkdir(characterDir, { recursive: true });
-    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await Promise.all([
+      fs.mkdir(annaDir, { recursive: true }),
+      fs.mkdir(beaDir, { recursive: true }),
+    ]);
+    await Promise.all([
+      fs.writeFile(path.join(annaDir, "Base.png"), ""),
+      fs.writeFile(path.join(beaDir, "Base.png"), ""),
+    ]);
     await fs.writeFile(
       path.join(tempRoot, "characters", "characters.json"),
       JSON.stringify([
@@ -286,7 +308,12 @@ describe("readImageLibrary with characters metadata", () => {
           name: "Anna",
           category: "Hero",
           serie: "Sample",
-          tags: ["Main", "Action"],
+          tags: ["Main", "Action", "greek"],
+        },
+        {
+          name: "Bea",
+          category: "Hero",
+          serie: "Greek",
         },
       ]),
     );
@@ -298,9 +325,10 @@ describe("readImageLibrary with characters metadata", () => {
 
     expect(anna?.category).toBe("Hero");
     expect(anna?.serie).toBe("Sample");
-    expect(anna?.tags).toEqual(["Action", "Main"]);
+    expect(anna?.tags).toEqual(["Action", "greek", "Main"]);
     expect(library.metadataFilterOptions).toEqual([
       { id: "tag::Action", type: "tag", value: "Action", label: "Action" },
+      { id: "serie::Greek", type: "serie", value: "Greek", label: "Greek" },
       { id: "category::Hero", type: "category", value: "Hero", label: "Hero" },
       { id: "tag::Main", type: "tag", value: "Main", label: "Main" },
       { id: "serie::Sample", type: "serie", value: "Sample", label: "Sample" },
@@ -309,7 +337,12 @@ describe("readImageLibrary with characters metadata", () => {
       "category::Hero",
       "serie::Sample",
       "tag::Action",
+      "serie::Greek",
       "tag::Main",
+    ]);
+    expect(library.characterMetadataFilterIdsByName.Bea).toEqual([
+      "category::Hero",
+      "serie::Greek",
     ]);
   });
 
@@ -564,7 +597,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 1,
+          version: 3,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],

@@ -22,7 +22,7 @@ const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
 const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
-const LIBRARY_INDEX_CACHE_VERSION = 1;
+const LIBRARY_INDEX_CACHE_VERSION = 3;
 const PREVIEW_FILE_SUFFIX = ".preview.jpg";
 const LIBRARY_CONFIG_FILE_NAME = "config.json";
 const CHARACTERS_CONFIG_FILE_NAME = "characters.json";
@@ -307,6 +307,10 @@ const normalizeCharacterNameKey = (characterName: string): string => {
   return characterName.trim().toLowerCase();
 };
 
+const normalizeMetadataFilterValue = (value: string): string => {
+  return value.trim().toLowerCase();
+};
+
 const normalizeMetadataTags = (tags: string[] | undefined): string[] => {
   if (!tags) {
     return [];
@@ -319,70 +323,71 @@ const normalizeMetadataTags = (tags: string[] | undefined): string[] => {
 
 const toMetadataFilterIds = (
   character: Pick<ICharacterSummary, "category" | "serie" | "tags">,
+  filterIdByValue: Map<string, string>,
 ): string[] => {
-  const filterIds: string[] = [];
+  const values = [character.category, character.serie, ...character.tags];
+  return [
+    ...new Set(
+      values.flatMap((value) => {
+        if (!value?.trim()) {
+          return [];
+        }
 
-  if (character.category?.trim()) {
-    filterIds.push(`category::${character.category}`);
-  }
-
-  if (character.serie?.trim()) {
-    filterIds.push(`serie::${character.serie}`);
-  }
-
-  for (const tag of character.tags) {
-    if (tag.trim()) {
-      filterIds.push(`tag::${tag}`);
-    }
-  }
-
-  return filterIds;
+        const filterId = filterIdByValue.get(normalizeMetadataFilterValue(value));
+        return filterId ? [filterId] : [];
+      }),
+    ),
+  ];
 };
 
 const buildMetadataFilterOptions = (characters: ICharacterSummary[]): IMetadataFilterOption[] => {
-  const categories = new Set(
-    characters
-      .map((character) => character.category)
-      .filter((category): category is string => Boolean(category?.trim())),
-  );
-  const series = new Set(
-    characters
-      .map((character) => character.serie)
-      .filter((serie): serie is string => Boolean(serie?.trim())),
-  );
-  const tags = new Set(
-    characters.flatMap((character) => character.tags).filter((tag) => Boolean(tag?.trim())),
-  );
+  const filtersByValue = new Map<string, IMetadataFilterOption>();
+  const addFilter = (type: IMetadataFilterOption["type"], value: string): void => {
+    const normalizedValue = normalizeMetadataFilterValue(value);
+    if (!normalizedValue || filtersByValue.has(normalizedValue)) {
+      return;
+    }
 
-  const categoryFilters = [...categories].map((category) => ({
-    id: `category::${category}`,
-    type: "category" as const,
-    value: category,
-    label: category,
-  }));
-  const serieFilters = [...series].map((serie) => ({
-    id: `serie::${serie}`,
-    type: "serie" as const,
-    value: serie,
-    label: serie,
-  }));
-  const tagFilters = [...tags].map((tag) => ({
-    id: `tag::${tag}`,
-    type: "tag" as const,
-    value: tag,
-    label: ucFirst(tag),
-  }));
+    filtersByValue.set(normalizedValue, {
+      id: `${type}::${value}`,
+      type,
+      value,
+      label: type === "tag" ? ucFirst(value) : value,
+    });
+  };
 
-  return [...categoryFilters, ...serieFilters, ...tagFilters].sort((a, b) =>
-    compareNatural(a.label, b.label),
-  );
+  for (const character of characters) {
+    if (character.category) {
+      addFilter("category", character.category);
+    }
+  }
+  for (const character of characters) {
+    if (character.serie) {
+      addFilter("serie", character.serie);
+    }
+  }
+  for (const character of characters) {
+    for (const tag of character.tags) {
+      addFilter("tag", tag);
+    }
+  }
+
+  return [...filtersByValue.values()].sort((a, b) => compareNatural(a.label, b.label));
 };
 
 const buildCharacterMetadataFilterIdsByName = (
   characters: ICharacterSummary[],
+  metadataFilterOptions: IMetadataFilterOption[],
 ): Record<string, string[]> => {
+  const filterIdByValue = new Map(
+    metadataFilterOptions.map((option) => [normalizeMetadataFilterValue(option.value), option.id]),
+  );
+
   return Object.fromEntries(
-    characters.map((character) => [character.name, toMetadataFilterIds(character)]),
+    characters.map((character) => [
+      character.name,
+      toMetadataFilterIds(character, filterIdByValue),
+    ]),
   );
 };
 
@@ -647,7 +652,9 @@ export const isDuplicateGroupReviewed = (
 };
 
 const listPngFiles = async (characterFolderPath: string): Promise<string[]> => {
-  const entries = await fs.readdir(characterFolderPath, { withFileTypes: true });
+  const entries = await fs.readdir(characterFolderPath, {
+    withFileTypes: true,
+  });
 
   return entries
     .filter((entry) => entry.isFile())
@@ -659,7 +666,9 @@ const resolveStyleFolders = async (
   charactersRootPath: string,
   configuredStyles: string[],
 ): Promise<string[]> => {
-  const styleEntries = await fs.readdir(charactersRootPath, { withFileTypes: true });
+  const styleEntries = await fs.readdir(charactersRootPath, {
+    withFileTypes: true,
+  });
 
   return configuredStyles.filter((style) => {
     return styleEntries.some((entry) => entry.isDirectory() && entry.name === style);
@@ -714,11 +723,35 @@ const buildPoseFilterOptions = (
   poses: IPoseSummary[],
   posePatternFilters: IPosePatternFilter[],
 ): IPoseFilterOption[] => {
-  const poseOptions = poses.map((pose) => ({ value: pose.name, label: pose.name }));
-  const patternOptions = posePatternFilters.map((filter) => ({
-    value: filter.id,
-    label: filter.label,
-  }));
+  const matchingPatternFilterIds = new Set<string>();
+  const compiledPatternFilters = posePatternFilters
+    .map((filter) => {
+      try {
+        return { ...filter, regex: new RegExp(filter.pattern, filter.flags) };
+      } catch {
+        return null;
+      }
+    })
+    .filter((filter): filter is IPosePatternFilter & { regex: RegExp } => filter !== null);
+
+  const poseOptions = poses.flatMap((pose) => {
+    const matchingFilters = compiledPatternFilters.filter((filter) => {
+      filter.regex.lastIndex = 0;
+      return filter.regex.test(pose.name);
+    });
+
+    for (const filter of matchingFilters) {
+      matchingPatternFilterIds.add(filter.id);
+    }
+
+    return matchingFilters.length === 0 ? [{ value: pose.name, label: pose.name }] : [];
+  });
+  const patternOptions = posePatternFilters
+    .filter((filter) => matchingPatternFilterIds.has(filter.id))
+    .map((filter) => ({
+      value: filter.id,
+      label: filter.label,
+    }));
 
   return [...poseOptions, ...patternOptions];
 };
@@ -730,7 +763,10 @@ const applyPosePatternFilterIds = (
   const compiledPatternFilters = posePatternFilters
     .map((filter) => {
       try {
-        return { id: filter.id, regex: new RegExp(filter.pattern, filter.flags) };
+        return {
+          id: filter.id,
+          regex: new RegExp(filter.pattern, filter.flags),
+        };
       } catch {
         return null;
       }
@@ -1222,7 +1258,10 @@ const toLibraryData = (
 
   const poses = toPoseSummaries(state.poseCounter);
   const metadataFilterOptions = buildMetadataFilterOptions(characters);
-  const characterMetadataFilterIdsByName = buildCharacterMetadataFilterIdsByName(characters);
+  const characterMetadataFilterIdsByName = buildCharacterMetadataFilterIdsByName(
+    characters,
+    metadataFilterOptions,
+  );
   const poseFilterOptions = buildPoseFilterOptions(poses, posePatternFilters);
 
   return {
