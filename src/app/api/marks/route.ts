@@ -3,6 +3,7 @@ import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
 import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 import {
   getImagesRootPathFromEnv,
+  isVideoFilePath,
   readImageLibrary,
   readToAnimateEntries,
   readToUpscaleEntries,
@@ -33,9 +34,14 @@ export const GET = async (request: Request) => {
 
   const { searchParams } = new URL(request.url);
   const requestedPath = normalizeRequestedPath(searchParams.get("path") ?? "");
+  const filePath = requestedPath ? resolveImageFilePath(requestedPath) : null;
 
-  if (!requestedPath || !resolveImageFilePath(requestedPath)) {
+  if (!filePath) {
     return new Response("Invalid image path", { status: 400 });
+  }
+
+  if (isVideoFilePath(filePath)) {
+    return new Response("Marking is not supported for this media type", { status: 400 });
   }
 
   const rootPath = getImagesRootPathFromEnv();
@@ -106,9 +112,14 @@ export const PUT = async (request: Request) => {
 
   const requestedPath = typeof body.path === "string" ? normalizeRequestedPath(body.path) : "";
   const metadata = typeof body.metadata === "string" ? body.metadata : "";
+  const filePath = requestedPath ? resolveImageFilePath(requestedPath) : null;
 
-  if (!requestedPath || !resolveImageFilePath(requestedPath)) {
+  if (!filePath) {
     return new Response("Invalid image path", { status: 400 });
+  }
+
+  if (isVideoFilePath(filePath)) {
+    return new Response("Marking is not supported for this media type", { status: 400 });
   }
 
   const rootPath = getImagesRootPathFromEnv();
@@ -144,9 +155,14 @@ export const DELETE = async (request: Request) => {
   const { searchParams } = new URL(request.url);
   const requestedPath = normalizeRequestedPath(searchParams.get("path") ?? "");
   const type = searchParams.get("type");
+  const filePath = requestedPath ? resolveImageFilePath(requestedPath) : null;
 
-  if (!requestedPath || !resolveImageFilePath(requestedPath)) {
+  if (!filePath) {
     return new Response("Invalid image path", { status: 400 });
+  }
+
+  if (isVideoFilePath(filePath)) {
+    return new Response("Marking is not supported for this media type", { status: 400 });
   }
 
   const rootPath = getImagesRootPathFromEnv();
