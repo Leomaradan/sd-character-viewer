@@ -17,6 +17,10 @@ vi.mock("@/components/image-viewer/image/LazyImageMagnifier", () => ({
   LazyImageMagnifier: () => <div data-testid="magnifier" />,
 }));
 
+vi.mock("@/components/image-viewer/image/LazyVideoPreview", () => ({
+  LazyVideoPreview: () => <div data-testid="video-preview" />,
+}));
+
 const emptySx = {};
 
 describe("LazyImage", () => {
@@ -51,5 +55,33 @@ describe("LazyImage", () => {
     render(<LazyImage relativePath="characters/3d/Anna/Base.png" alt="Anna" sx={emptySx} />);
 
     expect(screen.getByTestId("preview")).toHaveAttribute("data-use-preview", "false");
+  });
+
+  it("renders the video preview for a .mp4 relative path", () => {
+    render(
+      <LazyImage
+        relativePath="characters/3d/Anna/Dance.mp4"
+        alt="Anna"
+        sx={emptySx}
+        mode="preview"
+      />,
+    );
+
+    expect(screen.getByTestId("video-preview")).toBeInTheDocument();
+    expect(screen.queryByTestId("preview")).not.toBeInTheDocument();
+  });
+
+  it("still renders the magnifier for a .mp4 relative path when mode is 'magnifier'", () => {
+    render(
+      <LazyImage
+        relativePath="characters/3d/Anna/Dance.mp4"
+        alt="Anna"
+        sx={emptySx}
+        mode="magnifier"
+      />,
+    );
+
+    expect(screen.getByTestId("magnifier")).toBeInTheDocument();
+    expect(screen.queryByTestId("video-preview")).not.toBeInTheDocument();
   });
 });
