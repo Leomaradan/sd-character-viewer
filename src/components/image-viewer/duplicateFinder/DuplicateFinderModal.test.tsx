@@ -458,24 +458,38 @@ describe("DuplicateFinderModal", () => {
     expect(screen.getByTestId("duplicate-images-group-a")).toBeVisible();
     expect(screen.getByRole("button", { name: "Validate" })).toBeVisible();
 
-    const header = screen.getByRole("button", { name: "Collapse group" });
+    const header = screen.getByRole("button", { name: "Collapse group Anna - Base" });
     expect(header).toHaveAttribute("aria-expanded", "true");
 
     fireEvent.click(header);
 
-    expect(screen.getByRole("button", { name: "Expand group" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Expand group Anna - Base" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
     await waitFor(() => expect(screen.getByTestId("duplicate-images-group-a")).not.toBeVisible());
 
-    fireEvent.click(screen.getByRole("button", { name: "Expand group" }));
+    fireEvent.click(screen.getByRole("button", { name: "Expand group Anna - Base" }));
 
     expect(screen.getByTestId("duplicate-images-group-a")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Collapse group" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Collapse group Anna - Base" })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
+  });
+
+  it("gives each group header a distinct accessible name", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ groups: [buildGroup("group-a", "Anna"), buildGroup("group-b", "Bob")] }),
+    });
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} />);
+    await screen.findByText(/Bob - Base/);
+
+    expect(screen.getByRole("button", { name: "Collapse group Anna - Base" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Collapse group Bob - Base" })).toBeInTheDocument();
   });
 
   it("shows a group-level error when rejection throws", async () => {

@@ -276,7 +276,7 @@ const DuplicateGroupCard = ({
         sx={GROUP_HEADER_SX}
         onClick={handleHeaderClick}
         aria-expanded={isExpanded}
-        aria-label={isExpanded ? "Collapse group" : "Expand group"}
+        aria-label={`${isExpanded ? "Collapse" : "Expand"} group ${group.characterName} - ${group.poseBaseName}`}
       >
         <ExpandMoreIcon
           fontSize="small"
