@@ -10,6 +10,7 @@ import { ImageCard } from "@/components/image-viewer/image/ImageCard";
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
 import { SearchField } from "../common/SearchField";
+import { TagPicker } from "../common/TagPicker";
 import { StyleView } from "../stylesView/StyleView";
 import { PoseView } from "./PoseView";
 
@@ -17,6 +18,8 @@ interface IPoseOption {
   value: string;
   label: string;
 }
+
+const POSES_TAG_THRESHOLD = 10;
 
 interface IPosesViewProps {
   styles: string[];
@@ -68,6 +71,31 @@ export const PosesView = ({
     onPoseStyleChange("--all--");
   }, [onPoseStyleChange]);
 
+  const handlePosesTagChange = useCallback(
+    (newSelectedPoses: string[]) => {
+      if (newSelectedPoses.length === 0) {
+        onClearPoses();
+
+        return;
+      }
+
+      const addedPose = newSelectedPoses.find((pose) => !poseViewSelectedPoses.includes(pose));
+
+      if (addedPose) {
+        onTogglePose(addedPose);
+
+        return;
+      }
+
+      const removedPose = poseViewSelectedPoses.find((pose) => !newSelectedPoses.includes(pose));
+
+      if (removedPose) {
+        onTogglePose(removedPose);
+      }
+    },
+    [poseViewSelectedPoses, onTogglePose, onClearPoses],
+  );
+
   const textFieldSlotProps = useMemo(
     () => ({
       input: {
@@ -81,21 +109,30 @@ export const PosesView = ({
 
   return (
     <Stack spacing={2}>
-      <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>
-        <Chip
-          label="All poses"
-          color={poseViewSelectedPoses.length === 0 ? "primary" : "default"}
-          onClick={onClearPoses}
+      {poseViewPoseOptions.length > POSES_TAG_THRESHOLD ? (
+        <TagPicker
+          options={poseViewPoseOptions}
+          value={poseViewSelectedPoses}
+          label="Add pose"
+          onChange={handlePosesTagChange}
         />
-        {poseViewPoseOptions.map((poseOption) => (
-          <PoseView
-            key={poseOption.value}
-            poseOption={poseOption}
-            primary={poseViewSelectedPoses.includes(poseOption.value)}
-            onTogglePose={onTogglePose}
+      ) : (
+        <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>
+          <Chip
+            label="All poses"
+            color={poseViewSelectedPoses.length === 0 ? "primary" : "default"}
+            onClick={onClearPoses}
           />
-        ))}
-      </Stack>
+          {poseViewPoseOptions.map((poseOption) => (
+            <PoseView
+              key={poseOption.value}
+              poseOption={poseOption}
+              primary={poseViewSelectedPoses.includes(poseOption.value)}
+              onTogglePose={onTogglePose}
+            />
+          ))}
+        </Stack>
+      )}
 
       <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>
         <Chip
