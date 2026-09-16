@@ -18,6 +18,7 @@ import type { IImageItem, ILibraryData } from "@/types/library";
 
 import {
   findDuplicateGroups,
+  getExtraImagesRootPathsFromEnv,
   isDuplicateGroupReviewed,
   parsePoseName,
   readImageLibrary,
@@ -32,6 +33,7 @@ beforeEach(() => {
   vol.reset();
   vi.useRealTimers();
   delete process.env.SD_IMAGES_ROOT;
+  delete process.env.SD_EXTRA_IMAGES_ROOT;
   delete process.env.SD_CACHE_DIR;
 });
 
@@ -39,6 +41,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
   delete process.env.SD_IMAGES_ROOT;
+  delete process.env.SD_EXTRA_IMAGES_ROOT;
   delete process.env.SD_CACHE_DIR;
 });
 
@@ -91,6 +94,121 @@ describe("resolveImageFilePath", () => {
     const resolved = resolveImageFilePath("characters/3d/Anna/Base.png");
 
     expect(resolved).toBe(path.resolve("/tmp/images", "characters/3d/Anna/Base.png"));
+  });
+
+  it("resolves a relative path under an extra images root", async () => {
+    const extraRoot = "/tmp/extra-images";
+    await fs.mkdir(path.join(extraRoot, "characters"), { recursive: true });
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    const resolved = resolveImageFilePath("extra-roots/0/characters/3d/Anna/Base.png");
+
+    expect(resolved).toBe(path.resolve(extraRoot, "characters/3d/Anna/Base.png"));
+  });
+
+  it("blocks traversal attempts under an extra images root", async () => {
+    const extraRoot = "/tmp/extra-images";
+    await fs.mkdir(path.join(extraRoot, "characters"), { recursive: true });
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    const resolved = resolveImageFilePath("extra-roots/0/../../secret.png");
+
+    expect(resolved).toBeNull();
+  });
+
+  it("returns null for an extra root index that does not exist", async () => {
+    const extraRoot = "/tmp/extra-images";
+    await fs.mkdir(path.join(extraRoot, "characters"), { recursive: true });
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    const resolved = resolveImageFilePath("extra-roots/5/characters/3d/Anna/Base.png");
+
+    expect(resolved).toBeNull();
+  });
+
+  it("returns null for an extra-root path when no extra root is configured", () => {
+    process.env.SD_IMAGES_ROOT = "/tmp/images";
+
+    const resolved = resolveImageFilePath("extra-roots/0/characters/3d/Anna/Base.png");
+
+    expect(resolved).toBeNull();
+  });
+
+  it("rejects a png that lives directly under the main root, outside the characters tree", () => {
+    process.env.SD_IMAGES_ROOT = "/tmp/images";
+
+    const resolved = resolveImageFilePath("outside.png");
+
+    expect(resolved).toBeNull();
+  });
+
+  it("rejects a png that lives directly under an extra root, outside its characters tree", async () => {
+    const extraRoot = "/tmp/extra-images";
+    await fs.mkdir(path.join(extraRoot, "characters"), { recursive: true });
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    const resolved = resolveImageFilePath("extra-roots/0/outside.png");
+
+    expect(resolved).toBeNull();
+  });
+});
+
+describe("getExtraImagesRootPathsFromEnv", () => {
+  it("returns an empty list when SD_EXTRA_IMAGES_ROOT is not set", () => {
+    expect(getExtraImagesRootPathsFromEnv()).toEqual([]);
+  });
+
+  it("treats a configured path as a root directly when it has a characters folder", async () => {
+    const extraRoot = "/tmp/extra-root-direct";
+    await fs.mkdir(path.join(extraRoot, "characters"), { recursive: true });
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    expect(getExtraImagesRootPathsFromEnv()).toEqual([path.resolve(extraRoot)]);
+  });
+
+  it("treats immediate subdirectories with a characters folder as separate roots", async () => {
+    const parentDir = "/tmp/extra-root-parent";
+    await fs.mkdir(path.join(parentDir, "driveB", "characters"), { recursive: true });
+    await fs.mkdir(path.join(parentDir, "driveA", "characters"), { recursive: true });
+    await fs.mkdir(path.join(parentDir, "not-a-root"), { recursive: true });
+    process.env.SD_EXTRA_IMAGES_ROOT = parentDir;
+
+    expect(getExtraImagesRootPathsFromEnv()).toEqual([
+      path.resolve(parentDir, "driveA"),
+      path.resolve(parentDir, "driveB"),
+    ]);
+  });
+
+  it("treats a symlinked subdirectory with a characters folder as a separate root", async () => {
+    const parentDir = "/tmp/extra-root-symlink-parent";
+    const realTarget = "/tmp/extra-root-symlink-target";
+    await fs.mkdir(path.join(realTarget, "characters"), { recursive: true });
+    await fs.mkdir(parentDir, { recursive: true });
+    // A symlinked entry is reported by readdir as a symlink, not a directory, so it must be
+    // followed explicitly rather than filtered out by an isDirectory() check alone.
+    await fs.symlink(realTarget, path.join(parentDir, "linked-drive"), "dir");
+    process.env.SD_EXTRA_IMAGES_ROOT = parentDir;
+
+    expect(getExtraImagesRootPathsFromEnv()).toEqual([path.resolve(parentDir, "linked-drive")]);
+  });
+
+  it("merges roots resolved from multiple delimiter-separated entries", async () => {
+    const rootOne = "/tmp/extra-root-one";
+    const rootTwo = "/tmp/extra-root-two";
+    await fs.mkdir(path.join(rootOne, "characters"), { recursive: true });
+    await fs.mkdir(path.join(rootTwo, "characters"), { recursive: true });
+    process.env.SD_EXTRA_IMAGES_ROOT = `${rootOne}${path.delimiter}${rootTwo}`;
+
+    expect(getExtraImagesRootPathsFromEnv()).toEqual([
+      path.resolve(rootOne),
+      path.resolve(rootTwo),
+    ]);
+  });
+
+  it("skips a configured entry that does not exist on disk", () => {
+    process.env.SD_EXTRA_IMAGES_ROOT = "/tmp/does-not-exist";
+
+    expect(getExtraImagesRootPathsFromEnv()).toEqual([]);
   });
 });
 
@@ -597,7 +715,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 3,
+          version: 4,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],
@@ -606,6 +724,8 @@ describe("readImageLibrary with characters metadata", () => {
             toSnapshot(path.join(charactersRoot, "3d")),
             toSnapshot(characterDir),
           ]),
+          extraRootPaths: [],
+          extraDirectories: [],
           library: cachedLibrary,
         },
         null,
@@ -679,6 +799,125 @@ describe("readImageLibrary with characters metadata", () => {
   });
 });
 
+describe("readImageLibrary with extra image roots", () => {
+  afterEach(() => {
+    delete process.env.SD_EXTRA_IMAGES_ROOT;
+  });
+
+  it("merges images from an extra root, prefixing their relativePath so they resolve back to it", async () => {
+    const tempRoot = "/tmp/sd-library-extra-main";
+    const extraRoot = "/tmp/sd-library-extra-root";
+    await fs.mkdir(path.join(tempRoot, "characters", "3d", "Anna"), { recursive: true });
+    await fs.writeFile(path.join(tempRoot, "characters", "3d", "Anna", "Base.png"), "");
+    await fs.mkdir(path.join(extraRoot, "characters", "3d", "Bob"), { recursive: true });
+    await fs.writeFile(path.join(extraRoot, "characters", "3d", "Bob", "Base.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.images).toHaveLength(2);
+    expect(library.characters.map((character) => character.name).sort()).toEqual(["Anna", "Bob"]);
+
+    const extraImage = library.images.find((image) => image.characterName === "Bob");
+    expect(extraImage?.relativePath).toBe("extra-roots/0/characters/3d/Bob/Base.png");
+  });
+
+  it("ignores an extra root's style folders that aren't part of the main root's configured styles", async () => {
+    const tempRoot = "/tmp/sd-library-extra-style-main";
+    const extraRoot = "/tmp/sd-library-extra-style-root";
+    await fs.mkdir(path.join(tempRoot, "characters", "3d", "Anna"), { recursive: true });
+    await fs.writeFile(path.join(tempRoot, "characters", "3d", "Anna", "Base.png"), "");
+    await fs.mkdir(path.join(extraRoot, "characters", "anime", "Bob"), { recursive: true });
+    await fs.writeFile(path.join(extraRoot, "characters", "anime", "Bob", "Base.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.images).toHaveLength(1);
+    expect(library.characters.map((character) => character.name)).toEqual(["Anna"]);
+  });
+
+  it("skips an extra root whose characters folder cannot be read without failing the whole load", async () => {
+    const tempRoot = "/tmp/sd-library-extra-unreadable-main";
+    const extraRoot = "/tmp/sd-library-extra-unreadable-root";
+    await fs.mkdir(path.join(tempRoot, "characters", "3d", "Anna"), { recursive: true });
+    await fs.writeFile(path.join(tempRoot, "characters", "3d", "Anna", "Base.png"), "");
+    // The extra root resolves (it has a "characters" folder) but its contents are removed before
+    // the library is read, so indexing that root must fail gracefully rather than throwing.
+    await fs.mkdir(path.join(extraRoot, "characters"), { recursive: true });
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.images).toHaveLength(1);
+    expect(library.warning).toBeNull();
+  });
+
+  it("skips an extra root whose style folder disappears mid-scan without failing the whole load", async () => {
+    const tempRoot = "/tmp/sd-library-extra-race-main";
+    const extraRoot = "/tmp/sd-library-extra-race-root";
+    await fs.mkdir(path.join(tempRoot, "characters", "3d", "Anna"), { recursive: true });
+    await fs.writeFile(path.join(tempRoot, "characters", "3d", "Anna", "Base.png"), "");
+    const extraStylePath = path.join(extraRoot, "characters", "3d");
+    await fs.mkdir(path.join(extraStylePath, "Bob"), { recursive: true });
+    await fs.writeFile(path.join(extraStylePath, "Bob", "Base.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    // The extra root's "characters" folder listing (which resolves available styles) succeeds,
+    // but the "3d" style folder itself has disappeared (e.g. deleted concurrently) by the time
+    // it's actually indexed.
+    const realReaddir = fs.readdir.bind(fs);
+    vi.spyOn(fs, "readdir").mockImplementation(((dirPath: string, options: unknown) => {
+      if (dirPath === extraStylePath) {
+        return Promise.reject(
+          Object.assign(new Error("ENOENT: race condition"), { code: "ENOENT" }),
+        );
+      }
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      return realReaddir(dirPath, options as { withFileTypes: true });
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    }) as typeof fs.readdir);
+
+    const library = await readImageLibrary();
+
+    expect(library.images).toHaveLength(1);
+    expect(library.images[0]?.characterName).toBe("Anna");
+    expect(library.warning).toBeNull();
+  });
+
+  it("invalidates the cached index when the set of extra roots changes", async () => {
+    const tempRoot = "/tmp/sd-library-extra-cache-main";
+    const extraRoot = "/tmp/sd-library-extra-cache-root";
+    const tempCacheDir = "/tmp/sd-library-extra-cache-dir";
+    await fs.mkdir(path.join(tempRoot, "characters", "3d", "Anna"), { recursive: true });
+    await fs.writeFile(path.join(tempRoot, "characters", "3d", "Anna", "Base.png"), "");
+    await fs.mkdir(path.join(extraRoot, "characters", "3d", "Bob"), { recursive: true });
+    await fs.writeFile(path.join(extraRoot, "characters", "3d", "Bob", "Base.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    // First read with no extra root configured: caches the single-image library.
+    const libraryWithoutExtraRoot = await readImageLibrary();
+    expect(libraryWithoutExtraRoot.images).toHaveLength(1);
+
+    // Configuring the extra root must invalidate that cache and pick up its images too.
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+    const libraryWithExtraRoot = await readImageLibrary();
+    expect(libraryWithExtraRoot.images).toHaveLength(2);
+
+    delete process.env.SD_CACHE_DIR;
+  });
+});
+
 const buildImage = (
   overrides: Partial<IImageItem> & Pick<IImageItem, "relativePath">,
 ): IImageItem => ({
@@ -715,6 +954,18 @@ describe("findDuplicateGroups", () => {
       "characters/3d/Anna/Base.png",
       "characters/3d/Anna/Base 2.png",
     ]);
+  });
+
+  it("does not group images sharing style/character/pose across different images roots", () => {
+    const images: IImageItem[] = [
+      buildImage({ relativePath: "characters/3d/Anna/Base.png", poseVariant: 1 }),
+      buildImage({
+        relativePath: "extra-roots/0/characters/3d/Anna/Base.png",
+        poseVariant: 1,
+      }),
+    ];
+
+    expect(findDuplicateGroups(images)).toEqual([]);
   });
 
   it("excludes poses that have no duplicates", () => {
@@ -789,6 +1040,23 @@ describe("isDuplicateGroupReviewed", () => {
         buildImage({
           relativePath: "characters/3d/Bob/Base 2.png",
           characterName: "Bob",
+          poseVariant: 2,
+        }),
+      ],
+    };
+
+    expect(isDuplicateGroupReviewed(group, reviewedGroups)).toBe(false);
+  });
+
+  it("does not treat a reviewed main-root group as covering an identical-looking group in an extra root", () => {
+    const group = {
+      style: "3d",
+      characterName: "Anna",
+      poseBaseName: "Base",
+      images: [
+        buildImage({ relativePath: "extra-roots/0/characters/3d/Anna/Base.png" }),
+        buildImage({
+          relativePath: "extra-roots/0/characters/3d/Anna/Base 2.png",
           poseVariant: 2,
         }),
       ],

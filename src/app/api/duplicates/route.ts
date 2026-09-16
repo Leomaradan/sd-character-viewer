@@ -9,6 +9,7 @@ import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 import {
   findDuplicateGroups,
   getImagesRootPathFromEnv,
+  getRelativePathRootPrefix,
   isDuplicateGroupReviewed,
   parsePoseName,
   readImageLibrary,
@@ -55,6 +56,7 @@ const finalizeKeptFiles = async (params: {
   style: string;
   characterName: string;
   toRelativePath: (fileName: string) => string;
+  relativePathPrefix: string;
 }): Promise<Response> => {
   const {
     rootPath,
@@ -65,6 +67,7 @@ const finalizeKeptFiles = async (params: {
     style,
     characterName,
     toRelativePath,
+    relativePathPrefix,
   } = params;
 
   const orderedAdditionalFileNames = additionalFilePaths
@@ -134,6 +137,7 @@ const finalizeKeptFiles = async (params: {
   const remainingReviewedGroups = reviewedGroups.filter(
     (reviewedGroup) =>
       !(
+        (reviewedGroup.rootPrefix ?? "") === relativePathPrefix &&
         reviewedGroup.style === style &&
         reviewedGroup.characterName === characterName &&
         reviewedGroup.poseBaseName === poseBaseName
@@ -145,6 +149,7 @@ const finalizeKeptFiles = async (params: {
     characterName,
     poseBaseName,
     fileNames: finalFileNames,
+    rootPrefix: relativePathPrefix,
   };
 
   await writeReviewedDuplicateGroups(rootPath, [...remainingReviewedGroups, newReviewedGroup]);
@@ -192,6 +197,7 @@ interface IParsedValidateRequest {
   rejectAll: boolean;
   toRelativePath: (fileName: string) => string;
   keptFileNames: string[];
+  relativePathPrefix: string;
 }
 
 // Parses and validates the request body, returning either the parsed data needed to apply the
@@ -207,8 +213,13 @@ const parseValidateRequest = async (
     return new Response("Invalid request body", { status: 400 });
   }
 
+  // Normalized once, up front, so every downstream check and lookup (isCharacterImagePath,
+  // resolveImageFilePath, getRelativePathRootPrefix) agrees on the same string instead of some
+  // re-normalizing backslashes and others parsing the raw value.
   const primaryRelativePath =
-    typeof body.primaryRelativePath === "string" ? body.primaryRelativePath : "";
+    typeof body.primaryRelativePath === "string"
+      ? body.primaryRelativePath.replaceAll("\\", "/")
+      : "";
   const rawAdditionalPaths = body.additionalKeptRelativePaths;
   const rejectAll = body.rejectAll === true;
 
@@ -223,13 +234,19 @@ const parseValidateRequest = async (
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const additionalRelativePaths = rejectAll
     ? []
-    : // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      [...new Set(rawAdditionalPaths as string[])].filter(
-        (relativePath) => relativePath !== primaryRelativePath,
-      );
+    : [
+        ...new Set(
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          (rawAdditionalPaths as string[]).map((relativePath) =>
+            relativePath.replaceAll("\\", "/"),
+          ),
+        ),
+      ].filter((relativePath) => relativePath !== primaryRelativePath);
 
+  // Images living in an extra images root carry an "extra-roots/<index>/" prefix ahead of
+  // "characters/..." (see getRelativePathRootPrefix in image-library.ts).
   const isCharacterImagePath = (value: string): boolean =>
-    value.replaceAll("\\", "/").startsWith("characters/");
+    value.startsWith("characters/") || /^extra-roots\/\d+\/characters\//.test(value);
   if (
     !isCharacterImagePath(primaryRelativePath) ||
     additionalRelativePaths.some((relativePath) => !isCharacterImagePath(relativePath))
@@ -260,8 +277,12 @@ const parseValidateRequest = async (
   const style = path.basename(path.dirname(directory));
   const { poseBaseName } = parsePoseName(path.basename(primaryFilePath));
 
+  // Every image resolved to the same on-disk directory above, so they all belong to the same
+  // images root; reuse the primary path's root prefix ("" for the main root, or
+  // "extra-roots/<index>" for an extra root) to rebuild relativePaths under that same root.
+  const relativePathPrefix = getRelativePathRootPrefix(primaryRelativePath);
   const toRelativePath = (fileName: string): string =>
-    path.posix.join("characters", style, characterName, fileName);
+    path.posix.join(relativePathPrefix, "characters", style, characterName, fileName);
 
   const keptFileNames = rejectAll
     ? []
@@ -280,6 +301,7 @@ const parseValidateRequest = async (
     rejectAll,
     toRelativePath,
     keptFileNames,
+    relativePathPrefix,
   };
 };
 
@@ -316,6 +338,7 @@ export const POST = async (request: Request) => {
     rejectAll,
     toRelativePath,
     keptFileNames,
+    relativePathPrefix,
   } = parsed;
   const keptFileNameSet = new Set(keptFileNames);
 
@@ -370,6 +393,7 @@ export const POST = async (request: Request) => {
         style,
         characterName,
         toRelativePath,
+        relativePathPrefix,
       });
     } catch (error) {
       console.error("Error validating duplicate group:", error);
