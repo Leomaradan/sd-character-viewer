@@ -17,6 +17,6 @@ services:
       SD_ALLOW_DELETE: ${SD_ALLOW_DELETE:-}
     volumes:
       - ${SD_IMAGES_HOST_PATH:-./images}:/data:ro
-      - ${SD_EXTRA_IMAGES_HOST_PATH:-./extra-images}:/data-extra:ro
+      - ${SD_EXTRA_IMAGES_ROOT:-./extra-images}:/data-extra:ro
       - ${SD_CACHE_HOST_PATH:-./cache}:/cache:rw
     restart: unless-stopped
