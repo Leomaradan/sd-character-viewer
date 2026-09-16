@@ -11,7 +11,20 @@ import {
   resolvePreviewFilePath,
   removeFirstSeenCacheEntry,
   removeMarkedActionEntries,
+  isVideoFilePath,
 } from "@/lib/image-library";
+
+const getContentTypeForFilePath = (filePath: string): string => {
+  switch (path.extname(filePath).toLowerCase()) {
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".mp4":
+      return "video/mp4";
+    default:
+      return "image/png";
+  }
+};
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +92,35 @@ const respondWithFile = async (
   });
 };
 
+// Unlike images (which fall back to the original file when no preview exists), a video with no
+// manually provided ".preview.png" sidecar must 404 rather than serve the raw .mp4 bytes as a
+// "preview": the frontend relies on this 404 (via a plain <img>'s onError) to know it should
+// render a native <video> thumbnail instead.
+const tryRespondWithPreview = async (
+  request: Request,
+  filePath: string,
+  isVideo: boolean,
+): Promise<Response | null> => {
+  const previewFilePath = resolvePreviewFilePath(filePath);
+
+  if (existsSync(previewFilePath)) {
+    try {
+      return await respondWithFile(
+        request,
+        previewFilePath,
+        getContentTypeForFilePath(previewFilePath),
+      );
+    } catch (error) {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+        return new Response("Could not read preview image", { status: 500 });
+      }
+    }
+  }
+
+  return isVideo ? new Response("Preview not found", { status: 404 }) : null;
+};
+
 export const GET = async (request: Request) => {
   if (isPasswordProtectionEnabled() && !isAuthenticatedRequest(request)) {
     return new Response("Unauthorized", { status: 401 });
@@ -94,25 +136,19 @@ export const GET = async (request: Request) => {
     return new Response("Invalid image path", { status: 400 });
   }
 
-  if (wantsPreview) {
-    const previewFilePath = resolvePreviewFilePath(filePath);
+  const isVideo = isVideoFilePath(filePath);
 
-    if (existsSync(previewFilePath)) {
-      try {
-        return await respondWithFile(request, resolvePreviewFilePath(filePath), "image/jpeg");
-      } catch (error) {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
-          return new Response("Could not read preview image", { status: 500 });
-        }
-      }
+  if (wantsPreview) {
+    const previewResponse = await tryRespondWithPreview(request, filePath, isVideo);
+    if (previewResponse) {
+      return previewResponse;
     }
   }
 
   try {
-    return await respondWithFile(request, filePath, "image/png");
+    return await respondWithFile(request, filePath, getContentTypeForFilePath(filePath));
   } catch {
-    return new Response("Image not found", { status: 404 });
+    return new Response(isVideo ? "Video not found" : "Image not found", { status: 404 });
   }
 };
 

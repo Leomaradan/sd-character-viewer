@@ -23,6 +23,7 @@ vi.mock("@/lib/image-library", () => ({
   removeFirstSeenCacheEntry: vi.fn(),
   removeMarkedActionEntries: vi.fn(),
   removeLibraryIndexCache: vi.fn(),
+  isVideoFilePath: vi.fn((filePath: string) => filePath.toLowerCase().endsWith(".mp4")),
 }));
 
 vi.mock("@/app/api/metadata/route", () => ({
@@ -173,6 +174,39 @@ describe("/api/image", () => {
     expect(statMock).not.toHaveBeenCalledWith("/tmp/a.preview.jpg");
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("image/png");
+  });
+
+  it("GET returns video/mp4 content type for a video file", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const readFileMock = vi.mocked(fs.readFile);
+    const statMock = vi.mocked(fs.stat);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.mp4");
+    statMock.mockResolvedValue({ size: 3, mtimeMs: 1_700_000_000_000 } as never);
+    readFileMock.mockResolvedValue(Buffer.from([1, 2, 3]));
+
+    const response = await GET(new Request("http://localhost/api/image?path=ok.mp4"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("video/mp4");
+  });
+
+  it("GET returns 404 (not a fallback to the raw file) when a video has no preview sidecar", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const existsSyncMock = vi.mocked(existsSync);
+    const readFileMock = vi.mocked(fs.readFile);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.mp4");
+    existsSyncMock.mockReturnValue(false);
+
+    const response = await GET(
+      new Request("http://localhost/api/image?path=ok.mp4&variant=preview"),
+    );
+
+    expect(response.status).toBe(404);
+    expect(readFileMock).not.toHaveBeenCalled();
   });
 
   it("GET returns 500 when an existing preview fails to read for a reason other than a missing file", async () => {
