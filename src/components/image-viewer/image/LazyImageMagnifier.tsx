@@ -5,10 +5,11 @@ import type { SxProps, Theme } from "@mui/material/styles";
 import ZoomInIcon from "@mui/icons-material/ZoomIn";
 import ZoomOutIcon from "@mui/icons-material/ZoomOut";
 import { Box, IconButton } from "@mui/material";
-import { EasyZoomOnMove } from "easy-magnify";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getImageUrl } from "@/components/image-viewer/common/utils";
+
+import { LazyImageMagnifierImage } from "./LazyImageMagnifierImage";
 
 interface ILazyImageMagnifierProps {
   relativePath: string;
@@ -35,14 +36,7 @@ const INNER_WRAPPER_SX: SxProps<Theme> = {
   alignItems: "center",
   justifyContent: "center",
 };
-const PLAIN_IMAGE_SX: SxProps<Theme> = {
-  maxWidth: "100%",
-  maxHeight: "100%",
-  width: "auto",
-  height: "auto",
-  objectFit: "contain",
-  display: "block",
-};
+
 const ZOOM_TOGGLE_BUTTON_SX: SxProps<Theme> = {
   position: "absolute",
   top: 8,
@@ -191,11 +185,13 @@ export const LazyImageMagnifier = ({
     <Box ref={imageContainerRef} sx={sx}>
       <Box sx={INNER_WRAPPER_SX}>
         {shouldLoad && mainImage ? (
-          zoomEnabled ? (
-            <EasyZoomOnMove mainImage={mainImage} zoomImage={zoomImage} />
-          ) : (
-            <Box component="img" src={imageUrl} alt={alt} sx={PLAIN_IMAGE_SX} />
-          )
+          <LazyImageMagnifierImage
+            zoomEnabled={zoomEnabled}
+            alt={alt}
+            mainImage={mainImage}
+            zoomImage={zoomImage}
+            imageUrl={imageUrl}
+          />
         ) : null}
         {shouldLoad && loadError ? (
           <Box component="img" src={imageUrl} alt={alt} sx={FALLBACK_IMAGE_SX} />
