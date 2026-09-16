@@ -41,6 +41,13 @@ Character metadata file:
 - Each character metadata entry supports `name`, `category`, optional `serie`, and optional `tags` (array of strings).
 - `tags` are exposed as additional metadata filters in the UI, alongside category and serie.
 
+Extra image folders:
+
+- Additional images can be loaded from folders configured with `SD_EXTRA_IMAGES_ROOT` (a list of paths separated by `:` on Linux/macOS or `;` on Windows).
+- Each configured entry is either an images root itself (it directly contains a `characters` folder) or a parent directory whose immediate subdirectories are each their own images root. The latter is what makes multiple extra folders work in Docker, where a single bind mount can only map one host path: point `SD_EXTRA_IMAGES_HOST_PATH` at a parent directory and put each additional folder inside it as a subdirectory.
+- Extra roots only ever contribute images. `config.json`, `characters/characters.json`, `pose-filters.json`, and `duplicate-reviews.json` are always read from (and written to) the main root (`SD_IMAGES_ROOT`) only — an extra root's own copies of these files, if any, are ignored. Likewise, only the main root's `config.json` determines the list of available styles; a style folder in an extra root that isn't part of that list is skipped.
+- Images found in an extra root are merged into the same browsable library as the main root (characters, poses, thumbnails, the "new" badge, and the Duplicate Finder), and support the same view/rename/delete actions. Duplicate detection only ever groups images that live in the same root, since validating a group renumbers files within a single folder.
+
 Optional pose pattern filters:
 
 - Add `pose-filters.json` in the image root folder (`SD_IMAGES_ROOT`).
@@ -84,6 +91,7 @@ This script walks every PNG under `characters/`, and for each one it skips image
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
 | `SD_IMAGES_ROOT` | Yes | — | Host directory that contains the `characters` folder. |
+| `SD_EXTRA_IMAGES_ROOT` | No | — | Additional images root(s), merged into the same library as `SD_IMAGES_ROOT`. See [Extra image folders](#image-folder-structure) above. Accepts multiple paths separated by `:` (`;` on Windows). |
 | `SD_CACHE_DIR` | No | `.cache/sd-character-viewer` (relative to the working directory) | Writable directory used to persist the discovery cache that powers the `new` image filter. |
 | `SD_PASSWORD` | No | — | Enables password-protected access when set. Leave unset to run without a login screen. |
 | `SD_PASSWORD_SALT` | Only when `SD_PASSWORD` is set | — | Salt used to hash the configured password. The app reports a configuration error at startup if `SD_PASSWORD` is set without this. |
@@ -100,6 +108,7 @@ Example:
 
 ```bash
 export SD_IMAGES_ROOT=/data/stable-diffusion
+export SD_EXTRA_IMAGES_ROOT=/mnt/drive2/stable-diffusion:/mnt/drive3/stable-diffusion
 export SD_CACHE_DIR=/var/lib/sd-character-viewer/cache
 export SD_PASSWORD=your-password
 export SD_PASSWORD_SALT=some-random-string
@@ -110,6 +119,7 @@ Local development example in `.env.local`:
 
 ```bash
 SD_IMAGES_ROOT=/absolute/path/to/your/images/root
+SD_EXTRA_IMAGES_ROOT=/absolute/path/to/your/extra/images/root
 SD_CACHE_DIR=/absolute/path/to/your/cache/dir
 SD_PASSWORD=your-password
 SD_PASSWORD_SALT=some-random-string
@@ -133,16 +143,18 @@ Build and run directly with Docker:
 docker build -t sd-character-viewer .
 docker run --rm -p 3000:3000 \
 	-e SD_IMAGES_ROOT=/data \
+	-e SD_EXTRA_IMAGES_ROOT=/data-extra \
 	-e SD_CACHE_DIR=/cache \
 	-e SD_PASSWORD=your-password \
 	-e SD_PASSWORD_SALT=some-random-string \
 	-e SD_ALLOW_DELETE=true \
 	-v /absolute/path/to/your/images/root:/data:ro \
+	-v /absolute/path/to/your/extra/images:/data-extra:ro \
 	-v /absolute/path/to/your/cache/dir:/cache:rw \
 	sd-character-viewer
 ```
 
-`SD_PASSWORD_SALT` is required whenever `SD_PASSWORD` is set; `SD_ALLOW_DELETE` is optional and can be dropped to keep destructive image actions disabled.
+`SD_PASSWORD_SALT` is required whenever `SD_PASSWORD` is set; `SD_ALLOW_DELETE` is optional and can be dropped to keep destructive image actions disabled. `SD_EXTRA_IMAGES_ROOT`/the extra volume are optional too; drop both if you only have one images folder.
 
 Run with Docker Compose:
 
@@ -150,11 +162,14 @@ Run with Docker Compose:
 
 ```bash
 SD_IMAGES_HOST_PATH=/absolute/path/to/your/images/root
+SD_EXTRA_IMAGES_HOST_PATH=/absolute/path/to/your/extra/images
 SD_CACHE_HOST_PATH=/absolute/path/to/your/cache/dir
 SD_PASSWORD=your-password
 SD_PASSWORD_SALT=some-random-string
 SD_ALLOW_DELETE=true
 ```
+
+`SD_EXTRA_IMAGES_HOST_PATH` is optional. Since Compose can only bind-mount one host path there, point it either directly at an extra images root (a folder containing `characters/`), or at a parent directory containing several such folders as immediate subdirectories — each one is then loaded as its own extra images root.
 
 2. Start the app:
 
