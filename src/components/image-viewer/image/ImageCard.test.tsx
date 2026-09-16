@@ -78,4 +78,16 @@ describe("ImageCard", () => {
 
     expect(screen.queryByLabelText("New image")).not.toBeInTheDocument();
   });
+
+  it("shows a video badge when the image is a video", () => {
+    render(<ImageCard image={createImage({ mediaType: "video" })} />);
+
+    expect(screen.getByLabelText("Video")).toBeInTheDocument();
+  });
+
+  it("hides the video badge for images", () => {
+    render(<ImageCard image={createImage({ mediaType: "image" })} />);
+
+    expect(screen.queryByLabelText("Video")).not.toBeInTheDocument();
+  });
 });
