@@ -79,18 +79,16 @@ export const PosesView = ({
         return;
       }
 
-      const addedPose = newSelectedPoses.find((pose) => !poseViewSelectedPoses.includes(pose));
-
-      if (addedPose) {
-        onTogglePose(addedPose);
-
-        return;
+      for (const pose of newSelectedPoses) {
+        if (!poseViewSelectedPoses.includes(pose)) {
+          onTogglePose(pose);
+        }
       }
 
-      const removedPose = poseViewSelectedPoses.find((pose) => !newSelectedPoses.includes(pose));
-
-      if (removedPose) {
-        onTogglePose(removedPose);
+      for (const pose of poseViewSelectedPoses) {
+        if (!newSelectedPoses.includes(pose)) {
+          onTogglePose(pose);
+        }
       }
     },
     [poseViewSelectedPoses, onTogglePose, onClearPoses],
