@@ -88,6 +88,7 @@ const LAZY_IMAGE_SX = {
   justifyContent: "center",
 };
 const LAZY_IMAGE_IMG_SX = { objectFit: "contain" };
+const VIDEO_SX = { width: "100%", height: "100%", objectFit: "contain" };
 const SIDEBAR_SX = {
   width: 280,
   bgcolor: "#1e1e1e",
@@ -248,8 +249,10 @@ export function ImageDetailModal({
     isDeleting,
   ]);
 
+  const isVideo = image?.mediaType === "video";
+
   useEffect(() => {
-    if (!relativePath) {
+    if (!relativePath || isVideo) {
       return () => {};
     }
 
@@ -274,10 +277,10 @@ export function ImageDetailModal({
     return () => {
       isMounted = false;
     };
-  }, [relativePath]);
+  }, [relativePath, isVideo]);
 
   useEffect(() => {
-    if (!relativePath || !canDeleteImage) {
+    if (!relativePath || !canDeleteImage || isVideo) {
       return () => {};
     }
 
@@ -306,12 +309,12 @@ export function ImageDetailModal({
     return () => {
       isMounted = false;
     };
-  }, [relativePath, canDeleteImage]);
+  }, [relativePath, canDeleteImage, isVideo]);
 
-  const isLoadingMetadata = Boolean(image) && metadataState.path !== relativePath;
+  const isLoadingMetadata = Boolean(image) && !isVideo && metadataState.path !== relativePath;
   const pngMetadata = useMemo(
-    () => (metadataState.path === relativePath ? metadataState.data : null),
-    [metadataState, relativePath],
+    () => (!isVideo && metadataState.path === relativePath ? metadataState.data : null),
+    [metadataState, relativePath, isVideo],
   );
 
   const handleDeleteClick = useCallback(() => {
@@ -574,15 +577,17 @@ export function ImageDetailModal({
         >
           {isRedrawing ? <CircularProgress size={18} /> : "Redraw"}
         </Button>
-        <Button
-          startIcon={<HighQualityIcon />}
-          onClick={handleToggleUpscale}
-          disabled={isTogglingUpscale}
-          sx={isUpscaleMarked ? UPSCALE_BUTTON_ACTIVE_SX : UPSCALE_BUTTON_SX}
-        >
-          {isTogglingUpscale ? <CircularProgress size={18} /> : "Upscale"}
-        </Button>
-        {animations.length > 0 && (
+        {!isVideo && (
+          <Button
+            startIcon={<HighQualityIcon />}
+            onClick={handleToggleUpscale}
+            disabled={isTogglingUpscale}
+            sx={isUpscaleMarked ? UPSCALE_BUTTON_ACTIVE_SX : UPSCALE_BUTTON_SX}
+          >
+            {isTogglingUpscale ? <CircularProgress size={18} /> : "Upscale"}
+          </Button>
+        )}
+        {!isVideo && animations.length > 0 && (
           <Button
             startIcon={<AnimationIcon />}
             endIcon={<ArrowDropDownIcon />}
@@ -645,14 +650,24 @@ export function ImageDetailModal({
             {/* Image */}
             <Box sx={imageContainerSx} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
               <Box sx={IMAGE_VIEW_SX}>
-                <LazyImage
-                  relativePath={image.relativePath}
-                  alt={`${image.characterName} ${image.poseName}`}
-                  sx={LAZY_IMAGE_SX}
-                  modifiedAt={image.modifiedAt}
-                  imgSx={LAZY_IMAGE_IMG_SX}
-                  mode="magnifier"
-                />
+                {isVideo ? (
+                  <Box
+                    component="video"
+                    src={getImageUrl(image.relativePath)}
+                    controls
+                    preload="metadata"
+                    sx={VIDEO_SX}
+                  />
+                ) : (
+                  <LazyImage
+                    relativePath={image.relativePath}
+                    alt={`${image.characterName} ${image.poseName}`}
+                    sx={LAZY_IMAGE_SX}
+                    modifiedAt={image.modifiedAt}
+                    imgSx={LAZY_IMAGE_IMG_SX}
+                    mode="magnifier"
+                  />
+                )}
               </Box>
               {canDeleteImage && <Box sx={MOBILE_ACTIONS_SX}>{imageActions}</Box>}
             </Box>
