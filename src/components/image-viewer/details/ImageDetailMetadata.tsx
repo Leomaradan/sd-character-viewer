@@ -92,7 +92,7 @@ export const ImageDetailMetadata = ({ pngMetadata }: IImageDetailMetadataProps) 
       </Box>
       <Box>
         {generationParameters.map(([title, value]) => (
-          <React.Fragment key={title}>
+          <React.Fragment key={title + value}>
             <Typography variant="caption" sx={CAPTION_SX}>
               {title}
             </Typography>
