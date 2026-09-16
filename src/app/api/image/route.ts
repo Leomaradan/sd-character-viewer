@@ -10,6 +10,7 @@ import {
   resolveImageFilePath,
   resolvePreviewFilePath,
   removeFirstSeenCacheEntry,
+  removeMarkedActionEntries,
 } from "@/lib/image-library";
 
 export const dynamic = "force-dynamic";
@@ -142,6 +143,7 @@ export const DELETE = async (request: Request) => {
     await fs.unlink(resolvePreviewFilePath(filePath)).catch(() => {});
     invalidateMetadataCacheEntry(requestedPath);
     await removeFirstSeenCacheEntry(requestedPath);
+    await removeMarkedActionEntries(requestedPath);
     await removeLibraryIndexCache();
 
     return new Response(null, { status: 204 });
@@ -219,6 +221,7 @@ export const PATCH = async (request: Request) => {
     invalidateMetadataCacheEntry(oldRelativePath);
     invalidateMetadataCacheEntry(newRelativePath);
     await removeFirstSeenCacheEntry(oldRelativePath);
+    await removeMarkedActionEntries(oldRelativePath);
     await removeLibraryIndexCache();
 
     return Response.json({ newPath: newRelativePath }, { status: 200 });

@@ -69,6 +69,7 @@ export interface ILibraryData {
   defaultStyle: string;
   styles: string[];
   styleLabels?: Partial<Record<string, string>>;
+  animations: string[];
   images: IImageItem[];
   characters: ICharacterSummary[];
   poses: IPoseSummary[];

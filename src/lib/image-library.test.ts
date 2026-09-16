@@ -23,9 +23,16 @@ import {
   parsePoseName,
   readImageLibrary,
   readReviewedDuplicateGroups,
+  readToAnimateEntries,
+  readToUpscaleEntries,
   removeLibraryIndexCache,
+  removeMarkedActionEntries,
+  removeToAnimateEntry,
+  removeToUpscaleEntry,
   resolveImageFilePath,
   resolvePreviewFilePath,
+  setToAnimateEntry,
+  setToUpscaleEntry,
   writeReviewedDuplicateGroups,
 } from "@/lib/image-library";
 
@@ -242,6 +249,7 @@ describe("readImageLibrary with characters metadata", () => {
           sketch: "Sketch Art",
           "unused-style": "Unused",
         },
+        animations: ["Zoom In", "Zoom In", " Pan ", ""],
       }),
     );
 
@@ -256,6 +264,7 @@ describe("readImageLibrary with characters metadata", () => {
       sketch: "Sketch Art",
       "unused-style": "Unused",
     });
+    expect(library.animations).toEqual(["Zoom In", "Pan"]);
     expect(library.images).toHaveLength(2);
     expect(library.images.every((image) => ["comic", "sketch"].includes(image.style))).toBe(true);
   });
@@ -323,6 +332,25 @@ describe("readImageLibrary with characters metadata", () => {
     expect(library.styles).toEqual(["realistic", "3d", "anime"]);
     expect(library.defaultStyle).toBe("3d");
     expect(library.styleLabels).toEqual({});
+    expect(library.animations).toEqual([]);
+  });
+
+  it("defaults animations to an empty array when config.json omits it", async () => {
+    const tempRoot = "/tmp/sd-library-no-animations-config";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "config.json"),
+      JSON.stringify({ styles: ["3d"], defaultStyle: "3d" }),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.animations).toEqual([]);
   });
 
   it("loads pose pattern filters from pose-filters.json", async () => {
@@ -685,6 +713,7 @@ describe("readImageLibrary with characters metadata", () => {
       defaultStyle: "3d",
       styles: ["3d"],
       styleLabels: {},
+      animations: [],
       images: [
         {
           id: "cached",
@@ -1100,5 +1129,143 @@ describe("readReviewedDuplicateGroups / writeReviewedDuplicateGroups", () => {
     );
 
     expect(await readReviewedDuplicateGroups(tempRoot)).toEqual([]);
+  });
+});
+
+describe("readToUpscaleEntries / setToUpscaleEntry / removeToUpscaleEntry", () => {
+  it("returns an empty object when to-upscale.json does not exist", async () => {
+    expect(await readToUpscaleEntries("/tmp/sd-upscale-missing")).toEqual({});
+  });
+
+  it("round-trips a marked entry through disk, creating the file if needed", async () => {
+    const tempRoot = "/tmp/sd-upscale-roundtrip";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToUpscaleEntry(tempRoot, "characters/3d/Anna/Base.png", "Steps: 30, Seed: 1");
+
+    expect(await readToUpscaleEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Base.png": "Steps: 30, Seed: 1",
+    });
+  });
+
+  it("removes a marked entry, leaving other entries untouched", async () => {
+    const tempRoot = "/tmp/sd-upscale-remove";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToUpscaleEntry(tempRoot, "characters/3d/Anna/Base.png", "raw-a");
+    await setToUpscaleEntry(tempRoot, "characters/3d/Anna/Full.png", "raw-b");
+    await removeToUpscaleEntry(tempRoot, "characters/3d/Anna/Base.png");
+
+    expect(await readToUpscaleEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Full.png": "raw-b",
+    });
+  });
+
+  it("is a no-op when removing an entry that is not marked", async () => {
+    const tempRoot = "/tmp/sd-upscale-remove-missing";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await expect(
+      removeToUpscaleEntry(tempRoot, "characters/3d/Anna/Base.png"),
+    ).resolves.toBeUndefined();
+    expect(await readToUpscaleEntries(tempRoot)).toEqual({});
+  });
+
+  it("ignores malformed entries and files", async () => {
+    const tempRoot = "/tmp/sd-upscale-malformed";
+    await fs.mkdir(tempRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(tempRoot, "to-upscale.json"),
+      JSON.stringify({ "a.png": 123, "b.png": "ok" }),
+    );
+
+    expect(await readToUpscaleEntries(tempRoot)).toEqual({ "b.png": "ok" });
+
+    await fs.writeFile(path.join(tempRoot, "to-upscale.json"), "{invalid-json");
+    expect(await readToUpscaleEntries(tempRoot)).toEqual({});
+
+    await fs.writeFile(path.join(tempRoot, "to-upscale.json"), JSON.stringify(["not", "a", "map"]));
+    expect(await readToUpscaleEntries(tempRoot)).toEqual({});
+  });
+});
+
+describe("readToAnimateEntries / setToAnimateEntry / removeToAnimateEntry", () => {
+  it("returns an empty object when to-animate.json does not exist", async () => {
+    expect(await readToAnimateEntries("/tmp/sd-animate-missing")).toEqual({});
+  });
+
+  it("round-trips a marked entry through disk, creating the file if needed", async () => {
+    const tempRoot = "/tmp/sd-animate-roundtrip";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "Steps: 30", "Zoom In");
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Base.png": { metadata: "Steps: 30", action: "Zoom In" },
+    });
+  });
+
+  it("overwrites the action when the same image is marked again", async () => {
+    const tempRoot = "/tmp/sd-animate-overwrite";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Zoom In");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Pan");
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Base.png": { metadata: "raw", action: "Pan" },
+    });
+  });
+
+  it("removes a marked entry, leaving other entries untouched", async () => {
+    const tempRoot = "/tmp/sd-animate-remove";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw-a", "Zoom In");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Full.png", "raw-b", "Pan");
+    await removeToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png");
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Full.png": { metadata: "raw-b", action: "Pan" },
+    });
+  });
+
+  it("ignores malformed entries", async () => {
+    const tempRoot = "/tmp/sd-animate-malformed";
+    await fs.mkdir(tempRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(tempRoot, "to-animate.json"),
+      JSON.stringify({
+        "a.png": { metadata: "raw", action: "Pan" },
+        "b.png": { metadata: "raw" },
+        "c.png": "not-an-object",
+      }),
+    );
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "a.png": { metadata: "raw", action: "Pan" },
+    });
+  });
+});
+
+describe("removeMarkedActionEntries", () => {
+  it("is a no-op when no images root is configured", async () => {
+    delete process.env.SD_IMAGES_ROOT;
+
+    await expect(removeMarkedActionEntries("characters/3d/Anna/Base.png")).resolves.toBeUndefined();
+  });
+
+  it("removes the entry from both to-upscale.json and to-animate.json", async () => {
+    const tempRoot = "/tmp/sd-marks-remove-both";
+    await fs.mkdir(tempRoot, { recursive: true });
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    await setToUpscaleEntry(tempRoot, "characters/3d/Anna/Base.png", "raw");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Zoom In");
+
+    await removeMarkedActionEntries("characters/3d/Anna/Base.png");
+
+    expect(await readToUpscaleEntries(tempRoot)).toEqual({});
+    expect(await readToAnimateEntries(tempRoot)).toEqual({});
   });
 });
