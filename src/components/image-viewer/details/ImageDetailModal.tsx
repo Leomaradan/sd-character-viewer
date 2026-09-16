@@ -218,6 +218,15 @@ export function ImageDetailModal({
   }>({ path: null, view: "image" });
   const mobileView = mobileViewState.path === relativePath ? mobileViewState.view : "image";
 
+  const [videoControlsState, setVideoControlsState] = useState<{
+    path: string | null;
+    shown: boolean;
+  }>({ path: null, shown: false });
+  const showVideoControls = videoControlsState.path === relativePath && videoControlsState.shown;
+  const handleVideoClick = useCallback(() => {
+    setVideoControlsState({ path: relativePath ?? null, shown: true });
+  }, [relativePath]);
+
   useEffect(() => {
     if (!image || isConfirmOpen || isDeleting) {
       return () => {};
@@ -655,7 +664,8 @@ export function ImageDetailModal({
                   <Box
                     component="video"
                     src={getImageUrl(image.relativePath)}
-                    controls
+                    controls={showVideoControls}
+                    onClick={handleVideoClick}
                     preload="metadata"
                     sx={VIDEO_SX}
                   />
