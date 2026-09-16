@@ -11,6 +11,7 @@ import {
   getImagesRootPathFromEnv,
   getRelativePathRootPrefix,
   isDuplicateGroupReviewed,
+  isVideoFilePath,
   parsePoseName,
   readImageLibrary,
   readReviewedDuplicateGroups,
@@ -257,14 +258,14 @@ const parseValidateRequest = async (
   }
 
   const primaryFilePath = resolveImageFilePath(primaryRelativePath);
-  if (!primaryFilePath) {
+  if (!primaryFilePath || isVideoFilePath(primaryFilePath)) {
     return new Response("Invalid image path", { status: 400 });
   }
 
   const additionalFilePaths: string[] = [];
   for (const relativePath of additionalRelativePaths) {
     const filePath = resolveImageFilePath(relativePath);
-    if (!filePath) {
+    if (!filePath || isVideoFilePath(filePath)) {
       return new Response("Invalid image path", { status: 400 });
     }
     additionalFilePaths.push(filePath);

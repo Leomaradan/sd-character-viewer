@@ -509,6 +509,37 @@ describe("POST /api/duplicates", () => {
     );
   });
 
+  it("rejects a video path instead of deleting PNGs that share its pose base name", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+
+    const tempRoot = "/tmp/sd-dup-post-reject-all-video";
+    const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
+    await fs.mkdir(annaDir, { recursive: true });
+    await fs.writeFile(path.join(annaDir, "Base.mp4"), "");
+    await fs.writeFile(path.join(annaDir, "Base.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 2.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          primaryRelativePath: "characters/3d/Anna/Base.mp4",
+          additionalKeptRelativePaths: [],
+          rejectAll: true,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+
+    const remainingFiles = (await fs.readdir(annaDir)).sort();
+    expect(remainingFiles).toEqual(["Base 2.png", "Base.mp4", "Base.png"]);
+  });
+
   it("does not lose a reviewed record when two different groups are validated concurrently", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);

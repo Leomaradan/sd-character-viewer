@@ -446,7 +446,7 @@ const buildMetadataFilterOptions = (characters) => {
 const buildLibraryIndexCache = async (
   rootPath,
   charactersRootPath,
-  pngFilePaths,
+  mediaFilePaths,
   firstSeenByRelativePath,
 ) => {
   const [styleConfig, posePatternFilters, metadataByCharacter] = await Promise.all([
@@ -463,29 +463,31 @@ const buildLibraryIndexCache = async (
   const characterMap = new Map();
   const poseCounter = new Map();
 
-  for (const absolutePngFilePath of pngFilePaths) {
-    const relativePath = normalizeRelativePath(path.relative(rootPath, absolutePngFilePath));
+  for (const absoluteMediaFilePath of mediaFilePaths) {
+    const relativePath = normalizeRelativePath(path.relative(rootPath, absoluteMediaFilePath));
     const parts = relativePath.split("/");
     if (parts.length < 4 || parts[0] !== "characters" || !styleSet.has(parts[1])) {
       continue;
     }
 
     const [, style, characterName, ...fileNameParts] = parts;
-    const pngFile = fileNameParts.join("/");
-    if (pngFile.includes("/")) {
+    const mediaFileName = fileNameParts.join("/");
+    if (mediaFileName.includes("/")) {
       continue;
     }
 
-    const parsedPose = parsePoseName(pngFile);
-    const stat = await fs.stat(absolutePngFilePath);
+    const parsedPose = parsePoseName(mediaFileName);
+    const stat = await fs.stat(absoluteMediaFilePath);
     const posePatternFilterIds = compiledPatternFilters
       .filter((filter) => {
         filter.regex.lastIndex = 0;
         return filter.regex.test(parsedPose.poseBaseName);
       })
       .map((filter) => filter.id);
+    const mediaType =
+      path.extname(mediaFileName).toLowerCase() === VIDEO_EXTENSION ? "video" : "image";
     const image = {
-      id: `${style}::${characterName}::${pngFile}`,
+      id: `${style}::${characterName}::${mediaFileName}`,
       style,
       characterName,
       poseName: parsedPose.poseName,
@@ -496,6 +498,7 @@ const buildLibraryIndexCache = async (
       firstSeenAt: firstSeenByRelativePath.get(relativePath) ?? Date.now(),
       modifiedAt: Math.trunc(stat.mtimeMs),
       posePatternFilterIds,
+      mediaType,
     };
 
     images.push(image);
@@ -613,7 +616,7 @@ const buildLibraryIndexCache = async (
 const writeLibraryIndexCache = async (
   rootPath,
   charactersRootPath,
-  pngFilePaths,
+  mediaFilePaths,
   firstSeenByRelativePath,
   isDryRun,
 ) => {
@@ -627,7 +630,7 @@ const writeLibraryIndexCache = async (
   const cacheFile = await buildLibraryIndexCache(
     rootPath,
     charactersRootPath,
-    pngFilePaths,
+    mediaFilePaths,
     firstSeenByRelativePath,
   );
   await fs.mkdir(path.dirname(cacheFilePath), { recursive: true });
@@ -776,7 +779,7 @@ const run = async () => {
   await writeLibraryIndexCache(
     resolvedRootPath,
     charactersRootPath,
-    pngFilePaths,
+    mediaFilePaths,
     firstSeenByRelativePath,
     isDryRun,
   );

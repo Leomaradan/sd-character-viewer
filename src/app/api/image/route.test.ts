@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:fs", () => ({
+  createReadStream: vi.fn(),
   existsSync: vi.fn(),
   promises: {
     readFile: vi.fn(),
@@ -35,7 +36,8 @@ vi.mock("@/lib/env", () => ({
   readBooleanEnvFlag: vi.fn(),
 }));
 
-import { existsSync, promises as fs } from "node:fs";
+import { createReadStream, existsSync, promises as fs } from "node:fs";
+import { Readable } from "node:stream";
 
 import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
 import * as auth from "@/lib/auth";
@@ -130,6 +132,50 @@ describe("/api/image", () => {
 
     expect(response.status).toBe(304);
     expect(readFileMock).not.toHaveBeenCalled();
+  });
+
+  it("GET returns 206 with the requested byte range for a Range request", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const statMock = vi.mocked(fs.stat);
+    const createReadStreamMock = vi.mocked(createReadStream);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.mp4");
+    statMock.mockResolvedValue({ size: 10, mtimeMs: 1_700_000_000_000 } as never);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    createReadStreamMock.mockReturnValue(Readable.from(Buffer.from([1, 2, 3, 4])) as never);
+
+    const response = await GET(
+      new Request("http://localhost/api/image?path=ok.mp4", {
+        headers: { Range: "bytes=2-5" },
+      }),
+    );
+
+    expect(createReadStreamMock).toHaveBeenCalledWith("/tmp/a.mp4", { start: 2, end: 5 });
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Range")).toBe("bytes 2-5/10");
+    expect(response.headers.get("Content-Length")).toBe("4");
+    expect(response.headers.get("Accept-Ranges")).toBe("bytes");
+  });
+
+  it("GET ignores an out-of-bounds Range header and returns the full file", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const statMock = vi.mocked(fs.stat);
+    const readFileMock = vi.mocked(fs.readFile);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.mp4");
+    statMock.mockResolvedValue({ size: 10, mtimeMs: 1_700_000_000_000 } as never);
+    readFileMock.mockResolvedValue(Buffer.from([1, 2, 3]));
+
+    const response = await GET(
+      new Request("http://localhost/api/image?path=ok.mp4", {
+        headers: { Range: "bytes=20-30" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Length")).toBe("10");
   });
 
   it("GET returns preview bytes when variant=preview and a preview exists", async () => {

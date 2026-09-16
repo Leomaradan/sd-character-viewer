@@ -1,5 +1,6 @@
-import { existsSync, promises as fs } from "node:fs";
+import { createReadStream, existsSync, promises as fs } from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 
 import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
@@ -66,6 +67,34 @@ const isNotModified = (request: Request, etag: string, lastModifiedMs: number): 
   return false;
 };
 
+// Parses a single "bytes=start-end" Range header (the only form browsers send for <video>
+// seeking/preload). Returns null for anything absent, malformed, or unsatisfiable, which callers
+// treat as "serve the whole file".
+const parseRange = (
+  rangeHeader: string | null,
+  fileSize: number,
+): { start: number; end: number } | null => {
+  const match = rangeHeader ? /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim()) : null;
+  if (!match || (!match[1] && !match[2])) {
+    return null;
+  }
+
+  const start = match[1] ? Number.parseInt(match[1], 10) : fileSize - Number.parseInt(match[2], 10);
+  const end = match[1] && match[2] ? Number.parseInt(match[2], 10) : fileSize - 1;
+
+  if (
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    start < 0 ||
+    start > end ||
+    end >= fileSize
+  ) {
+    return null;
+  }
+
+  return { start, end };
+};
+
 const respondWithFile = async (
   request: Request,
   filePath: string,
@@ -78,17 +107,34 @@ const respondWithFile = async (
     "Cache-Control": buildCacheControl(),
     ETag: etag,
     "Last-Modified": new Date(lastModifiedMs).toUTCString(),
+    "Accept-Ranges": "bytes",
   };
 
   if (isNotModified(request, etag, lastModifiedMs)) {
     return new Response(null, { status: 304, headers: cacheHeaders });
   }
 
+  const range = parseRange(request.headers.get("range"), stat.size);
+
+  if (range) {
+    const stream = createReadStream(filePath, { start: range.start, end: range.end });
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return new Response(Readable.toWeb(stream) as ReadableStream, {
+      status: 206,
+      headers: {
+        "Content-Type": contentType,
+        "Content-Range": `bytes ${range.start}-${range.end}/${stat.size}`,
+        "Content-Length": String(range.end - range.start + 1),
+        ...cacheHeaders,
+      },
+    });
+  }
+
   const fileBuffer = await fs.readFile(filePath);
 
   return new Response(fileBuffer, {
     status: 200,
-    headers: { "Content-Type": contentType, ...cacheHeaders },
+    headers: { "Content-Type": contentType, "Content-Length": String(stat.size), ...cacheHeaders },
   });
 };
 
