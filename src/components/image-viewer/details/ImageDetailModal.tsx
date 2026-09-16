@@ -250,6 +250,7 @@ export function ImageDetailModal({
   ]);
 
   const isVideo = image?.mediaType === "video";
+  const deleteLabel = isVideo ? "Delete video" : "Delete image";
 
   useEffect(() => {
     if (!relativePath || isVideo) {
@@ -604,7 +605,7 @@ export function ImageDetailModal({
           disabled={isDeleting}
           sx={DELETE_BUTTON_SX}
         >
-          {isDeleting ? <CircularProgress size={18} /> : "Delete image"}
+          {isDeleting ? <CircularProgress size={18} /> : deleteLabel}
         </Button>
       </ButtonGroup>
     </>
@@ -754,7 +755,7 @@ export function ImageDetailModal({
       </Menu>
 
       <Dialog open={isConfirmOpen} onClose={handleConfirmClose}>
-        <DialogTitle>Delete image?</DialogTitle>
+        <DialogTitle>{isVideo ? "Delete video?" : "Delete image?"}</DialogTitle>
         <DialogContent>
           <DialogContentText>
             This will permanently delete{" "}
