@@ -2,12 +2,15 @@
 
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CloseIcon from "@mui/icons-material/Close";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import {
   Alert,
   Box,
   Button,
   Checkbox,
   CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -46,9 +49,32 @@ const LOADING_SX = { display: "flex", justifyContent: "center", py: 6 };
 const FILTER_BAR_SX = { mb: 3, display: "flex", alignItems: "center", gap: 2 };
 const STYLE_FILTER_SX = { minWidth: 220 };
 const GROUP_BOX_SX = { pb: 3, mb: 3 };
-const GROUP_HEADER_SX = { mb: 1.5 };
+const GROUP_HEADER_SX = {
+  mb: 1.5,
+  display: "flex",
+  alignItems: "center",
+  gap: 1,
+  width: "100%",
+  border: "none",
+  background: "none",
+  p: 0,
+  font: "inherit",
+  color: "inherit",
+  textAlign: "left",
+  cursor: "pointer",
+  userSelect: "none",
+};
+const GROUP_HEADER_TEXT_SX = { flex: 1, minWidth: 0 };
 const GROUP_TITLE_SX = { fontWeight: 600 };
 const GROUP_SUBTITLE_SX = { opacity: 0.7 };
+const EXPAND_ICON_SX = {
+  transition: "transform 0.2s",
+  transform: "rotate(0deg)",
+};
+const EXPAND_ICON_COLLAPSED_SX = {
+  transition: "transform 0.2s",
+  transform: "rotate(-90deg)",
+};
 const IMAGES_GRID_SX = {
   display: "grid",
   gridTemplateColumns: {
@@ -185,28 +211,37 @@ interface IDuplicateGroupCardProps {
   group: IDuplicateGroup;
   selection: IGroupSelection;
   isValidating: boolean;
+  isRedrawing: boolean;
   isLast: boolean;
+  isExpanded: boolean;
   groupError?: string;
   styleLabel: (style: string) => string;
   onPrimaryChange: (groupId: string, relativePath: string) => void;
   onKeptToggle: (groupId: string, relativePath: string, checked: boolean) => void;
   onValidate: (group: IDuplicateGroup) => void;
   onReject: (group: IDuplicateGroup) => void;
+  onRedrawPrimary: (group: IDuplicateGroup, primaryRelativePath: string) => void;
+  onToggleExpand: (groupId: string) => void;
 }
 
 const DuplicateGroupCard = ({
   group,
   selection,
   isValidating,
+  isRedrawing,
   isLast,
+  isExpanded,
   groupError,
   styleLabel,
   onPrimaryChange,
   onKeptToggle,
   onValidate,
   onReject,
+  onRedrawPrimary,
+  onToggleExpand,
 }: Readonly<IDuplicateGroupCardProps>) => {
   const [hasHorizontalImage, setHasHorizontalImage] = useState(false);
+  const isBusy = isValidating || isRedrawing;
   const handleValidateClick = useCallback(() => {
     onValidate(group);
   }, [onValidate, group]);
@@ -214,11 +249,17 @@ const DuplicateGroupCard = ({
   const handleRejectClick = useCallback(() => {
     onReject(group);
   }, [onReject, group]);
+  const handleRedrawPrimaryClick = useCallback(() => {
+    onRedrawPrimary(group, selection.primaryRelativePath);
+  }, [onRedrawPrimary, group, selection.primaryRelativePath]);
   const handleDimensionsKnown = useCallback((width: number, height: number) => {
     if (width > height) {
       setHasHorizontalImage(true);
     }
   }, []);
+  const handleHeaderClick = useCallback(() => {
+    onToggleExpand(group.id);
+  }, [onToggleExpand, group.id]);
   const columnCount = Math.min(group.images.length, hasHorizontalImage ? 3 : 4);
 
   const style = useMemo(
@@ -229,50 +270,73 @@ const DuplicateGroupCard = ({
 
   return (
     <Box sx={GROUP_BOX_SX}>
-      <Box sx={GROUP_HEADER_SX}>
-        <Typography variant="subtitle1" sx={GROUP_TITLE_SX}>
-          {group.characterName} - {group.poseBaseName}
-        </Typography>
-        <Typography variant="body2" sx={GROUP_SUBTITLE_SX}>
-          {styleLabel(group.style)} - {group.images.length} images
-        </Typography>
+      <Box
+        component="button"
+        type="button"
+        sx={GROUP_HEADER_SX}
+        onClick={handleHeaderClick}
+        aria-expanded={isExpanded}
+        aria-label={`${isExpanded ? "Collapse" : "Expand"} group ${group.characterName} - ${group.poseBaseName}`}
+      >
+        <ExpandMoreIcon
+          fontSize="small"
+          sx={isExpanded ? EXPAND_ICON_SX : EXPAND_ICON_COLLAPSED_SX}
+        />
+        <Box sx={GROUP_HEADER_TEXT_SX}>
+          <Typography variant="subtitle1" sx={GROUP_TITLE_SX}>
+            {group.characterName} - {group.poseBaseName}
+          </Typography>
+          <Typography variant="body2" sx={GROUP_SUBTITLE_SX}>
+            {styleLabel(group.style)} - {group.images.length} images
+          </Typography>
+        </Box>
       </Box>
 
-      <Box sx={IMAGES_GRID_SX} style={style} data-testid={`duplicate-images-${group.id}`}>
-        {group.images.map((image) => {
-          const isPrimary = selection.primaryRelativePath === image.relativePath;
-          const isKept = isPrimary || selection.keptRelativePaths.has(image.relativePath);
+      <Collapse in={isExpanded}>
+        <Box sx={IMAGES_GRID_SX} style={style} data-testid={`duplicate-images-${group.id}`}>
+          {group.images.map((image) => {
+            const isPrimary = selection.primaryRelativePath === image.relativePath;
+            const isKept = isPrimary || selection.keptRelativePaths.has(image.relativePath);
 
-          return (
-            <DuplicateImageItem
-              key={image.id}
-              image={image}
-              groupId={group.id}
-              isPrimary={isPrimary}
-              isKept={isKept}
-              isValidating={isValidating}
-              onDimensionsKnown={handleDimensionsKnown}
-              onPrimaryChange={onPrimaryChange}
-              onKeptToggle={onKeptToggle}
-            />
-          );
-        })}
-      </Box>
+            return (
+              <DuplicateImageItem
+                key={image.id}
+                image={image}
+                groupId={group.id}
+                isPrimary={isPrimary}
+                isKept={isKept}
+                isValidating={isBusy}
+                onDimensionsKnown={handleDimensionsKnown}
+                onPrimaryChange={onPrimaryChange}
+                onKeptToggle={onKeptToggle}
+              />
+            );
+          })}
+        </Box>
 
-      <Box sx={GROUP_ACTIONS_SX}>
-        <Button variant="contained" onClick={handleValidateClick} disabled={isValidating}>
-          {isValidating ? <CircularProgress size={18} /> : "Validate"}
-        </Button>
-        <Button color="error" onClick={handleRejectClick} disabled={isValidating}>
-          Reject group
-        </Button>
-      </Box>
+        <Box sx={GROUP_ACTIONS_SX}>
+          <Button variant="contained" onClick={handleValidateClick} disabled={isBusy}>
+            {isValidating ? <CircularProgress size={18} /> : "Validate"}
+          </Button>
+          <Button color="error" onClick={handleRejectClick} disabled={isBusy}>
+            Reject group
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={!isRedrawing && <RefreshIcon />}
+            onClick={handleRedrawPrimaryClick}
+            disabled={isBusy}
+          >
+            {isRedrawing ? <CircularProgress size={18} /> : "Redraw primary"}
+          </Button>
+        </Box>
 
-      {groupError && (
-        <Alert severity="error" sx={GROUP_ERROR_SX}>
-          {groupError}
-        </Alert>
-      )}
+        {groupError && (
+          <Alert severity="error" sx={GROUP_ERROR_SX}>
+            {groupError}
+          </Alert>
+        )}
+      </Collapse>
 
       {!isLast && <Divider sx={GROUP_DIVIDER_SX} />}
     </Box>
@@ -290,9 +354,11 @@ export function DuplicateFinderModal({
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [validatingGroupId, setValidatingGroupId] = useState<string | null>(null);
+  const [redrawingGroupId, setRedrawingGroupId] = useState<string | null>(null);
   const [groupErrors, setGroupErrors] = useState<Record<string, string>>({});
   const [pendingRejectGroup, setPendingRejectGroup] = useState<IDuplicateGroup | null>(null);
   const [selectedStyle, setSelectedStyle] = useState("");
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<ReadonlySet<string>>(new Set());
   // Bumped on every new load and whenever the dialog closes, so a response for a superseded
   // (or since-closed) request can be detected and ignored instead of overwriting fresher state.
   const loadRequestIdRef = useRef(0);
@@ -428,8 +494,53 @@ export function DuplicateFinderModal({
     [selections, onChangesApplied],
   );
 
+  const handleRedrawPrimary = useCallback(
+    async (group: IDuplicateGroup, primaryRelativePath: string) => {
+      setRedrawingGroupId(group.id);
+      setGroupErrors((prev) => ({ ...prev, [group.id]: "" }));
+
+      try {
+        const response = await fetch(`/api/image?path=${encodeURIComponent(primaryRelativePath)}`, {
+          method: "PATCH",
+        });
+
+        if (!response.ok) {
+          setGroupErrors((prev) => ({
+            ...prev,
+            [group.id]: "Could not redraw the primary image. Try again.",
+          }));
+          return;
+        }
+
+        await loadGroups();
+        onChangesApplied?.();
+      } catch {
+        setGroupErrors((prev) => ({
+          ...prev,
+          [group.id]: "Could not redraw the primary image. Try again.",
+        }));
+      } finally {
+        setRedrawingGroupId(null);
+      }
+    },
+    [loadGroups, onChangesApplied],
+  );
+
   const handleReject = useCallback((group: IDuplicateGroup) => {
     setPendingRejectGroup(group);
+  }, []);
+
+  const handleToggleExpand = useCallback((groupId: string) => {
+    setCollapsedGroupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+
+      return next;
+    });
   }, []);
 
   const handleRejectCancel = useCallback(() => {
@@ -485,9 +596,16 @@ export function DuplicateFinderModal({
     [groups, styleLabel],
   );
 
+  // Once every group of the selected style has been resolved, that style drops out of
+  // styleOptions (and the filter dropdown itself disappears once only one style remains) - so
+  // fall back to "All styles" instead of leaving the filter stuck on a style with no groups left.
+  const effectiveSelectedStyle =
+    selectedStyle && styleOptions.includes(selectedStyle) ? selectedStyle : "";
+
   const visibleGroups = useMemo(
-    () => groups.filter((group) => !selectedStyle || group.style === selectedStyle),
-    [groups, selectedStyle],
+    () =>
+      groups.filter((group) => !effectiveSelectedStyle || group.style === effectiveSelectedStyle),
+    [groups, effectiveSelectedStyle],
   );
 
   const handleStyleFilterChange = useCallback((event: SelectChangeEvent) => {
@@ -520,7 +638,7 @@ export function DuplicateFinderModal({
               <InputLabel id="duplicate-style-filter-label">Style</InputLabel>
               <Select
                 labelId="duplicate-style-filter-label"
-                value={selectedStyle}
+                value={effectiveSelectedStyle}
                 label="Style"
                 onChange={handleStyleFilterChange}
               >
@@ -556,13 +674,17 @@ export function DuplicateFinderModal({
               group={group}
               selection={selections[group.id] ?? buildDefaultSelection(group)}
               isValidating={validatingGroupId === group.id}
+              isRedrawing={redrawingGroupId === group.id}
               isLast={index === visibleGroupCount - 1}
+              isExpanded={!collapsedGroupIds.has(group.id)}
               groupError={groupErrors[group.id]}
               styleLabel={styleLabel}
               onPrimaryChange={handlePrimaryChange}
               onKeptToggle={handleKeptToggle}
               onValidate={handleValidate}
               onReject={handleReject}
+              onRedrawPrimary={handleRedrawPrimary}
+              onToggleExpand={handleToggleExpand}
             />
           ))}
       </DialogContent>
