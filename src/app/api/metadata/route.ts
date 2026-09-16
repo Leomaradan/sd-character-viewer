@@ -3,7 +3,7 @@ import { decode } from "png-chunk-text";
 import extractChunks from "png-chunks-extract";
 
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
-import { resolveImageFilePath } from "@/lib/image-library";
+import { isVideoFilePath, resolveImageFilePath } from "@/lib/image-library";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +54,12 @@ export const GET = async (request: Request) => {
   const filePath = resolveImageFilePath(requestedPath);
   if (!filePath) {
     return new Response("Invalid image path", { status: 400 });
+  }
+
+  // PNG "tEXt" chunk parsing has no video equivalent; report "no metadata" the same way a PNG
+  // with no SD parameters chunk would, without attempting to parse non-PNG bytes as PNG chunks.
+  if (isVideoFilePath(filePath)) {
+    return Response.json({});
   }
 
   sweepExpiredEntries();
