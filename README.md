@@ -13,8 +13,8 @@ characters/{style}/{character_name}/*.png
 Styles configuration:
 
 - Optional styles are loaded from `config.json` in the image root folder (`SD_IMAGES_ROOT`).
-- `config.json` accepts `styles` (array of folder names), optional `defaultStyle`, and optional `styleLabels` for display aliases.
-- If `config.json` is missing or invalid, the app falls back to `realistic`, `3d` (default), and `anime`.
+- `config.json` accepts `styles` (array of folder names), optional `defaultStyle`, optional `styleLabels` for display aliases, and optional `animations` (see [Upscale and Animate Marking](#upscale-and-animate-marking) below).
+- If `config.json` is missing or invalid, the app falls back to `realistic`, `3d` (default), and `anime`, with no configured animations.
 
 Example `config.json`:
 
@@ -25,7 +25,8 @@ Example `config.json`:
   "styleLabels": {
     "comic": "Comic Book",
     "3d": "3D Render"
-  }
+  },
+  "animations": ["Zoom In", "Pan Left to Right"]
 }
 ```
 
@@ -45,7 +46,7 @@ Character metadata file:
 
 - Additional images can be loaded from folders configured with `SD_EXTRA_IMAGES_ROOT` (a list of paths separated by `:` on Linux/macOS or `;` on Windows).
 - Each configured entry is either an images root itself (it directly contains a `characters` folder) or a parent directory whose immediate subdirectories are each their own images root. The latter is what makes multiple extra folders work in Docker, where a single bind mount can only map one host path: point `SD_EXTRA_IMAGES_HOST_PATH` at a parent directory and put each additional folder inside it as a subdirectory.
-- Extra roots only ever contribute images. `config.json`, `characters/characters.json`, `pose-filters.json`, and `duplicate-reviews.json` are always read from (and written to) the main root (`SD_IMAGES_ROOT`) only — an extra root's own copies of these files, if any, are ignored. Likewise, only the main root's `config.json` determines the list of available styles; a style folder in an extra root that isn't part of that list is skipped.
+- Extra roots only ever contribute images. `config.json`, `characters/characters.json`, `pose-filters.json`, `duplicate-reviews.json`, `to-upscale.json`, and `to-animate.json` are always read from (and written to) the main root (`SD_IMAGES_ROOT`) only — an extra root's own copies of these files, if any, are ignored. Likewise, only the main root's `config.json` determines the list of available styles; a style folder in an extra root that isn't part of that list is skipped.
 - Images found in an extra root are merged into the same browsable library as the main root (characters, poses, thumbnails, the "new" badge, and the Duplicate Finder), and support the same view/rename/delete actions. Duplicate detection only ever groups images that live in the same root, since validating a group renumbers files within a single folder.
 
 Optional pose pattern filters:
@@ -86,18 +87,42 @@ This script walks every PNG under `characters/`, and for each one it skips image
 
 `GET /api/image` responses (both variants) carry `Cache-Control: public, max-age=86400, must-revalidate`, an `ETag`, and a `Last-Modified` header derived from the served file's size and modification time. Browsers revalidate with `If-None-Match`/`If-Modified-Since` and get a bodyless `304` when the file hasn't changed, so repeat views (scrolling back, reopening a character) cost a small header round trip instead of a full re-download. The cache key is tied to file `mtime`/size rather than the first-seen timestamp, because `firstSeenAt` never changes when a file is overwritten in place under the same name (e.g. regenerating a pose), which would make a stale image cache forever.
 
+## Upscale and Animate Marking
+
+The image detail view has **Upscale** and **Animate** buttons (alongside Redraw/Delete) to flag an image for later, external processing — the app itself never upscales or animates anything, it just records the request.
+
+- Both buttons are shown only when `SD_ALLOW_DELETE` is enabled, the same flag that gates Redraw/Delete.
+- **Upscale** is a plain toggle: click to mark, click again to unmark.
+- **Animate** opens a dropdown of the animation names configured in `config.json`'s `animations` array (see [Image Folder Structure](#image-folder-structure) above); the button itself is hidden when that list is empty. Picking a name marks the image with that action; picking the currently-marked name again unmarks it. Picking a different name switches the mark to the new action.
+- Marks are stored as flat JSON objects, one entry per marked image, keyed by the image's relative path (the same relative path used by `GET /api/image?path=...`):
+  - `to-upscale.json` — value is the image's raw PNG generation metadata (the `parameters` text chunk) as a string.
+  - `to-animate.json` — value is `{ "metadata": "...", "action": "Zoom In" }`.
+- Both files live in the main root (`SD_IMAGES_ROOT`) and are created automatically the first time an image is marked.
+- Deleting or redrawing (renaming) an image removes its entry from both files automatically, so they never reference a path that no longer exists.
+
+Example `to-animate.json`:
+
+```json
+{
+  "characters/3d/Anna/Base.png": {
+    "metadata": "Steps: 30, Sampler: DPM++ 2M, ...",
+    "action": "Zoom In"
+  }
+}
+```
+
 ## Environment Variables
 
-| Variable                   | Required                       | Default                                                          | Description                                                                                                                                                                                                                                                                                      |
-| -------------------------- | ------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `SD_IMAGES_ROOT`           | Yes                            | —                                                                | Host directory that contains the `characters` folder.                                                                                                                                                                                                                                            |
-| `SD_EXTRA_IMAGES_ROOT`     | No                             | —                                                                | Additional images root(s), merged into the same library as `SD_IMAGES_ROOT`. See [Extra image folders](#image-folder-structure) above. Accepts multiple paths separated by `:` (`;` on Windows).                                                                                                 |
-| `SD_CACHE_DIR`             | No                             | `.cache/sd-character-viewer` (relative to the working directory) | Writable directory used to persist the discovery cache that powers the `new` image filter.                                                                                                                                                                                                       |
-| `SD_PASSWORD`              | No                             | —                                                                | Enables password-protected access when set. Leave unset to run without a login screen.                                                                                                                                                                                                           |
-| `SD_PASSWORD_SALT`         | Only when `SD_PASSWORD` is set | —                                                                | Salt used to hash the configured password. The app reports a configuration error at startup if `SD_PASSWORD` is set without this.                                                                                                                                                                |
-| `SD_ALLOW_DELETE`          | No                             | `false`                                                          | Enables destructive image actions: deleting an image, "Redraw" (renumbers a regenerated pose), and the Duplicate Finder's "Validate" action (deletes unselected duplicates and renumbers the ones kept). Accepts `true`, `1`, or `yes` (case-insensitive); anything else is treated as disabled. |
-| `SD_PREVIEW_MAX_DIMENSION` | No                             | `640`                                                            | Longest edge, in pixels, of generated preview thumbnails. Used by the [preview sync script](#preview-thumbnails).                                                                                                                                                                                |
-| `SD_PREVIEW_JPEG_QUALITY`  | No                             | `70`                                                             | JPEG quality (1-100) used for preview thumbnails. Used by the [preview sync script](#preview-thumbnails).                                                                                                                                                                                        |
+| Variable                   | Required                       | Default                                                          | Description                                                                                                                                                                                                                                                                                                                           |
+| -------------------------- | ------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SD_IMAGES_ROOT`           | Yes                            | —                                                                | Host directory that contains the `characters` folder.                                                                                                                                                                                                                                                                                 |
+| `SD_EXTRA_IMAGES_ROOT`     | No                             | —                                                                | Additional images root(s), merged into the same library as `SD_IMAGES_ROOT`. See [Extra image folders](#image-folder-structure) above. Accepts multiple paths separated by `:` (`;` on Windows).                                                                                                                                      |
+| `SD_CACHE_DIR`             | No                             | `.cache/sd-character-viewer` (relative to the working directory) | Writable directory used to persist the discovery cache that powers the `new` image filter.                                                                                                                                                                                                                                            |
+| `SD_PASSWORD`              | No                             | —                                                                | Enables password-protected access when set. Leave unset to run without a login screen.                                                                                                                                                                                                                                                |
+| `SD_PASSWORD_SALT`         | Only when `SD_PASSWORD` is set | —                                                                | Salt used to hash the configured password. The app reports a configuration error at startup if `SD_PASSWORD` is set without this.                                                                                                                                                                                                     |
+| `SD_ALLOW_DELETE`          | No                             | `false`                                                          | Enables destructive image actions: deleting an image, "Redraw" (renumbers a regenerated pose), the Duplicate Finder's "Validate" action (deletes unselected duplicates and renumbers the ones kept), and the Upscale/Animate marking buttons. Accepts `true`, `1`, or `yes` (case-insensitive); anything else is treated as disabled. |
+| `SD_PREVIEW_MAX_DIMENSION` | No                             | `640`                                                            | Longest edge, in pixels, of generated preview thumbnails. Used by the [preview sync script](#preview-thumbnails).                                                                                                                                                                                                                     |
+| `SD_PREVIEW_JPEG_QUALITY`  | No                             | `70`                                                             | JPEG quality (1-100) used for preview thumbnails. Used by the [preview sync script](#preview-thumbnails).                                                                                                                                                                                                                             |
 
 Priority order used by the app:
 
@@ -201,6 +226,9 @@ Example character flow:
 
 - `GET /api/library`: Returns computed library index from disk.
 - `GET /api/image?path=characters/...`: Streams a PNG image safely from configured root. Add `&variant=preview` to stream the compressed JPEG preview instead (falls back to the PNG if no preview exists yet).
+- `GET /api/marks?path=characters/...`: Returns `{ upscale: boolean, animate: { action: string } | null }`, the current upscale/animate mark state for an image. See [Upscale and Animate Marking](#upscale-and-animate-marking).
+- `PUT /api/marks`: Marks an image. Body: `{ path, type: "upscale", metadata }` or `{ path, type: "animate", action, metadata }`. Requires `SD_ALLOW_DELETE`.
+- `DELETE /api/marks?path=characters/...&type=upscale|animate`: Removes a mark. Requires `SD_ALLOW_DELETE`.
 
 ## Test And Lint
 
