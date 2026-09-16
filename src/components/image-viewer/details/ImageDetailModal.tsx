@@ -313,7 +313,9 @@ export function ImageDetailModal({
     () => ({
       ...SIDEBAR_SX,
       display: { xs: mobileView === "meta" ? "flex" : "none", sm: "flex" },
-      width: { xs: "100%", sm: 280 },
+      minWidth: { xs: "100%", sm: 280 },
+      maxWidth: { xs: "100%", sm: "30%" },
+      width: "100%",
     }),
     [mobileView],
   );
@@ -388,7 +390,7 @@ export function ImageDetailModal({
 
   return (
     <>
-      <Dialog open={Boolean(image)} onClose={onClose} maxWidth="xl" fullWidth sx={DIALOG_SX}>
+      <Dialog open={Boolean(image)} onClose={onClose} maxWidth={false} fullWidth sx={DIALOG_SX}>
         <DialogContent sx={DIALOG_CONTENT_SX}>
           <Box sx={CONTENT_BOX_SX}>
             {/* Close button */}
