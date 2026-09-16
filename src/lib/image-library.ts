@@ -26,12 +26,17 @@ const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
 const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
-const LIBRARY_INDEX_CACHE_VERSION = 4;
+// Bumped whenever a cached ILibraryData's shape changes, so a cache written by an older version
+// of the app (e.g. one predating the `animations` field) is treated as a miss and rebuilt, rather
+// than being returned as-is with the new field silently undefined.
+const LIBRARY_INDEX_CACHE_VERSION = 5;
 const PREVIEW_FILE_SUFFIX = ".preview.jpg";
 const LIBRARY_CONFIG_FILE_NAME = "config.json";
 const CHARACTERS_CONFIG_FILE_NAME = "characters.json";
 const POSE_FILTERS_FILE_NAME = "pose-filters.json";
 const DUPLICATE_REVIEW_CONFIG_FILE_NAME = "duplicate-reviews.json";
+const TO_UPSCALE_FILE_NAME = "to-upscale.json";
+const TO_ANIMATE_FILE_NAME = "to-animate.json";
 const DEFAULT_POSE_PATTERN_FILTER_CONFIGS = [{ label: "With Somebody", pattern: "^With " }];
 // Extra image roots are exposed to the client as a virtual relativePath prefix
 // (e.g. "extra-roots/0/characters/3d/Anna/Base.png") so the same "path" query param used to
@@ -44,12 +49,19 @@ interface ILibraryConfig {
   styles?: string[];
   defaultStyle?: string;
   styleLabels?: Record<string, string>;
+  animations?: string[];
 }
 
 interface IStyleConfig {
   styles: string[];
   defaultStyle: string;
   styleLabels: Partial<Record<string, string>>;
+  animations: string[];
+}
+
+export interface IToAnimateEntry {
+  metadata: string;
+  action: string;
 }
 
 interface ICharacterAccumulator {
@@ -126,6 +138,10 @@ const libraryConfigValidator = ajv.compile<ILibraryConfig>({
     styleLabels: {
       type: "object",
       additionalProperties: { type: "string" },
+    },
+    animations: {
+      type: "array",
+      items: { type: "string" },
     },
   },
   additionalProperties: true,
@@ -244,6 +260,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
   const configPath = path.join(rootPath, LIBRARY_CONFIG_FILE_NAME);
   const fallbackStyles = [...STYLES];
   const fallbackStyleLabels: Partial<Record<string, string>> = {};
+  const fallbackAnimations: string[] = [];
 
   let fileContent = "";
   try {
@@ -255,6 +272,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         styles: fallbackStyles,
         defaultStyle: DEFAULT_STYLE,
         styleLabels: fallbackStyleLabels,
+        animations: fallbackAnimations,
       };
     }
 
@@ -262,6 +280,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       styles: fallbackStyles,
       defaultStyle: DEFAULT_STYLE,
       styleLabels: fallbackStyleLabels,
+      animations: fallbackAnimations,
     };
   }
 
@@ -273,6 +292,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         styles: fallbackStyles,
         defaultStyle: DEFAULT_STYLE,
         styleLabels: fallbackStyleLabels,
+        animations: fallbackAnimations,
       };
     }
 
@@ -282,6 +302,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         styles: fallbackStyles,
         defaultStyle: DEFAULT_STYLE,
         styleLabels: fallbackStyleLabels,
+        animations: normalizeStyleNames(parsedContent.animations),
       };
     }
 
@@ -289,6 +310,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       styles,
       defaultStyle: resolveDefaultStyle(styles, parsedContent.defaultStyle),
       styleLabels: normalizeStyleLabels(styles, parsedContent.styleLabels),
+      animations: normalizeStyleNames(parsedContent.animations),
     };
   } catch {
     // Fallback to legacy defaults when config.json is malformed.
@@ -296,6 +318,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       styles: fallbackStyles,
       defaultStyle: DEFAULT_STYLE,
       styleLabels: fallbackStyleLabels,
+      animations: fallbackAnimations,
     };
   }
 };
@@ -635,6 +658,139 @@ export const writeReviewedDuplicateGroups = async (
   await fs.writeFile(configPath, `${JSON.stringify(reviewedGroups, null, 2)}\n`, "utf8");
 };
 
+const isPlainObjectRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+};
+
+const isToAnimateEntry = (value: unknown): value is IToAnimateEntry => {
+  return (
+    isPlainObjectRecord(value) &&
+    typeof value.metadata === "string" &&
+    typeof value.action === "string"
+  );
+};
+
+const isRawMetadataEntry = (value: unknown): value is string => typeof value === "string";
+
+const readMarkedImageMap = async <T>(
+  filePath: string,
+  isValidEntry: (value: unknown) => value is T,
+): Promise<Record<string, T>> => {
+  let fileContent = "";
+  try {
+    fileContent = await fs.readFile(filePath, "utf8");
+  } catch {
+    return {};
+  }
+
+  try {
+    const parsedContent: unknown = JSON.parse(fileContent);
+    if (!isPlainObjectRecord(parsedContent)) {
+      return {};
+    }
+
+    const entries: Record<string, T> = {};
+    for (const [relativePath, entry] of Object.entries(parsedContent)) {
+      if (isValidEntry(entry)) {
+        entries[relativePath] = entry;
+      }
+    }
+
+    return entries;
+  } catch {
+    // Fallback to no entries when the file is malformed.
+    return {};
+  }
+};
+
+const writeMarkedImageMap = async (
+  filePath: string,
+  entries: Record<string, unknown>,
+): Promise<void> => {
+  await fs.writeFile(filePath, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
+};
+
+// Serializes read-modify-write cycles against a single marker file (to-upscale.json /
+// to-animate.json), keyed by its absolute path. Without this, two concurrent marks (or a mark
+// and an unmark) can both read the file before either writes it back, and the second write
+// silently clobbers the first one's change.
+const markedImageFileQueues = new Map<string, Promise<unknown>>();
+
+const withMarkedImageFileLock = <T>(filePath: string, task: () => Promise<T>): Promise<T> => {
+  const previousTask = markedImageFileQueues.get(filePath) ?? Promise.resolve();
+  const nextTask = previousTask.then(task, task);
+  markedImageFileQueues.set(
+    filePath,
+    nextTask.catch(() => {}),
+  );
+  return nextTask;
+};
+
+export const readToUpscaleEntries = async (rootPath: string): Promise<Record<string, string>> => {
+  return readMarkedImageMap(path.join(rootPath, TO_UPSCALE_FILE_NAME), isRawMetadataEntry);
+};
+
+export const setToUpscaleEntry = async (
+  rootPath: string,
+  relativePath: string,
+  metadata: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, TO_UPSCALE_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isRawMetadataEntry);
+    entries[relativePath] = metadata;
+    await writeMarkedImageMap(filePath, entries);
+  });
+};
+
+export const removeToUpscaleEntry = async (
+  rootPath: string,
+  relativePath: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, TO_UPSCALE_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isRawMetadataEntry);
+    if (relativePath in entries) {
+      delete entries[relativePath];
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
+};
+
+export const readToAnimateEntries = async (
+  rootPath: string,
+): Promise<Record<string, IToAnimateEntry>> => {
+  return readMarkedImageMap(path.join(rootPath, TO_ANIMATE_FILE_NAME), isToAnimateEntry);
+};
+
+export const setToAnimateEntry = async (
+  rootPath: string,
+  relativePath: string,
+  metadata: string,
+  action: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
+    entries[relativePath] = { metadata, action };
+    await writeMarkedImageMap(filePath, entries);
+  });
+};
+
+export const removeToAnimateEntry = async (
+  rootPath: string,
+  relativePath: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
+    if (relativePath in entries) {
+      delete entries[relativePath];
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
+};
+
 export const parsePoseName = (
   fileName: string,
 ): {
@@ -910,6 +1066,7 @@ const createEmptyLibraryData = (
     defaultStyle: styleConfig?.defaultStyle ?? DEFAULT_STYLE,
     styles: styleConfig?.styles ?? [...STYLES],
     styleLabels: styleConfig?.styleLabels ?? {},
+    animations: styleConfig?.animations ?? [],
     images: [],
     characters: [],
     poses: [],
@@ -1486,6 +1643,7 @@ const toLibraryData = (
     defaultStyle: styleConfig.defaultStyle,
     styles: styleConfig.styles,
     styleLabels: styleConfig.styleLabels,
+    animations: styleConfig.animations,
     images: state.imageItems,
     characters,
     poses,
@@ -1510,6 +1668,7 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
     styles: [...STYLES],
     defaultStyle: DEFAULT_STYLE,
     styleLabels: {},
+    animations: [],
   };
 
   if (!rootPath) {
@@ -1539,6 +1698,7 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
   }
 
   let availableStyles: string[] = [];
+
   try {
     availableStyles = await resolveStyleFolders(charactersRootPath, styleConfig.styles);
   } catch {
@@ -1677,5 +1837,28 @@ export const removeFirstSeenCacheEntry = async (relativePath: string): Promise<v
   if (firstSeenCache.has(normalizedPath)) {
     firstSeenCache.delete(normalizedPath);
     await persistFirstSeenCache(rootPath, firstSeenCache);
+  }
+};
+
+// Called after an image is deleted or renamed (the old relativePath no longer refers to that
+// image), so any pending upscale/animate mark tied to it is dropped rather than left dangling.
+// Best-effort: the delete/rename it follows has already happened on disk, so a failure to clean
+// up a mark (e.g. a transient disk error) must not surface as a failure of that larger operation.
+export const removeMarkedActionEntries = async (relativePath: string): Promise<void> => {
+  const rootPath = getImagesRootPathFromEnv();
+
+  if (!rootPath) {
+    return;
+  }
+
+  const normalizedPath = normalizeRelativePath(relativePath);
+
+  try {
+    await Promise.all([
+      removeToUpscaleEntry(rootPath, normalizedPath),
+      removeToAnimateEntry(rootPath, normalizedPath),
+    ]);
+  } catch {
+    // Ignore: see comment above.
   }
 };

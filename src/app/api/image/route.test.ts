@@ -21,6 +21,7 @@ vi.mock("@/lib/image-library", () => ({
   resolveImageFilePath: vi.fn(),
   resolvePreviewFilePath: vi.fn((filePath: string) => filePath.replace(/\.png$/i, ".preview.jpg")),
   removeFirstSeenCacheEntry: vi.fn(),
+  removeMarkedActionEntries: vi.fn(),
   removeLibraryIndexCache: vi.fn(),
 }));
 
@@ -41,6 +42,7 @@ import * as env from "@/lib/env";
 import {
   resolveImageFilePath,
   removeFirstSeenCacheEntry,
+  removeMarkedActionEntries,
   removeLibraryIndexCache,
 } from "@/lib/image-library";
 
@@ -268,6 +270,7 @@ describe("/api/image", () => {
     const unlinkMock = vi.mocked(fs.unlink);
     const invalidateMetadataCacheEntryMock = vi.mocked(invalidateMetadataCacheEntry);
     const removeFirstSeenCacheEntryMock = vi.mocked(removeFirstSeenCacheEntry);
+    const removeMarkedActionEntriesMock = vi.mocked(removeMarkedActionEntries);
     const removeLibraryIndexCacheMock = vi.mocked(removeLibraryIndexCache);
     isMisconfiguredMock.mockReturnValue(false);
     isPasswordProtectionEnabledMock.mockReturnValue(false);
@@ -275,6 +278,7 @@ describe("/api/image", () => {
     resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
     unlinkMock.mockResolvedValue(undefined);
     removeFirstSeenCacheEntryMock.mockResolvedValue(undefined);
+    removeMarkedActionEntriesMock.mockResolvedValue(undefined);
     removeLibraryIndexCacheMock.mockResolvedValue(undefined);
 
     const response = await DELETE(new Request("http://localhost/api/image?path=ok.png"));
@@ -283,6 +287,7 @@ describe("/api/image", () => {
     expect(unlinkMock).toHaveBeenCalledWith("/tmp/a.preview.jpg");
     expect(invalidateMetadataCacheEntryMock).toHaveBeenCalledWith("ok.png");
     expect(removeFirstSeenCacheEntryMock).toHaveBeenCalledWith("ok.png");
+    expect(removeMarkedActionEntriesMock).toHaveBeenCalledWith("ok.png");
     expect(removeLibraryIndexCacheMock).toHaveBeenCalledTimes(1);
     expect(response.status).toBe(204);
   });
@@ -389,6 +394,7 @@ describe("/api/image PATCH", () => {
     const readdirMock = vi.mocked(fs.readdir);
 
     const removeFirstSeenCacheEntryMock = vi.mocked(removeFirstSeenCacheEntry);
+    const removeMarkedActionEntriesMock = vi.mocked(removeMarkedActionEntries);
     const removeLibraryIndexCacheMock = vi.mocked(removeLibraryIndexCache);
     isMisconfiguredMock.mockReturnValue(false);
     isPasswordProtectionEnabledMock.mockReturnValue(false);
@@ -397,6 +403,7 @@ describe("/api/image PATCH", () => {
     renameMock.mockResolvedValue(undefined);
     readdirMock.mockResolvedValue([]);
     removeFirstSeenCacheEntryMock.mockResolvedValue(undefined);
+    removeMarkedActionEntriesMock.mockResolvedValue(undefined);
     removeLibraryIndexCacheMock.mockResolvedValue(undefined);
 
     const response = await PATCH(new Request("http://localhost/api/image?path=ImageA.png"));
@@ -404,6 +411,7 @@ describe("/api/image PATCH", () => {
     expect(response.status).toBe(200);
     expect(renameMock).toHaveBeenCalledWith("/tmp/ImageA.png", "/tmp/ImageA 2.png");
     expect(renameMock).toHaveBeenCalledWith("/tmp/ImageA.preview.jpg", "/tmp/ImageA 2.preview.jpg");
+    expect(removeMarkedActionEntriesMock).toHaveBeenCalledWith("ImageA.png");
     expect(removeLibraryIndexCacheMock).toHaveBeenCalledTimes(1);
     const data = (await response.json()) as { newPath: string };
     expect(data.newPath).toBe("ImageA 2.png");

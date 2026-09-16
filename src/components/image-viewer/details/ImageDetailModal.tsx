@@ -1,9 +1,12 @@
 "use client";
 
+import AnimationIcon from "@mui/icons-material/Animation";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
+import HighQualityIcon from "@mui/icons-material/HighQuality";
 import InfoIcon from "@mui/icons-material/Info";
 import PhotoIcon from "@mui/icons-material/Photo";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -11,6 +14,7 @@ import {
   Alert,
   Box,
   Button,
+  ButtonGroup,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -19,6 +23,8 @@ import {
   DialogTitle,
   Divider,
   IconButton,
+  Menu,
+  MenuItem,
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -96,7 +102,6 @@ const SIDEBAR_SX = {
 const META_BODY_SX = { mt: 0.5, opacity: 0.8 };
 
 const METADATA_LOADING_SX = { display: "flex", justifyContent: "center", pt: 1 };
-const BUTTON_CONTAINER_SX = { display: "flex", gap: 1 };
 const MOBILE_ACTIONS_SX = {
   display: { xs: "flex", sm: "none" },
   flexDirection: "column",
@@ -105,12 +110,15 @@ const MOBILE_ACTIONS_SX = {
   gap: 1,
   bgcolor: "#1e1e1e",
 };
-const SIDEBAR_ACTIONS_SX = { display: { xs: "none", sm: "flex" }, flexDirection: "column" };
+const SIDEBAR_ACTIONS_SX = {
+  display: { xs: "none", sm: "flex" },
+  flexDirection: "column",
+  mt: 4,
+};
 
 const DIVIDER_SX = { borderColor: "rgba(255,255,255,0.1)" };
 const SPINNER_SX = { color: "rgba(255,255,255,0.5)" };
 const DELETE_BUTTON_SX = {
-  mt: "auto",
   borderColor: "rgba(255,255,255,0.3)",
   color: "#f44336",
   "&:hover": { borderColor: "#f44336", bgcolor: "rgba(244,67,54,0.08)" },
@@ -120,6 +128,26 @@ const REDRAW_BUTTON_SX = {
   borderColor: "rgba(255,255,255,0.3)",
   color: "#2196f3",
   "&:hover": { borderColor: "#2196f3", bgcolor: "rgba(33,150,243,0.08)" },
+};
+const UPSCALE_BUTTON_SX = {
+  borderColor: "rgba(255,255,255,0.3)",
+  color: "#9c27b0",
+  "&:hover": { borderColor: "#9c27b0", bgcolor: "rgba(156,39,176,0.08)" },
+};
+const UPSCALE_BUTTON_ACTIVE_SX = {
+  ...UPSCALE_BUTTON_SX,
+  borderColor: "#9c27b0",
+  bgcolor: "rgba(156,39,176,0.24)",
+};
+const ANIMATE_BUTTON_SX = {
+  borderColor: "rgba(255,255,255,0.3)",
+  color: "#ff9800",
+  "&:hover": { borderColor: "#ff9800", bgcolor: "rgba(255,152,0,0.08)" },
+};
+const ANIMATE_BUTTON_ACTIVE_SX = {
+  ...ANIMATE_BUTTON_SX,
+  borderColor: "#ff9800",
+  bgcolor: "rgba(255,152,0,0.24)",
 };
 
 interface IImageDetailModalProps {
@@ -132,11 +160,23 @@ interface IImageDetailModalProps {
   onNavigatePrevious?: () => void;
   onNavigateNext?: () => void;
   styleLabel?: (style: string) => string;
+  animations?: string[];
 }
 
 interface IMetadataState {
   path: string | null;
   data: Record<string, string> | null;
+}
+
+interface IMarksState {
+  path: string | null;
+  upscale: boolean;
+  animateAction: string | null;
+}
+
+interface IMarksApiResponse {
+  upscale: boolean;
+  animate: { action: string } | null;
 }
 
 export function ImageDetailModal({
@@ -149,6 +189,7 @@ export function ImageDetailModal({
   onNavigatePrevious,
   onNavigateNext,
   styleLabel = formatStyleLabel,
+  animations = [],
 }: Readonly<IImageDetailModalProps>) {
   const [metadataState, setMetadataState] = useState<IMetadataState>({ path: null, data: null });
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -156,6 +197,16 @@ export function ImageDetailModal({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isRedrawing, setIsRedrawing] = useState(false);
   const [redrawError, setRedrawError] = useState<string | null>(null);
+  const [marksState, setMarksState] = useState<IMarksState>({
+    path: null,
+    upscale: false,
+    animateAction: null,
+  });
+  const [isTogglingUpscale, setIsTogglingUpscale] = useState(false);
+  const [upscaleError, setUpscaleError] = useState<string | null>(null);
+  const [isTogglingAnimate, setIsTogglingAnimate] = useState(false);
+  const [animateError, setAnimateError] = useState<string | null>(null);
+  const [animateMenuAnchorEl, setAnimateMenuAnchorEl] = useState<HTMLElement | null>(null);
   const touchStartXRef = useRef(0);
 
   const relativePath = image?.relativePath;
@@ -225,6 +276,44 @@ export function ImageDetailModal({
     };
   }, [relativePath]);
 
+  useEffect(() => {
+    if (!relativePath || !canDeleteImage) {
+      return () => {};
+    }
+
+    let isMounted = true;
+
+    fetch(`/api/marks?path=${encodeURIComponent(relativePath)}`)
+      .then((res) =>
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+        res.ok ? (res.json() as Promise<IMarksApiResponse>) : Promise.resolve(null),
+      )
+      .then((data) => {
+        if (isMounted) {
+          setMarksState({
+            path: relativePath,
+            upscale: data?.upscale ?? false,
+            animateAction: data?.animate?.action ?? null,
+          });
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setMarksState({ path: relativePath, upscale: false, animateAction: null });
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [relativePath, canDeleteImage]);
+
+  const isLoadingMetadata = Boolean(image) && metadataState.path !== relativePath;
+  const pngMetadata = useMemo(
+    () => (metadataState.path === relativePath ? metadataState.data : null),
+    [metadataState, relativePath],
+  );
+
   const handleDeleteClick = useCallback(() => {
     setDeleteError(null);
     setIsConfirmOpen(true);
@@ -291,6 +380,118 @@ export function ImageDetailModal({
     }
   }, [relativePath, onDeleteSuccess]);
 
+  const isCurrentMarksState = marksState.path === relativePath;
+  const isUpscaleMarked = isCurrentMarksState && marksState.upscale;
+  const animateAction = isCurrentMarksState ? marksState.animateAction : null;
+  const rawMetadata = pngMetadata?.parameters ?? "";
+
+  const handleToggleUpscale = useCallback(async () => {
+    if (!relativePath) {
+      return;
+    }
+
+    setIsTogglingUpscale(true);
+    setUpscaleError(null);
+
+    try {
+      const nextUpscale = !isUpscaleMarked;
+      const response = nextUpscale
+        ? await fetch("/api/marks", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: relativePath, type: "upscale", metadata: rawMetadata }),
+          })
+        : await fetch(`/api/marks?path=${encodeURIComponent(relativePath)}&type=upscale`, {
+            method: "DELETE",
+          });
+
+      if (!response.ok) {
+        setUpscaleError("Could not update the upscale mark. Try again.");
+        return;
+      }
+
+      // Merge into whatever the latest state is (functional update) rather than reconstructing
+      // it from values captured when this handler started, so a concurrent animate mark that
+      // resolved in the meantime isn't clobbered. Drop the response outright if the user has
+      // since navigated to a different image.
+      setMarksState((prev) =>
+        prev.path === relativePath ? { ...prev, upscale: nextUpscale } : prev,
+      );
+    } catch {
+      setUpscaleError("Could not update the upscale mark. Try again.");
+    } finally {
+      setIsTogglingUpscale(false);
+    }
+  }, [relativePath, isUpscaleMarked, rawMetadata]);
+
+  const handleOpenAnimateMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    setAnimateMenuAnchorEl(event.currentTarget);
+  }, []);
+
+  const handleCloseAnimateMenu = useCallback(() => {
+    setAnimateMenuAnchorEl(null);
+  }, []);
+
+  const handleSelectAnimateAction = useCallback(
+    async (action: string) => {
+      setAnimateMenuAnchorEl(null);
+
+      if (!relativePath) {
+        return;
+      }
+
+      setIsTogglingAnimate(true);
+      setAnimateError(null);
+
+      try {
+        const isRemoving = animateAction === action;
+        const response = isRemoving
+          ? await fetch(`/api/marks?path=${encodeURIComponent(relativePath)}&type=animate`, {
+              method: "DELETE",
+            })
+          : await fetch("/api/marks", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                path: relativePath,
+                type: "animate",
+                action,
+                metadata: rawMetadata,
+              }),
+            });
+
+        if (!response.ok) {
+          setAnimateError("Could not update the animate mark. Try again.");
+          return;
+        }
+
+        // See the matching comment in handleToggleUpscale: merge via functional update so a
+        // concurrent upscale toggle isn't clobbered, and drop the response if the user has
+        // since navigated to a different image.
+        setMarksState((prev) =>
+          prev.path === relativePath
+            ? { ...prev, animateAction: isRemoving ? null : action }
+            : prev,
+        );
+      } catch {
+        setAnimateError("Could not update the animate mark. Try again.");
+      } finally {
+        setIsTogglingAnimate(false);
+      }
+    },
+    [relativePath, animateAction, rawMetadata],
+  );
+
+  const handleAnimateMenuItemClick = useCallback(
+    (event: React.MouseEvent<HTMLLIElement>) => {
+      const action = event.currentTarget.dataset.action;
+      if (action) {
+        void handleSelectAnimateAction(action);
+      }
+    },
+    [handleSelectAnimateAction],
+  );
+
   const handleToggleMobileView = useCallback(() => {
     setMobileViewState((prev) => ({
       path: relativePath ?? null,
@@ -310,15 +511,11 @@ export function ImageDetailModal({
     () => ({
       ...SIDEBAR_SX,
       display: { xs: mobileView === "meta" ? "flex" : "none", sm: "flex" },
-      width: { xs: "100%", sm: 280 },
+      minWidth: { xs: "100%", sm: 280 },
+      maxWidth: { xs: "100%", sm: "30%" },
+      width: "100%",
     }),
     [mobileView],
-  );
-
-  const isLoadingMetadata = Boolean(image) && metadataState.path !== relativePath;
-  const pngMetadata = useMemo(
-    () => (metadataState.path === relativePath ? metadataState.data : null),
-    [metadataState, relativePath],
   );
 
   const handleTouchStart = useCallback((event: React.TouchEvent) => {
@@ -358,10 +555,18 @@ export function ImageDetailModal({
           {redrawError}
         </Alert>
       )}
-      <Box sx={BUTTON_CONTAINER_SX}>
+      {upscaleError && (
+        <Alert severity="error" sx={DELETE_ERROR_SX}>
+          {upscaleError}
+        </Alert>
+      )}
+      {animateError && (
+        <Alert severity="error" sx={DELETE_ERROR_SX}>
+          {animateError}
+        </Alert>
+      )}
+      <ButtonGroup variant="outlined" size="small">
         <Button
-          variant="outlined"
-          size="small"
           startIcon={<RefreshIcon />}
           onClick={handleRedrawClick}
           disabled={isRedrawing}
@@ -370,8 +575,25 @@ export function ImageDetailModal({
           {isRedrawing ? <CircularProgress size={18} /> : "Redraw"}
         </Button>
         <Button
-          variant="outlined"
-          size="small"
+          startIcon={<HighQualityIcon />}
+          onClick={handleToggleUpscale}
+          disabled={isTogglingUpscale}
+          sx={isUpscaleMarked ? UPSCALE_BUTTON_ACTIVE_SX : UPSCALE_BUTTON_SX}
+        >
+          {isTogglingUpscale ? <CircularProgress size={18} /> : "Upscale"}
+        </Button>
+        {animations.length > 0 && (
+          <Button
+            startIcon={<AnimationIcon />}
+            endIcon={<ArrowDropDownIcon />}
+            onClick={handleOpenAnimateMenu}
+            disabled={isTogglingAnimate}
+            sx={animateAction ? ANIMATE_BUTTON_ACTIVE_SX : ANIMATE_BUTTON_SX}
+          >
+            {isTogglingAnimate ? <CircularProgress size={18} /> : (animateAction ?? "Animate")}
+          </Button>
+        )}
+        <Button
           startIcon={<DeleteIcon />}
           onClick={handleDeleteClick}
           disabled={isDeleting}
@@ -379,7 +601,7 @@ export function ImageDetailModal({
         >
           {isDeleting ? <CircularProgress size={18} /> : "Delete image"}
         </Button>
-      </Box>
+      </ButtonGroup>
     </>
   );
 
@@ -389,7 +611,7 @@ export function ImageDetailModal({
 
   return (
     <>
-      <Dialog open={Boolean(image)} onClose={onClose} maxWidth="xl" fullWidth sx={DIALOG_SX}>
+      <Dialog open={Boolean(image)} onClose={onClose} maxWidth={false} fullWidth sx={DIALOG_SX}>
         <DialogContent sx={DIALOG_CONTENT_SX}>
           <Box sx={CONTENT_BOX_SX}>
             {/* Close button */}
@@ -437,6 +659,13 @@ export function ImageDetailModal({
 
             {/* Metadata sidebar */}
             <Box sx={sidebarSx}>
+              {canDeleteImage && (
+                <Box sx={SIDEBAR_ACTIONS_SX}>
+                  {imageActions}
+                  <Divider sx={DIVIDER_SX} />
+                </Box>
+              )}
+
               <Box>
                 <Typography variant="caption" sx={CAPTION_SX}>
                   Character
@@ -487,17 +716,27 @@ export function ImageDetailModal({
                     </Box>
                   ),
                 )}
-
-              {canDeleteImage && (
-                <Box sx={SIDEBAR_ACTIONS_SX}>
-                  <Divider sx={DIVIDER_SX} />
-                  {imageActions}
-                </Box>
-              )}
             </Box>
           </Box>
         </DialogContent>
       </Dialog>
+
+      <Menu
+        anchorEl={animateMenuAnchorEl}
+        open={Boolean(animateMenuAnchorEl)}
+        onClose={handleCloseAnimateMenu}
+      >
+        {animations.map((animationName) => (
+          <MenuItem
+            key={animationName}
+            data-action={animationName}
+            selected={animateAction === animationName}
+            onClick={handleAnimateMenuItemClick}
+          >
+            {animationName}
+          </MenuItem>
+        ))}
+      </Menu>
 
       <Dialog open={isConfirmOpen} onClose={handleConfirmClose}>
         <DialogTitle>Delete image?</DialogTitle>

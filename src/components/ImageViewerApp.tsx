@@ -637,6 +637,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         onNavigatePrevious={handleModalPrevious}
         onNavigateNext={handleModalNext}
         styleLabel={styleLabel}
+        animations={library.animations}
       />
 
       <DuplicateFinderModal

@@ -27,6 +27,7 @@ const createMockLibrary = (overrides?: Partial<ILibraryData>): ILibraryData => {
     rootPath: "/tmp/images",
     defaultStyle: "3d",
     styles: ["realistic", "3d", "anime"],
+    animations: [],
     images: [],
     characters: [],
     poses: [],
