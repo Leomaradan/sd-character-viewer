@@ -9,6 +9,7 @@ import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 import {
   findDuplicateGroups,
   getImagesRootPathFromEnv,
+  getRelativePathRootPrefix,
   isDuplicateGroupReviewed,
   parsePoseName,
   readImageLibrary,
@@ -228,8 +229,15 @@ const parseValidateRequest = async (
         (relativePath) => relativePath !== primaryRelativePath,
       );
 
-  const isCharacterImagePath = (value: string): boolean =>
-    value.replaceAll("\\", "/").startsWith("characters/");
+  // Images living in an extra images root carry an "extra-roots/<index>/" prefix ahead of
+  // "characters/..." (see getRelativePathRootPrefix in image-library.ts).
+  const isCharacterImagePath = (value: string): boolean => {
+    const normalizedValue = value.replaceAll("\\", "/");
+    return (
+      normalizedValue.startsWith("characters/") ||
+      /^extra-roots\/\d+\/characters\//.test(normalizedValue)
+    );
+  };
   if (
     !isCharacterImagePath(primaryRelativePath) ||
     additionalRelativePaths.some((relativePath) => !isCharacterImagePath(relativePath))
@@ -260,8 +268,12 @@ const parseValidateRequest = async (
   const style = path.basename(path.dirname(directory));
   const { poseBaseName } = parsePoseName(path.basename(primaryFilePath));
 
+  // Every image resolved to the same on-disk directory above, so they all belong to the same
+  // images root; reuse the primary path's root prefix ("" for the main root, or
+  // "extra-roots/<index>" for an extra root) to rebuild relativePaths under that same root.
+  const relativePathPrefix = getRelativePathRootPrefix(primaryRelativePath);
   const toRelativePath = (fileName: string): string =>
-    path.posix.join("characters", style, characterName, fileName);
+    path.posix.join(relativePathPrefix, "characters", style, characterName, fileName);
 
   const keptFileNames = rejectAll
     ? []

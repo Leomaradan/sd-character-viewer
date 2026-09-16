@@ -1,9 +1,13 @@
 import Ajv from "ajv";
-import { promises as fs } from "node:fs";
+import { promises as fs, readdirSync, statSync, type Dirent } from "node:fs";
 import path from "node:path";
 
 import { ensureLocalEnvLoaded } from "@/lib/env";
-import { SD_CACHE_DIR_ENV_KEY, SD_IMAGES_ROOT_ENV_KEY } from "@/lib/env-keys";
+import {
+  SD_CACHE_DIR_ENV_KEY,
+  SD_EXTRA_IMAGES_ROOT_ENV_KEY,
+  SD_IMAGES_ROOT_ENV_KEY,
+} from "@/lib/env-keys";
 import {
   STYLES,
   type ICharacterSummary,
@@ -22,13 +26,19 @@ const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
 const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
-const LIBRARY_INDEX_CACHE_VERSION = 3;
+const LIBRARY_INDEX_CACHE_VERSION = 4;
 const PREVIEW_FILE_SUFFIX = ".preview.jpg";
 const LIBRARY_CONFIG_FILE_NAME = "config.json";
 const CHARACTERS_CONFIG_FILE_NAME = "characters.json";
 const POSE_FILTERS_FILE_NAME = "pose-filters.json";
 const DUPLICATE_REVIEW_CONFIG_FILE_NAME = "duplicate-reviews.json";
 const DEFAULT_POSE_PATTERN_FILTER_CONFIGS = [{ label: "With Somebody", pattern: "^With " }];
+// Extra image roots are exposed to the client as a virtual relativePath prefix
+// (e.g. "extra-roots/0/characters/3d/Anna/Base.png") so the same "path" query param used to
+// view/delete/rename a main-root image can also address an image living in an extra root,
+// without colliding with a same-named file in the main root or another extra root.
+const EXTRA_ROOT_PATH_SEGMENT = "extra-roots";
+const MAIN_ROOT_KEY = "main";
 
 interface ILibraryConfig {
   styles?: string[];
@@ -87,6 +97,8 @@ interface ILibraryIndexCacheFile {
   generatedAt: number;
   configFiles: ICacheFileSnapshot[];
   directories: ICacheFileSnapshot[];
+  extraRootPaths: string[];
+  extraDirectories: ICacheFileSnapshot[];
   library: ILibraryData;
 }
 
@@ -289,6 +301,89 @@ const normalizeRelativePath = (filePath: string): string => {
 
 const compareNatural = (a: string, b: string): number => {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+};
+
+const buildExtraRootRelativePrefix = (extraRootIndex: number): string => {
+  return `${EXTRA_ROOT_PATH_SEGMENT}/${extraRootIndex}`;
+};
+
+const parseExtraRootRelativePath = (
+  relativePath: string,
+): { extraRootIndex: number; remainder: string } | null => {
+  const match = new RegExp(`^${EXTRA_ROOT_PATH_SEGMENT}/(\\d+)/(.+)$`).exec(relativePath);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    extraRootIndex: Number.parseInt(match[1], 10),
+    remainder: match[2],
+  };
+};
+
+// Returns "" for a main-root relativePath, or the "extra-roots/<index>" prefix to reconstruct
+// a relativePath under the same extra root as the one passed in.
+export const getRelativePathRootPrefix = (relativePath: string): string => {
+  const extraRootMatch = parseExtraRootRelativePath(relativePath);
+  return extraRootMatch ? buildExtraRootRelativePrefix(extraRootMatch.extraRootIndex) : "";
+};
+
+const directoryHasCharactersFolder = (directoryPath: string): boolean => {
+  try {
+    return statSync(path.join(directoryPath, "characters")).isDirectory();
+  } catch {
+    return false;
+  }
+};
+
+// Each configured entry is either an images root itself (it directly contains a "characters"
+// folder) or a parent directory whose immediate subdirectories are each their own images root
+// (useful for Docker, where a single bind mount can only map one host path: mounting a parent
+// directory lets several unrelated host folders act as separate extra roots).
+const resolveExtraImageRoots = (): string[] => {
+  const rawValue = process.env[SD_EXTRA_IMAGES_ROOT_ENV_KEY]?.trim();
+
+  if (!rawValue) {
+    return [];
+  }
+
+  const configuredPaths = rawValue
+    .split(path.delimiter)
+    .map((value) => value.trim())
+    .filter((value) => value !== "");
+
+  const resolvedRoots: string[] = [];
+
+  for (const configuredPath of configuredPaths) {
+    if (directoryHasCharactersFolder(configuredPath)) {
+      resolvedRoots.push(path.resolve(configuredPath));
+      continue;
+    }
+
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(configuredPath, { withFileTypes: true, encoding: "utf8" });
+    } catch {
+      continue;
+    }
+
+    const subdirectoryRoots = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .filter((name) => directoryHasCharactersFolder(path.join(configuredPath, name)))
+      .sort(compareNatural)
+      .map((name) => path.resolve(path.join(configuredPath, name)));
+
+    resolvedRoots.push(...subdirectoryRoots);
+  }
+
+  return [...new Set(resolvedRoots)];
+};
+
+export const getExtraImagesRootPathsFromEnv = (): string[] => {
+  ensureLocalEnvLoaded();
+  return resolveExtraImageRoots();
 };
 
 const ucFirst = (value: string): string => {
@@ -569,7 +664,11 @@ export const findDuplicateGroups = (images: IImageItem[]): IDuplicateGroup[] => 
   const imagesByGroupKey = new Map<string, IImageItem[]>();
 
   for (const image of images) {
-    const groupKey = `${image.style}::${image.characterName}::${image.poseBaseName}`;
+    // Images are grouped for duplicate detection only within the same images root: an image
+    // living in an extra root and one living in the main root (or a different extra root) may
+    // share the same style/character/pose, but they're not in the same directory on disk, and
+    // the "keep the primary, renumber the rest" validation flow assumes a single directory.
+    const groupKey = `${getRelativePathRootPrefix(image.relativePath)}::${image.style}::${image.characterName}::${image.poseBaseName}`;
     const existingGroupImages = imagesByGroupKey.get(groupKey);
 
     if (existingGroupImages) {
@@ -821,14 +920,16 @@ const buildImageItem = (
   characterName: string,
   pngFile: string,
   modifiedAt: number,
+  rootKey: string,
+  relativePathPrefix: string,
 ): IImageItem => {
   const parsedPose = parsePoseName(pngFile);
   const relativePath = normalizeRelativePath(
-    path.join("characters", style, characterName, pngFile),
+    path.join(relativePathPrefix, "characters", style, characterName, pngFile),
   );
 
   return {
-    id: `${style}::${characterName}::${pngFile}`,
+    id: `${rootKey}::${style}::${characterName}::${pngFile}`,
     style,
     characterName,
     poseName: parsedPose.poseName,
@@ -947,6 +1048,36 @@ const areSnapshotsEqual = (
   });
 };
 
+const areStringArraysEqual = (a: string[], b: string[]): boolean => {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+};
+
+// Snapshots every extra root's "characters" tree, tagging each entry's relativePath with the
+// root's index so entries never collide across roots and so a change to the resolved list of
+// extra roots itself (one added/removed/reordered) is caught by comparing extraRootPaths too.
+const collectExtraDirectorySnapshots = async (
+  extraRootPaths: string[],
+): Promise<ICacheFileSnapshot[]> => {
+  const snapshotsByRoot = await Promise.all(
+    extraRootPaths.map(async (extraRootPath, extraRootIndex) => {
+      try {
+        const snapshots = await collectDirectorySnapshots(
+          extraRootPath,
+          path.join(extraRootPath, "characters"),
+        );
+        return snapshots.map((snapshot) => ({
+          relativePath: `${extraRootIndex}/${snapshot.relativePath}`,
+          modifiedAt: snapshot.modifiedAt,
+        }));
+      } catch {
+        return [];
+      }
+    }),
+  );
+
+  return snapshotsByRoot.flat();
+};
+
 const refreshCachedLibrary = (library: ILibraryData): ILibraryData => {
   const now = Date.now();
   return {
@@ -962,6 +1093,7 @@ const refreshCachedLibrary = (library: ILibraryData): ILibraryData => {
 const readLibraryIndexCache = async (
   rootPath: string,
   charactersRootPath: string,
+  extraRootPaths: string[],
 ): Promise<ILibraryData | null> => {
   const cachePath = getLibraryIndexCachePath(rootPath);
 
@@ -973,19 +1105,22 @@ const readLibraryIndexCache = async (
     if (
       cacheFile.version !== LIBRARY_INDEX_CACHE_VERSION ||
       cacheFile.rootPath !== path.resolve(rootPath) ||
-      !cacheFile.library?.rootConfigured
+      !cacheFile.library?.rootConfigured ||
+      !areStringArraysEqual(cacheFile.extraRootPaths ?? [], extraRootPaths)
     ) {
       return null;
     }
 
-    const [configFiles, directories] = await Promise.all([
+    const [configFiles, directories, extraDirectories] = await Promise.all([
       collectConfigFileSnapshots(rootPath),
       collectDirectorySnapshots(rootPath, charactersRootPath),
+      collectExtraDirectorySnapshots(extraRootPaths),
     ]);
 
     if (
       !areSnapshotsEqual(configFiles, cacheFile.configFiles) ||
-      !areSnapshotsEqual(directories, cacheFile.directories)
+      !areSnapshotsEqual(directories, cacheFile.directories) ||
+      !areSnapshotsEqual(extraDirectories, cacheFile.extraDirectories ?? [])
     ) {
       return null;
     }
@@ -999,14 +1134,16 @@ const readLibraryIndexCache = async (
 const writeLibraryIndexCache = async (
   rootPath: string,
   charactersRootPath: string,
+  extraRootPaths: string[],
   library: ILibraryData,
 ): Promise<boolean> => {
   const cachePath = getLibraryIndexCachePath(rootPath);
 
   try {
-    const [configFiles, directories] = await Promise.all([
+    const [configFiles, directories, extraDirectories] = await Promise.all([
       collectConfigFileSnapshots(rootPath),
       collectDirectorySnapshots(rootPath, charactersRootPath),
+      collectExtraDirectorySnapshots(extraRootPaths),
     ]);
     const cacheFile: ILibraryIndexCacheFile = {
       version: LIBRARY_INDEX_CACHE_VERSION,
@@ -1014,6 +1151,8 @@ const writeLibraryIndexCache = async (
       generatedAt: Date.now(),
       configFiles,
       directories,
+      extraRootPaths,
+      extraDirectories,
       library: { ...library, cacheAvailable: true },
     };
 
@@ -1168,18 +1307,33 @@ const mergeIndexState = (target: ILibraryIndexState, source: ILibraryIndexState)
   }
 };
 
+interface IImageRootContext {
+  rootKey: string;
+  relativePathPrefix: string;
+}
+
+const MAIN_ROOT_CONTEXT: IImageRootContext = { rootKey: MAIN_ROOT_KEY, relativePathPrefix: "" };
+
 const indexCharacterFolder = async (
   style: string,
   characterName: string,
   characterFolderPath: string,
   state: ILibraryIndexState,
+  rootContext: IImageRootContext,
 ): Promise<void> => {
   const pngFiles = await listPngFiles(characterFolderPath);
 
   for (const pngFile of pngFiles) {
     const imagePath = path.join(characterFolderPath, pngFile);
     const stat = await fs.stat(imagePath);
-    const imageItem = buildImageItem(style, characterName, pngFile, Math.trunc(stat.mtimeMs));
+    const imageItem = buildImageItem(
+      style,
+      characterName,
+      pngFile,
+      Math.trunc(stat.mtimeMs),
+      rootContext.rootKey,
+      rootContext.relativePathPrefix,
+    );
     state.imageItems.push(imageItem);
     updateCharacterAccumulator(state.characterMap, imageItem);
     incrementPoseCounter(state.poseCounter, imageItem.poseBaseName);
@@ -1190,6 +1344,7 @@ const indexStyleFolder = async (
   style: string,
   stylePath: string,
   state: ILibraryIndexState,
+  rootContext: IImageRootContext,
 ): Promise<void> => {
   const characterEntries = await fs.readdir(stylePath, { withFileTypes: true });
 
@@ -1200,8 +1355,49 @@ const indexStyleFolder = async (
 
     const characterName = characterEntry.name;
     const characterFolderPath = path.join(stylePath, characterName);
-    await indexCharacterFolder(style, characterName, characterFolderPath, state);
+    await indexCharacterFolder(style, characterName, characterFolderPath, state, rootContext);
   }
+};
+
+// Extra roots only ever contribute images for styles resolved from the main root's config.json
+// (styles/defaultStyle/styleLabels are never read from an extra root), and a missing or
+// unreadable "characters" folder in one extra root is skipped rather than failing the whole
+// library load.
+const indexExtraImageRoots = async (
+  extraRootPaths: string[],
+  availableStyles: string[],
+): Promise<ILibraryIndexState[]> => {
+  return Promise.all(
+    extraRootPaths.map(async (extraRootPath, extraRootIndex) => {
+      const rootContext: IImageRootContext = {
+        rootKey: `extra-${extraRootIndex}`,
+        relativePathPrefix: buildExtraRootRelativePrefix(extraRootIndex),
+      };
+      const extraCharactersRootPath = path.join(extraRootPath, "characters");
+
+      let extraAvailableStyles: string[] = [];
+      try {
+        extraAvailableStyles = await resolveStyleFolders(extraCharactersRootPath, availableStyles);
+      } catch {
+        return createLibraryIndexState();
+      }
+
+      const styleStates = await Promise.all(
+        extraAvailableStyles.map(async (style) => {
+          const stylePath = path.join(extraCharactersRootPath, style);
+          const styleState = createLibraryIndexState();
+          await indexStyleFolder(style, stylePath, styleState, rootContext);
+          return styleState;
+        }),
+      );
+
+      const combinedState = createLibraryIndexState();
+      for (const styleState of styleStates) {
+        mergeIndexState(combinedState, styleState);
+      }
+      return combinedState;
+    }),
+  );
 };
 
 const sortImageItems = (imageItems: IImageItem[]): void => {
@@ -1309,8 +1505,9 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
   const charactersRootPath = path.join(rootPath, "characters");
   let metadataByCharacter = new Map<string, ICharacterMetadataSummary>();
   const posePatternFilters = await readPosePatternFilters(rootPath);
+  const extraRootPaths = getExtraImagesRootPathsFromEnv();
 
-  const cachedLibrary = await readLibraryIndexCache(rootPath, charactersRootPath);
+  const cachedLibrary = await readLibraryIndexCache(rootPath, charactersRootPath, extraRootPaths);
   if (cachedLibrary) {
     return cachedLibrary;
   }
@@ -1345,13 +1542,15 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
     availableStyles.map(async (style) => {
       const stylePath = path.join(charactersRootPath, style);
       const styleState = createLibraryIndexState();
-      await indexStyleFolder(style, stylePath, styleState);
+      await indexStyleFolder(style, stylePath, styleState, MAIN_ROOT_CONTEXT);
       return styleState;
     }),
   );
 
+  const extraRootStates = await indexExtraImageRoots(extraRootPaths, availableStyles);
+
   const indexState = createLibraryIndexState();
-  for (const styleState of styleStates) {
+  for (const styleState of [...styleStates, ...extraRootStates]) {
     mergeIndexState(indexState, styleState);
   }
 
@@ -1376,18 +1575,17 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
     cacheAvailable,
   );
 
-  const libraryCacheWritable = await writeLibraryIndexCache(rootPath, charactersRootPath, library);
+  const libraryCacheWritable = await writeLibraryIndexCache(
+    rootPath,
+    charactersRootPath,
+    extraRootPaths,
+    library,
+  );
 
   return { ...library, cacheAvailable: cacheAvailable && libraryCacheWritable };
 };
 
-export const resolveImageFilePath = (relativePath: string): string | null => {
-  const rootPath = getImagesRootPathFromEnv();
-
-  if (!rootPath) {
-    return null;
-  }
-
+const resolveFilePathUnderRoot = (rootPath: string, relativePath: string): string | null => {
   if (!relativePath || path.isAbsolute(relativePath)) {
     return null;
   }
@@ -1408,6 +1606,32 @@ export const resolveImageFilePath = (relativePath: string): string | null => {
   }
 
   return fullPath;
+};
+
+export const resolveImageFilePath = (relativePath: string): string | null => {
+  if (!relativePath || path.isAbsolute(relativePath)) {
+    return null;
+  }
+
+  const extraRootMatch = parseExtraRootRelativePath(relativePath);
+
+  if (extraRootMatch) {
+    const extraRootPath = getExtraImagesRootPathsFromEnv()[extraRootMatch.extraRootIndex];
+
+    if (!extraRootPath) {
+      return null;
+    }
+
+    return resolveFilePathUnderRoot(extraRootPath, extraRootMatch.remainder);
+  }
+
+  const rootPath = getImagesRootPathFromEnv();
+
+  if (!rootPath) {
+    return null;
+  }
+
+  return resolveFilePathUnderRoot(rootPath, relativePath);
 };
 
 export const resolvePreviewFilePath = (pngFilePath: string): string => {
