@@ -11,6 +11,7 @@ import {
   Alert,
   Box,
   Button,
+  ButtonGroup,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -96,7 +97,6 @@ const SIDEBAR_SX = {
 const META_BODY_SX = { mt: 0.5, opacity: 0.8 };
 
 const METADATA_LOADING_SX = { display: "flex", justifyContent: "center", pt: 1 };
-const BUTTON_CONTAINER_SX = { display: "flex", gap: 1 };
 const MOBILE_ACTIONS_SX = {
   display: { xs: "flex", sm: "none" },
   flexDirection: "column",
@@ -105,12 +105,15 @@ const MOBILE_ACTIONS_SX = {
   gap: 1,
   bgcolor: "#1e1e1e",
 };
-const SIDEBAR_ACTIONS_SX = { display: { xs: "none", sm: "flex" }, flexDirection: "column" };
+const SIDEBAR_ACTIONS_SX = {
+  display: { xs: "none", sm: "flex" },
+  flexDirection: "column",
+  mt: 4,
+};
 
 const DIVIDER_SX = { borderColor: "rgba(255,255,255,0.1)" };
 const SPINNER_SX = { color: "rgba(255,255,255,0.5)" };
 const DELETE_BUTTON_SX = {
-  mt: "auto",
   borderColor: "rgba(255,255,255,0.3)",
   color: "#f44336",
   "&:hover": { borderColor: "#f44336", bgcolor: "rgba(244,67,54,0.08)" },
@@ -358,10 +361,8 @@ export function ImageDetailModal({
           {redrawError}
         </Alert>
       )}
-      <Box sx={BUTTON_CONTAINER_SX}>
+      <ButtonGroup variant="outlined" size="small">
         <Button
-          variant="outlined"
-          size="small"
           startIcon={<RefreshIcon />}
           onClick={handleRedrawClick}
           disabled={isRedrawing}
@@ -370,8 +371,6 @@ export function ImageDetailModal({
           {isRedrawing ? <CircularProgress size={18} /> : "Redraw"}
         </Button>
         <Button
-          variant="outlined"
-          size="small"
           startIcon={<DeleteIcon />}
           onClick={handleDeleteClick}
           disabled={isDeleting}
@@ -379,7 +378,7 @@ export function ImageDetailModal({
         >
           {isDeleting ? <CircularProgress size={18} /> : "Delete image"}
         </Button>
-      </Box>
+      </ButtonGroup>
     </>
   );
 
@@ -437,6 +436,13 @@ export function ImageDetailModal({
 
             {/* Metadata sidebar */}
             <Box sx={sidebarSx}>
+              {canDeleteImage && (
+                <Box sx={SIDEBAR_ACTIONS_SX}>
+                  {imageActions}
+                  <Divider sx={DIVIDER_SX} />
+                </Box>
+              )}
+
               <Box>
                 <Typography variant="caption" sx={CAPTION_SX}>
                   Character
@@ -487,13 +493,6 @@ export function ImageDetailModal({
                     </Box>
                   ),
                 )}
-
-              {canDeleteImage && (
-                <Box sx={SIDEBAR_ACTIONS_SX}>
-                  <Divider sx={DIVIDER_SX} />
-                  {imageActions}
-                </Box>
-              )}
             </Box>
           </Box>
         </DialogContent>
