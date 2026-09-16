@@ -711,6 +711,8 @@ describe("POST /api/duplicates", () => {
   });
 
   it("returns 500 when a file operation fails mid-validation", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
     vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
@@ -735,5 +737,9 @@ describe("POST /api/duplicates", () => {
     );
 
     expect(response.status).toBe(500);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "Error validating duplicate group:",
+      expect.anything(),
+    );
   });
 });
