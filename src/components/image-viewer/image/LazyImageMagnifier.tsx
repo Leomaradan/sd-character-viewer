@@ -2,9 +2,11 @@
 
 import type { SxProps, Theme } from "@mui/material/styles";
 
-import { Box } from "@mui/material";
+import ZoomInIcon from "@mui/icons-material/ZoomIn";
+import ZoomOutIcon from "@mui/icons-material/ZoomOut";
+import { Box, IconButton } from "@mui/material";
 import { EasyZoomOnMove } from "easy-magnify";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getImageUrl } from "@/components/image-viewer/common/utils";
 
@@ -25,6 +27,31 @@ interface INaturalSize extends IDimensions {
 }
 
 const FALLBACK_IMAGE_SX: SxProps<Theme> = { width: "100%", height: "100%", objectFit: "cover" };
+const INNER_WRAPPER_SX: SxProps<Theme> = {
+  position: "relative",
+  width: "100%",
+  height: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+const PLAIN_IMAGE_SX: SxProps<Theme> = {
+  maxWidth: "100%",
+  maxHeight: "100%",
+  width: "auto",
+  height: "auto",
+  objectFit: "contain",
+  display: "block",
+};
+const ZOOM_TOGGLE_BUTTON_SX: SxProps<Theme> = {
+  position: "absolute",
+  top: 8,
+  right: 8,
+  zIndex: 5,
+  bgcolor: "rgba(0, 0, 0, 0.7)",
+  color: "#fff",
+  "&:hover": { bgcolor: "rgba(0, 0, 0, 0.9)" },
+};
 
 export const LazyImageMagnifier = ({
   relativePath,
@@ -37,6 +64,11 @@ export const LazyImageMagnifier = ({
   const [containerSize, setContainerSize] = useState<IDimensions | null>(null);
   const [naturalSize, setNaturalSize] = useState<INaturalSize | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [zoomEnabled, setZoomEnabled] = useState(false);
+
+  const handleToggleZoom = useCallback(() => {
+    setZoomEnabled((previous) => !previous);
+  }, []);
 
   useEffect(() => {
     if (shouldLoad) {
@@ -157,12 +189,28 @@ export const LazyImageMagnifier = ({
 
   return (
     <Box ref={imageContainerRef} sx={sx}>
-      {shouldLoad && mainImage ? (
-        <EasyZoomOnMove mainImage={mainImage} zoomImage={zoomImage} />
-      ) : null}
-      {shouldLoad && loadError ? (
-        <Box component="img" src={imageUrl} alt={alt} sx={FALLBACK_IMAGE_SX} />
-      ) : null}
+      <Box sx={INNER_WRAPPER_SX}>
+        {shouldLoad && mainImage ? (
+          zoomEnabled ? (
+            <EasyZoomOnMove mainImage={mainImage} zoomImage={zoomImage} />
+          ) : (
+            <Box component="img" src={imageUrl} alt={alt} sx={PLAIN_IMAGE_SX} />
+          )
+        ) : null}
+        {shouldLoad && loadError ? (
+          <Box component="img" src={imageUrl} alt={alt} sx={FALLBACK_IMAGE_SX} />
+        ) : null}
+        {shouldLoad && mainImage ? (
+          <IconButton
+            aria-label={zoomEnabled ? "Disable zoom" : "Enable zoom"}
+            onClick={handleToggleZoom}
+            size="small"
+            sx={ZOOM_TOGGLE_BUTTON_SX}
+          >
+            {zoomEnabled ? <ZoomOutIcon fontSize="small" /> : <ZoomInIcon fontSize="small" />}
+          </IconButton>
+        ) : null}
+      </Box>
     </Box>
   );
 };

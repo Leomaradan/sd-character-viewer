@@ -2,7 +2,7 @@
 
 // oxlint-disable-next-line import/no-unassigned-import
 import "@testing-library/jest-dom/vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LazyImageMagnifier } from "@/components/image-viewer/image/LazyImageMagnifier";
@@ -90,7 +90,7 @@ describe("LazyImageMagnifier", () => {
     expect(screen.queryByTestId("magnifier")).not.toBeInTheDocument();
   });
 
-  it("renders the magnifier once the full image finishes loading", () => {
+  it("shows a plain image by default, and reveals the magnifier once zoom is toggled on", () => {
     render(
       <LazyImageMagnifier relativePath="characters/3d/Anna/Base.png" alt="Anna" sx={emptySx} />,
     );
@@ -104,11 +104,22 @@ describe("LazyImageMagnifier", () => {
       FakeImage.instances[0].onload?.();
     });
 
+    expect(screen.queryByTestId("magnifier")).not.toBeInTheDocument();
+    expect(screen.getByAltText("Anna")).toHaveAttribute(
+      "src",
+      "/api/image?path=characters%2F3d%2FAnna%2FBase.png",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Enable zoom" }));
+
     const magnifier = screen.getByTestId("magnifier");
     expect(magnifier).toHaveAttribute(
       "data-zoom",
       "/api/image?path=characters%2F3d%2FAnna%2FBase.png",
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Disable zoom" }));
+    expect(screen.queryByTestId("magnifier")).not.toBeInTheDocument();
   });
 
   it("falls back to a plain preview image when the full image fails to load", () => {
