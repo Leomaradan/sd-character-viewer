@@ -1,4 +1,4 @@
-import type { TCharacterSortOrder } from "@/types/library";
+import type { TCharacterSortOrder, TMediaTypeFilter } from "@/types/library";
 
 interface IQueryParamsReader {
   get: (key: string) => string | null;
@@ -43,6 +43,11 @@ export const parseShowOnlyNewImages = (queryParams: IQueryParamsReader): boolean
 export const parseCharacterSortOrder = (queryParams: IQueryParamsReader): TCharacterSortOrder => {
   const rawValue = queryParams.get("sort")?.trim().toLowerCase();
   return rawValue === "date" ? "date" : "name";
+};
+
+export const parseMediaTypeFilter = (queryParams: IQueryParamsReader): TMediaTypeFilter => {
+  const rawValue = queryParams.get("media")?.trim().toLowerCase();
+  return rawValue === "image" || rawValue === "video" ? rawValue : "both";
 };
 
 export const parseStyleViewStyle = (queryParams: IQueryParamsReader): string => {

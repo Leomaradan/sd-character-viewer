@@ -8,12 +8,14 @@ import type {
   IImageItem,
   IMetadataFilterOption,
   TCharacterSortOrder,
+  TMediaTypeFilter,
 } from "@/types/library";
 
 import { ImageCard } from "@/components/image-viewer/image/ImageCard";
 
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
+import { MediaTypeFilter } from "../common/MediaTypeFilter";
 import { PoseView } from "../posesView/PoseView";
 import { StyleView } from "../stylesView/StyleView";
 import { CharacterView } from "./CharacterView";
@@ -35,6 +37,8 @@ interface ICharactersViewProps {
   visibleCharacterDetailImages: IImageItem[];
   showNewBadge: boolean;
   characterSortOrder: TCharacterSortOrder;
+  mediaTypeFilter: TMediaTypeFilter;
+  onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   onSelectCharacter: (characterName: string | null) => void;
   onCharacterDetailStyleChange: (style: string) => void;
   onCharacterDetailPoseChange: (pose: string) => void;
@@ -94,6 +98,8 @@ export const CharactersView = ({
   visibleCharacterDetailImages,
   showNewBadge,
   characterSortOrder,
+  mediaTypeFilter,
+  onMediaTypeFilterChange,
   onSelectCharacter,
   onMetadataFilterChange,
   onClearMetadataFilter,
@@ -198,6 +204,10 @@ export const CharactersView = ({
                 primary={characterDetailStyle === style}
               />
             ))}
+            <MediaTypeFilter
+              mediaTypeFilter={mediaTypeFilter}
+              onMediaTypeFilterChange={onMediaTypeFilterChange}
+            />
           </Stack>
 
           <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>

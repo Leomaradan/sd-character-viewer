@@ -3,12 +3,13 @@
 import { Box, type SelectChangeEvent, Stack, TextField } from "@mui/material";
 import { useCallback, useMemo } from "react";
 
-import type { IImageItem, IMetadataFilterOption } from "@/types/library";
+import type { IImageItem, IMetadataFilterOption, TMediaTypeFilter } from "@/types/library";
 
 import { ImageCard } from "@/components/image-viewer/image/ImageCard";
 
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
+import { MediaTypeFilter } from "../common/MediaTypeFilter";
 import { SearchField } from "../common/SearchField";
 import { StyleView } from "./StyleView";
 
@@ -21,6 +22,8 @@ interface IStylesViewProps {
   selectedMetadataFilterId: string;
   styleFilteredImages: IImageItem[];
   showNewBadge: boolean;
+  mediaTypeFilter: TMediaTypeFilter;
+  onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   onStyleSelect: (style: string) => void;
   onMetadataFilterChange: (event: SelectChangeEvent) => void;
   onClearMetadataFilter: () => void;
@@ -37,6 +40,8 @@ export const StylesView = ({
   selectedMetadataFilterId,
   styleFilteredImages,
   showNewBadge,
+  mediaTypeFilter,
+  onMediaTypeFilterChange,
   onStyleSelect,
   onMetadataFilterChange,
   onClearMetadataFilter,
@@ -73,6 +78,10 @@ export const StylesView = ({
             onStyleSelect={onStyleSelect}
           />
         ))}
+        <MediaTypeFilter
+          mediaTypeFilter={mediaTypeFilter}
+          onMediaTypeFilterChange={onMediaTypeFilterChange}
+        />
       </Stack>
 
       <TextField
