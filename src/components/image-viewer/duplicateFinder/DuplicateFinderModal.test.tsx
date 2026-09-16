@@ -245,6 +245,35 @@ describe("DuplicateFinderModal", () => {
     expect(screen.getByText(/Bob - Base/)).toBeInTheDocument();
   });
 
+  it("falls back to showing every remaining group once the selected style's last group is resolved", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            groups: [buildGroup("group-a", "Anna", "3d"), buildGroup("group-b", "Bob", "anime")],
+          }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} />);
+    await screen.findByText(/Anna - Base/);
+
+    // Filter down to the "anime" group and resolve it while filtered.
+    fireEvent.mouseDown(screen.getByLabelText("Style"));
+    fireEvent.click(await screen.findByRole("option", { name: "Anime" }));
+    expect(screen.queryByText(/Anna - Base/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await waitFor(() => expect(screen.queryByText(/Bob - Base/)).not.toBeInTheDocument());
+
+    // The only remaining group ("3d") must reappear without needing a reload or a way to
+    // reselect a now-nonexistent filter option.
+    expect(screen.getByText(/Anna - Base/)).toBeInTheDocument();
+    expect(screen.queryByText("No duplicates to review.")).not.toBeInTheDocument();
+    expect(screen.queryByText("No duplicate groups match this style.")).not.toBeInTheDocument();
+  });
+
   it("lets the user change the primary image and toggle which images are kept", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
@@ -417,6 +446,38 @@ describe("DuplicateFinderModal", () => {
     expect(screen.getByText(/Anna - Base/)).toBeInTheDocument();
   });
 
+  it("collapses and expands a group's images and actions when the header is clicked", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ groups: [buildGroup("group-a", "Anna")] }),
+    });
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} />);
+    await screen.findByText(/Anna - Base/);
+
+    expect(screen.getByTestId("duplicate-images-group-a")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Validate" })).toBeVisible();
+
+    const header = screen.getByRole("button", { name: "Collapse group" });
+    expect(header).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(header);
+
+    expect(screen.getByRole("button", { name: "Expand group" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    await waitFor(() => expect(screen.getByTestId("duplicate-images-group-a")).not.toBeVisible());
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand group" }));
+
+    expect(screen.getByTestId("duplicate-images-group-a")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Collapse group" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
   it("shows a group-level error when rejection throws", async () => {
     fetchMock
       .mockResolvedValueOnce({
@@ -432,6 +493,69 @@ describe("DuplicateFinderModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reject group" }));
 
     await screen.findByText("Could not reject this group. Try again.");
+    expect(screen.getByText(/Anna - Base/)).toBeInTheDocument();
+  });
+
+  it("redraws the primary image and reloads the groups on success", async () => {
+    const onChangesApplied = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ groups: [buildGroup("group-a", "Anna")] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ newPath: "characters/3d/Anna/Base 3.png" }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ groups: [] }) });
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} onChangesApplied={onChangesApplied} />);
+    await screen.findByText(/Anna - Base/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Redraw primary" }));
+
+    await waitFor(() => expect(screen.getByText("No duplicates to review.")).toBeInTheDocument());
+    expect(onChangesApplied).toHaveBeenCalledTimes(1);
+
+    const [, redrawCall, reloadCall] = fetchMock.mock.calls;
+    expect(redrawCall[0]).toBe(
+      `/api/image?path=${encodeURIComponent("characters/3d/Anna/Base.png")}`,
+    );
+    expect(redrawCall[1]).toMatchObject({ method: "PATCH" });
+    expect(reloadCall[0]).toBe("/api/duplicates");
+  });
+
+  it("shows a group-level error and keeps the group when redrawing the primary image fails", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ groups: [buildGroup("group-a", "Anna")] }),
+      })
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({}) });
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} />);
+    await screen.findByText(/Anna - Base/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Redraw primary" }));
+
+    await screen.findByText("Could not redraw the primary image. Try again.");
+    expect(screen.getByText(/Anna - Base/)).toBeInTheDocument();
+  });
+
+  it("shows a group-level error when redrawing the primary image throws", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ groups: [buildGroup("group-a", "Anna")] }),
+      })
+      .mockRejectedValueOnce(new Error("network down"));
+
+    render(<DuplicateFinderModal open onClose={vi.fn()} />);
+    await screen.findByText(/Anna - Base/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Redraw primary" }));
+
+    await screen.findByText("Could not redraw the primary image. Try again.");
     expect(screen.getByText(/Anna - Base/)).toBeInTheDocument();
   });
 });
