@@ -133,6 +133,24 @@ describe("resolveImageFilePath", () => {
 
     expect(resolved).toBeNull();
   });
+
+  it("rejects a png that lives directly under the main root, outside the characters tree", () => {
+    process.env.SD_IMAGES_ROOT = "/tmp/images";
+
+    const resolved = resolveImageFilePath("outside.png");
+
+    expect(resolved).toBeNull();
+  });
+
+  it("rejects a png that lives directly under an extra root, outside its characters tree", async () => {
+    const extraRoot = "/tmp/extra-images";
+    await fs.mkdir(path.join(extraRoot, "characters"), { recursive: true });
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    const resolved = resolveImageFilePath("extra-roots/0/outside.png");
+
+    expect(resolved).toBeNull();
+  });
 });
 
 describe("getExtraImagesRootPathsFromEnv", () => {
@@ -159,6 +177,19 @@ describe("getExtraImagesRootPathsFromEnv", () => {
       path.resolve(parentDir, "driveA"),
       path.resolve(parentDir, "driveB"),
     ]);
+  });
+
+  it("treats a symlinked subdirectory with a characters folder as a separate root", async () => {
+    const parentDir = "/tmp/extra-root-symlink-parent";
+    const realTarget = "/tmp/extra-root-symlink-target";
+    await fs.mkdir(path.join(realTarget, "characters"), { recursive: true });
+    await fs.mkdir(parentDir, { recursive: true });
+    // A symlinked entry is reported by readdir as a symlink, not a directory, so it must be
+    // followed explicitly rather than filtered out by an isDirectory() check alone.
+    await fs.symlink(realTarget, path.join(parentDir, "linked-drive"), "dir");
+    process.env.SD_EXTRA_IMAGES_ROOT = parentDir;
+
+    expect(getExtraImagesRootPathsFromEnv()).toEqual([path.resolve(parentDir, "linked-drive")]);
   });
 
   it("merges roots resolved from multiple delimiter-separated entries", async () => {
@@ -828,6 +859,40 @@ describe("readImageLibrary with extra image roots", () => {
     expect(library.warning).toBeNull();
   });
 
+  it("skips an extra root whose style folder disappears mid-scan without failing the whole load", async () => {
+    const tempRoot = "/tmp/sd-library-extra-race-main";
+    const extraRoot = "/tmp/sd-library-extra-race-root";
+    await fs.mkdir(path.join(tempRoot, "characters", "3d", "Anna"), { recursive: true });
+    await fs.writeFile(path.join(tempRoot, "characters", "3d", "Anna", "Base.png"), "");
+    const extraStylePath = path.join(extraRoot, "characters", "3d");
+    await fs.mkdir(path.join(extraStylePath, "Bob"), { recursive: true });
+    await fs.writeFile(path.join(extraStylePath, "Bob", "Base.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    // The extra root's "characters" folder listing (which resolves available styles) succeeds,
+    // but the "3d" style folder itself has disappeared (e.g. deleted concurrently) by the time
+    // it's actually indexed.
+    const realReaddir = fs.readdir.bind(fs);
+    vi.spyOn(fs, "readdir").mockImplementation(((dirPath: string, options: unknown) => {
+      if (dirPath === extraStylePath) {
+        return Promise.reject(
+          Object.assign(new Error("ENOENT: race condition"), { code: "ENOENT" }),
+        );
+      }
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      return realReaddir(dirPath, options as { withFileTypes: true });
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    }) as typeof fs.readdir);
+
+    const library = await readImageLibrary();
+
+    expect(library.images).toHaveLength(1);
+    expect(library.images[0]?.characterName).toBe("Anna");
+    expect(library.warning).toBeNull();
+  });
+
   it("invalidates the cached index when the set of extra roots changes", async () => {
     const tempRoot = "/tmp/sd-library-extra-cache-main";
     const extraRoot = "/tmp/sd-library-extra-cache-root";
@@ -975,6 +1040,23 @@ describe("isDuplicateGroupReviewed", () => {
         buildImage({
           relativePath: "characters/3d/Bob/Base 2.png",
           characterName: "Bob",
+          poseVariant: 2,
+        }),
+      ],
+    };
+
+    expect(isDuplicateGroupReviewed(group, reviewedGroups)).toBe(false);
+  });
+
+  it("does not treat a reviewed main-root group as covering an identical-looking group in an extra root", () => {
+    const group = {
+      style: "3d",
+      characterName: "Anna",
+      poseBaseName: "Base",
+      images: [
+        buildImage({ relativePath: "extra-roots/0/characters/3d/Anna/Base.png" }),
+        buildImage({
+          relativePath: "extra-roots/0/characters/3d/Anna/Base 2.png",
           poseVariant: 2,
         }),
       ],

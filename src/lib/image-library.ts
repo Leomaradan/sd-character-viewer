@@ -107,6 +107,10 @@ export interface IReviewedDuplicateGroup {
   characterName: string;
   poseBaseName: string;
   fileNames: string[];
+  // "" for the main root, or "extra-roots/<index>" for an extra root (see
+  // getRelativePathRootPrefix). Absent on records written before extra roots existed, which are
+  // treated as belonging to the main root, since that was the only root back then.
+  rootPrefix?: string;
 }
 
 const ajv = new Ajv({ allErrors: false, strict: false });
@@ -163,6 +167,7 @@ const reviewedDuplicateGroupValidator = ajv.compile<IReviewedDuplicateGroup>({
       type: "array",
       items: { type: "string" },
     },
+    rootPrefix: { type: "string" },
   },
   required: ["style", "characterName", "poseBaseName", "fileNames"],
   additionalProperties: true,
@@ -310,7 +315,7 @@ const buildExtraRootRelativePrefix = (extraRootIndex: number): string => {
 const parseExtraRootRelativePath = (
   relativePath: string,
 ): { extraRootIndex: number; remainder: string } | null => {
-  const match = new RegExp(`^${EXTRA_ROOT_PATH_SEGMENT}/(\\d+)/(.+)$`).exec(relativePath);
+  const match = new RegExp(String.raw`^${EXTRA_ROOT_PATH_SEGMENT}/(\d+)/(.+)$`).exec(relativePath);
 
   if (!match) {
     return null;
@@ -369,7 +374,11 @@ const resolveExtraImageRoots = (): string[] => {
     }
 
     const subdirectoryRoots = entries
-      .filter((entry) => entry.isDirectory())
+      // A symlinked subdirectory is reported as a symlink, not a directory, by Dirent; treat it
+      // the same as a real directory (directoryHasCharactersFolder follows symlinks via
+      // statSync), matching how a symlink is already accepted when it's the configured entry
+      // itself rather than one of its subdirectories.
+      .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
       .map((entry) => entry.name)
       .filter((name) => directoryHasCharactersFolder(path.join(configuredPath, name)))
       .sort(compareNatural)
@@ -731,9 +740,15 @@ export const isDuplicateGroupReviewed = (
   reviewedGroups: IReviewedDuplicateGroup[],
 ): boolean => {
   const currentFileNames = group.images.map(getImageFileName).sort(compareNatural);
+  // All images in a group share the same root (see findDuplicateGroups), so any one of them
+  // tells us which root this group belongs to.
+  const currentRootPrefix = group.images[0]
+    ? getRelativePathRootPrefix(group.images[0].relativePath)
+    : "";
 
   return reviewedGroups.some((reviewedGroup) => {
     if (
+      (reviewedGroup.rootPrefix ?? "") !== currentRootPrefix ||
       reviewedGroup.style !== group.style ||
       reviewedGroup.characterName !== group.characterName ||
       reviewedGroup.poseBaseName !== group.poseBaseName
@@ -1375,27 +1390,32 @@ const indexExtraImageRoots = async (
       };
       const extraCharactersRootPath = path.join(extraRootPath, "characters");
 
-      let extraAvailableStyles: string[] = [];
+      // Wraps the whole indexing of this one root (not just the initial style-folder listing),
+      // so a folder disappearing mid-scan (e.g. a concurrent delete) skips this root instead of
+      // rejecting the Promise.all below and failing the entire library load.
       try {
-        extraAvailableStyles = await resolveStyleFolders(extraCharactersRootPath, availableStyles);
+        const extraAvailableStyles = await resolveStyleFolders(
+          extraCharactersRootPath,
+          availableStyles,
+        );
+
+        const styleStates = await Promise.all(
+          extraAvailableStyles.map(async (style) => {
+            const stylePath = path.join(extraCharactersRootPath, style);
+            const styleState = createLibraryIndexState();
+            await indexStyleFolder(style, stylePath, styleState, rootContext);
+            return styleState;
+          }),
+        );
+
+        const combinedState = createLibraryIndexState();
+        for (const styleState of styleStates) {
+          mergeIndexState(combinedState, styleState);
+        }
+        return combinedState;
       } catch {
         return createLibraryIndexState();
       }
-
-      const styleStates = await Promise.all(
-        extraAvailableStyles.map(async (style) => {
-          const stylePath = path.join(extraCharactersRootPath, style);
-          const styleState = createLibraryIndexState();
-          await indexStyleFolder(style, stylePath, styleState, rootContext);
-          return styleState;
-        }),
-      );
-
-      const combinedState = createLibraryIndexState();
-      for (const styleState of styleStates) {
-        mergeIndexState(combinedState, styleState);
-      }
-      return combinedState;
     }),
   );
 };
@@ -1597,11 +1617,16 @@ const resolveFilePathUnderRoot = (rootPath: string, relativePath: string): strin
   }
 
   const fullPath = path.resolve(rootPath, normalizedRelative);
-  const resolvedRootPath = path.resolve(rootPath);
-  const isInsideRoot =
-    fullPath === resolvedRootPath || fullPath.startsWith(`${resolvedRootPath}${path.sep}`);
+  // Images only ever live under "characters/{style}/{character}/*.png" (see readImageLibrary),
+  // so containment is scoped to that subtree rather than the whole root - otherwise any other
+  // *.png file placed directly under the root (e.g. next to config.json) would be readable or
+  // deletable through this endpoint.
+  const resolvedCharactersRootPath = path.resolve(rootPath, "characters");
+  const isInsideCharactersRoot =
+    fullPath === resolvedCharactersRootPath ||
+    fullPath.startsWith(`${resolvedCharactersRootPath}${path.sep}`);
 
-  if (!isInsideRoot || path.extname(fullPath).toLowerCase() !== PNG_EXTENSION) {
+  if (!isInsideCharactersRoot || path.extname(fullPath).toLowerCase() !== PNG_EXTENSION) {
     return null;
   }
 

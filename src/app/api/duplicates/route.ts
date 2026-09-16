@@ -56,6 +56,7 @@ const finalizeKeptFiles = async (params: {
   style: string;
   characterName: string;
   toRelativePath: (fileName: string) => string;
+  relativePathPrefix: string;
 }): Promise<Response> => {
   const {
     rootPath,
@@ -66,6 +67,7 @@ const finalizeKeptFiles = async (params: {
     style,
     characterName,
     toRelativePath,
+    relativePathPrefix,
   } = params;
 
   const orderedAdditionalFileNames = additionalFilePaths
@@ -135,6 +137,7 @@ const finalizeKeptFiles = async (params: {
   const remainingReviewedGroups = reviewedGroups.filter(
     (reviewedGroup) =>
       !(
+        (reviewedGroup.rootPrefix ?? "") === relativePathPrefix &&
         reviewedGroup.style === style &&
         reviewedGroup.characterName === characterName &&
         reviewedGroup.poseBaseName === poseBaseName
@@ -146,6 +149,7 @@ const finalizeKeptFiles = async (params: {
     characterName,
     poseBaseName,
     fileNames: finalFileNames,
+    rootPrefix: relativePathPrefix,
   };
 
   await writeReviewedDuplicateGroups(rootPath, [...remainingReviewedGroups, newReviewedGroup]);
@@ -193,6 +197,7 @@ interface IParsedValidateRequest {
   rejectAll: boolean;
   toRelativePath: (fileName: string) => string;
   keptFileNames: string[];
+  relativePathPrefix: string;
 }
 
 // Parses and validates the request body, returning either the parsed data needed to apply the
@@ -296,6 +301,7 @@ const parseValidateRequest = async (
     rejectAll,
     toRelativePath,
     keptFileNames,
+    relativePathPrefix,
   };
 };
 
@@ -332,6 +338,7 @@ export const POST = async (request: Request) => {
     rejectAll,
     toRelativePath,
     keptFileNames,
+    relativePathPrefix,
   } = parsed;
   const keptFileNameSet = new Set(keptFileNames);
 
@@ -386,6 +393,7 @@ export const POST = async (request: Request) => {
         style,
         characterName,
         toRelativePath,
+        relativePathPrefix,
       });
     } catch (error) {
       console.error("Error validating duplicate group:", error);

@@ -352,6 +352,7 @@ describe("POST /api/duplicates", () => {
         characterName: "Anna",
         poseBaseName: "Base",
         fileNames: ["Base 2.png", "Base.png"].sort(),
+        rootPrefix: "",
       },
     ]);
   });
@@ -402,6 +403,7 @@ describe("POST /api/duplicates", () => {
         characterName: "Anna",
         poseBaseName: "Base",
         fileNames: ["Base.png"],
+        rootPrefix: "extra-roots/0",
       },
     ]);
   });
@@ -622,12 +624,14 @@ describe("POST /api/duplicates", () => {
     }>;
 
     expect(reviewed).toEqual([
+      // Untouched record from before rootPrefix existed: left exactly as it was on disk.
       { style: "3d", characterName: "Bob", poseBaseName: "Base", fileNames: ["Base.png"] },
       {
         style: "3d",
         characterName: "Anna",
         poseBaseName: "Base",
         fileNames: ["Base 2.png", "Base 3.png", "Base.png"],
+        rootPrefix: "",
       },
     ]);
   });
