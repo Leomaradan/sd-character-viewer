@@ -173,7 +173,9 @@ export const GET = async (request: Request) => {
   }
 
   const reviewedGroups = await readReviewedDuplicateGroups(library.rootPath);
-  const groups = findDuplicateGroups(library.images).filter(
+  // Videos are never eligible for duplicate detection/renumbering.
+  const dedupCandidateImages = library.images.filter((image) => image.mediaType !== "video");
+  const groups = findDuplicateGroups(dedupCandidateImages).filter(
     (group) => !isDuplicateGroupReviewed(group, reviewedGroups),
   );
 
