@@ -406,6 +406,46 @@ describe("POST /api/duplicates", () => {
     ]);
   });
 
+  it("validates a duplicate group in an extra root when the path uses backslash separators", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+
+    const tempRoot = "/tmp/sd-dup-post-validate-extra-backslash-main";
+    const extraRoot = "/tmp/sd-dup-post-validate-extra-backslash-root";
+    await fs.mkdir(path.join(tempRoot, "characters", "3d", "Anna"), { recursive: true });
+    const annaDir = path.join(extraRoot, "characters", "3d", "Anna");
+    await fs.mkdir(annaDir, { recursive: true });
+    await fs.writeFile(path.join(annaDir, "Base.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 2.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          // A client normalizing paths with native (Windows) separators must still resolve
+          // against the extra root the path actually names, not silently fall back to main.
+          primaryRelativePath: "extra-roots\\0\\characters\\3d\\Anna\\Base 2.png",
+          additionalKeptRelativePaths: [],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      style: "3d",
+      characterName: "Anna",
+      poseBaseName: "Base",
+      fileNames: ["Base.png"],
+    });
+
+    const remainingFiles = (await fs.readdir(annaDir)).sort();
+    expect(remainingFiles).toEqual(["Base.png"]);
+  });
+
   it("deletes every image in the group and keeps none when rejectAll is true", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);

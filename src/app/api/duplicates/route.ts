@@ -208,8 +208,13 @@ const parseValidateRequest = async (
     return new Response("Invalid request body", { status: 400 });
   }
 
+  // Normalized once, up front, so every downstream check and lookup (isCharacterImagePath,
+  // resolveImageFilePath, getRelativePathRootPrefix) agrees on the same string instead of some
+  // re-normalizing backslashes and others parsing the raw value.
   const primaryRelativePath =
-    typeof body.primaryRelativePath === "string" ? body.primaryRelativePath : "";
+    typeof body.primaryRelativePath === "string"
+      ? body.primaryRelativePath.replaceAll("\\", "/")
+      : "";
   const rawAdditionalPaths = body.additionalKeptRelativePaths;
   const rejectAll = body.rejectAll === true;
 
@@ -224,20 +229,19 @@ const parseValidateRequest = async (
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const additionalRelativePaths = rejectAll
     ? []
-    : // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      [...new Set(rawAdditionalPaths as string[])].filter(
-        (relativePath) => relativePath !== primaryRelativePath,
-      );
+    : [
+        ...new Set(
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          (rawAdditionalPaths as string[]).map((relativePath) =>
+            relativePath.replaceAll("\\", "/"),
+          ),
+        ),
+      ].filter((relativePath) => relativePath !== primaryRelativePath);
 
   // Images living in an extra images root carry an "extra-roots/<index>/" prefix ahead of
   // "characters/..." (see getRelativePathRootPrefix in image-library.ts).
-  const isCharacterImagePath = (value: string): boolean => {
-    const normalizedValue = value.replaceAll("\\", "/");
-    return (
-      normalizedValue.startsWith("characters/") ||
-      /^extra-roots\/\d+\/characters\//.test(normalizedValue)
-    );
-  };
+  const isCharacterImagePath = (value: string): boolean =>
+    value.startsWith("characters/") || /^extra-roots\/\d+\/characters\//.test(value);
   if (
     !isCharacterImagePath(primaryRelativePath) ||
     additionalRelativePaths.some((relativePath) => !isCharacterImagePath(relativePath))
