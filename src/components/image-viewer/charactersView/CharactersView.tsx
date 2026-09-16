@@ -235,20 +235,33 @@ export const CharactersView = ({
 
           <Typography variant="h6">{selectedCharacter}</Typography>
 
-          <Box sx={GRID}>
-            {visibleCharacterDetailImages.map((image) => (
-              <ImageCard
-                key={image.id}
-                image={image}
-                showNewBadge={showNewBadge}
-                styleLabel={styleLabel}
-                onSelect={onImageSelect}
-              />
-            ))}
-          </Box>
+          {visibleCharacterDetailImages.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No images match the current filters.
+            </Typography>
+          ) : (
+            <Box sx={GRID}>
+              {visibleCharacterDetailImages.map((image) => (
+                <ImageCard
+                  key={image.id}
+                  image={image}
+                  showNewBadge={showNewBadge}
+                  styleLabel={styleLabel}
+                  onSelect={onImageSelect}
+                />
+              ))}
+            </Box>
+          )}
         </>
       ) : (
         <>
+          <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>
+            <MediaTypeFilter
+              mediaTypeFilter={mediaTypeFilter}
+              onMediaTypeFilterChange={onMediaTypeFilterChange}
+            />
+          </Stack>
+
           <CategoryFilter
             metadataFilterOptions={metadataFilterOptions}
             selectedMetadataFilterId={effectiveSelectedMetadataFilterId}
@@ -300,7 +313,7 @@ export const CharactersView = ({
           )}
           {groupedCharacters.length === 0 && (
             <Typography variant="body2" color="text.secondary">
-              No characters match the selected metadata filters.
+              No characters match the current filters.
             </Typography>
           )}
         </>

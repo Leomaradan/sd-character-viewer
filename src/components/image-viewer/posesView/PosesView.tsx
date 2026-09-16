@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Chip, type SelectChangeEvent, Stack, TextField } from "@mui/material";
+import { Box, Chip, type SelectChangeEvent, Stack, TextField, Typography } from "@mui/material";
 import { useCallback, useMemo } from "react";
 
 import type { IImageItem, IMetadataFilterOption, TMediaTypeFilter } from "@/types/library";
@@ -175,17 +175,23 @@ export const PosesView = ({
         prefix="pose"
       />
 
-      <Box sx={GRID}>
-        {poseFilteredImages.map((image) => (
-          <ImageCard
-            key={image.id}
-            image={image}
-            showNewBadge={showNewBadge}
-            styleLabel={styleLabel}
-            onSelect={onImageSelect}
-          />
-        ))}
-      </Box>
+      {poseFilteredImages.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          No images match the current filters.
+        </Typography>
+      ) : (
+        <Box sx={GRID}>
+          {poseFilteredImages.map((image) => (
+            <ImageCard
+              key={image.id}
+              image={image}
+              showNewBadge={showNewBadge}
+              styleLabel={styleLabel}
+              onSelect={onImageSelect}
+            />
+          ))}
+        </Box>
+      )}
     </Stack>
   );
 };

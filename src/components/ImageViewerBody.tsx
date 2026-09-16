@@ -410,15 +410,20 @@ export const ImageViewerBody = ({
     return <Alert severity="warning">{library.warning}</Alert>;
   }
 
-  if (filteredImages.length === 0) {
+  if (library.images.length === 0) {
     return (
       <EmptyState
-        title={showOnlyNewImages ? "No new images found" : "No media files found"}
-        description={
-          showOnlyNewImages
-            ? "No images discovered in the last 3 days are currently available."
-            : "Check the folder pattern characters/{style}/{character}/*.png or *.mp4 and ensure style folders match your configured styles."
-        }
+        title="No media files found"
+        description="Check the folder pattern characters/{style}/{character}/*.png or *.mp4 and ensure style folders match your configured styles."
+      />
+    );
+  }
+
+  if (showOnlyNewImages && filteredImages.length === 0) {
+    return (
+      <EmptyState
+        title="No new images found"
+        description="No images discovered in the last 3 days are currently available."
       />
     );
   }

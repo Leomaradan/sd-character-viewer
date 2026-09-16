@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, type SelectChangeEvent, Stack, TextField } from "@mui/material";
+import { Box, type SelectChangeEvent, Stack, TextField, Typography } from "@mui/material";
 import { useCallback, useMemo } from "react";
 
 import type { IImageItem, IMetadataFilterOption, TMediaTypeFilter } from "@/types/library";
@@ -101,17 +101,23 @@ export const StylesView = ({
         prefix="style"
       />
 
-      <Box sx={GRID}>
-        {styleFilteredImages.map((image) => (
-          <ImageCard
-            key={image.id}
-            image={image}
-            showNewBadge={showNewBadge}
-            styleLabel={styleLabel}
-            onSelect={onImageSelect}
-          />
-        ))}
-      </Box>
+      {styleFilteredImages.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          No images match the current filters.
+        </Typography>
+      ) : (
+        <Box sx={GRID}>
+          {styleFilteredImages.map((image) => (
+            <ImageCard
+              key={image.id}
+              image={image}
+              showNewBadge={showNewBadge}
+              styleLabel={styleLabel}
+              onSelect={onImageSelect}
+            />
+          ))}
+        </Box>
+      )}
     </Stack>
   );
 };
