@@ -18,19 +18,25 @@ import {
   type IPoseFilterOption,
   type IPosePatternFilter,
   type IPoseSummary,
+  type TMediaType,
 } from "@/types/library";
 
 const DEFAULT_STYLE: string = "3d";
 const PNG_EXTENSION = ".png";
+const VIDEO_EXTENSION = ".mp4";
+const MEDIA_EXTENSIONS: readonly string[] = [PNG_EXTENSION, VIDEO_EXTENSION];
 const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
 const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
 // Bumped whenever a cached ILibraryData's shape changes, so a cache written by an older version
-// of the app (e.g. one predating the `animations` field) is treated as a miss and rebuilt, rather
+// of the app (e.g. one predating the `mediaType` field) is treated as a miss and rebuilt, rather
 // than being returned as-is with the new field silently undefined.
-const LIBRARY_INDEX_CACHE_VERSION = 5;
+const LIBRARY_INDEX_CACHE_VERSION = 6;
 const PREVIEW_FILE_SUFFIX = ".preview.jpg";
+// Video previews use a distinct suffix/extension from image previews: they are never
+// auto-generated (no ffmpeg/poster-frame tooling exists), only manually provided by an operator.
+const VIDEO_PREVIEW_FILE_SUFFIX = ".preview.png";
 const LIBRARY_CONFIG_FILE_NAME = "config.json";
 const CHARACTERS_CONFIG_FILE_NAME = "characters.json";
 const POSE_FILTERS_FILE_NAME = "pose-filters.json";
@@ -921,7 +927,23 @@ export const isDuplicateGroupReviewed = (
   });
 };
 
-const listPngFiles = async (characterFolderPath: string): Promise<string[]> => {
+// A video's own preview sidecar (e.g. "Base.preview.png") ends in ".png", so it must be excluded
+// explicitly once ".png" is treated as a generic media extension, or it would be misindexed as a
+// standalone image alongside the video it belongs to.
+const isPreviewSidecarFileName = (fileName: string): boolean => {
+  const lower = fileName.toLowerCase();
+  return lower.endsWith(PREVIEW_FILE_SUFFIX) || lower.endsWith(VIDEO_PREVIEW_FILE_SUFFIX);
+};
+
+export const isVideoFilePath = (filePath: string): boolean => {
+  return path.extname(filePath).toLowerCase() === VIDEO_EXTENSION;
+};
+
+const getMediaTypeForFileName = (fileName: string): TMediaType => {
+  return isVideoFilePath(fileName) ? "video" : "image";
+};
+
+const listMediaFiles = async (characterFolderPath: string): Promise<string[]> => {
   const entries = await fs.readdir(characterFolderPath, {
     withFileTypes: true,
   });
@@ -929,7 +951,8 @@ const listPngFiles = async (characterFolderPath: string): Promise<string[]> => {
   return entries
     .filter((entry) => entry.isFile())
     .map((entry) => entry.name)
-    .filter((fileName) => fileName.toLowerCase().endsWith(PNG_EXTENSION));
+    .filter((fileName) => !isPreviewSidecarFileName(fileName))
+    .filter((fileName) => MEDIA_EXTENSIONS.includes(path.extname(fileName).toLowerCase()));
 };
 
 const resolveStyleFolders = async (
@@ -1090,18 +1113,18 @@ const createLibraryIndexState = (): ILibraryIndexState => {
 const buildImageItem = (
   style: string,
   characterName: string,
-  pngFile: string,
+  mediaFile: string,
   modifiedAt: number,
   rootKey: string,
   relativePathPrefix: string,
 ): IImageItem => {
-  const parsedPose = parsePoseName(pngFile);
+  const parsedPose = parsePoseName(mediaFile);
   const relativePath = normalizeRelativePath(
-    path.join(relativePathPrefix, "characters", style, characterName, pngFile),
+    path.join(relativePathPrefix, "characters", style, characterName, mediaFile),
   );
 
   return {
-    id: `${rootKey}::${style}::${characterName}::${pngFile}`,
+    id: `${rootKey}::${style}::${characterName}::${mediaFile}`,
     style,
     characterName,
     poseName: parsedPose.poseName,
@@ -1112,6 +1135,7 @@ const buildImageItem = (
     firstSeenAt: 0,
     modifiedAt,
     posePatternFilterIds: [],
+    mediaType: getMediaTypeForFileName(mediaFile),
   };
 };
 
@@ -1493,15 +1517,15 @@ const indexCharacterFolder = async (
   state: ILibraryIndexState,
   rootContext: IImageRootContext,
 ): Promise<void> => {
-  const pngFiles = await listPngFiles(characterFolderPath);
+  const mediaFiles = await listMediaFiles(characterFolderPath);
 
-  for (const pngFile of pngFiles) {
-    const imagePath = path.join(characterFolderPath, pngFile);
+  for (const mediaFile of mediaFiles) {
+    const imagePath = path.join(characterFolderPath, mediaFile);
     const stat = await fs.stat(imagePath);
     const imageItem = buildImageItem(
       style,
       characterName,
-      pngFile,
+      mediaFile,
       Math.trunc(stat.mtimeMs),
       rootContext.rootKey,
       rootContext.relativePathPrefix,
@@ -1777,16 +1801,16 @@ const resolveFilePathUnderRoot = (rootPath: string, relativePath: string): strin
   }
 
   const fullPath = path.resolve(rootPath, normalizedRelative);
-  // Images only ever live under "characters/{style}/{character}/*.png" (see readImageLibrary),
-  // so containment is scoped to that subtree rather than the whole root - otherwise any other
-  // *.png file placed directly under the root (e.g. next to config.json) would be readable or
-  // deletable through this endpoint.
+  // Media only ever lives under "characters/{style}/{character}/*.png|*.mp4" (see
+  // readImageLibrary), so containment is scoped to that subtree rather than the whole root -
+  // otherwise any other *.png/*.mp4 file placed directly under the root (e.g. next to
+  // config.json) would be readable or deletable through this endpoint.
   const resolvedCharactersRootPath = path.resolve(rootPath, "characters");
   const isInsideCharactersRoot =
     fullPath === resolvedCharactersRootPath ||
     fullPath.startsWith(`${resolvedCharactersRootPath}${path.sep}`);
 
-  if (!isInsideCharactersRoot || path.extname(fullPath).toLowerCase() !== PNG_EXTENSION) {
+  if (!isInsideCharactersRoot || !MEDIA_EXTENSIONS.includes(path.extname(fullPath).toLowerCase())) {
     return null;
   }
 
@@ -1819,9 +1843,10 @@ export const resolveImageFilePath = (relativePath: string): string | null => {
   return resolveFilePathUnderRoot(rootPath, relativePath);
 };
 
-export const resolvePreviewFilePath = (pngFilePath: string): string => {
-  const extension = path.extname(pngFilePath);
-  return `${pngFilePath.slice(0, -extension.length)}${PREVIEW_FILE_SUFFIX}`;
+export const resolvePreviewFilePath = (mediaFilePath: string): string => {
+  const extension = path.extname(mediaFilePath);
+  const suffix = isVideoFilePath(mediaFilePath) ? VIDEO_PREVIEW_FILE_SUFFIX : PREVIEW_FILE_SUFFIX;
+  return `${mediaFilePath.slice(0, -extension.length)}${suffix}`;
 };
 
 export const removeFirstSeenCacheEntry = async (relativePath: string): Promise<void> => {

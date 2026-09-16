@@ -20,6 +20,7 @@ import {
   findDuplicateGroups,
   getExtraImagesRootPathsFromEnv,
   isDuplicateGroupReviewed,
+  isVideoFilePath,
   parsePoseName,
   readImageLibrary,
   readReviewedDuplicateGroups,
@@ -101,6 +102,14 @@ describe("resolveImageFilePath", () => {
     const resolved = resolveImageFilePath("characters/3d/Anna/Base.png");
 
     expect(resolved).toBe(path.resolve("/tmp/images", "characters/3d/Anna/Base.png"));
+  });
+
+  it("resolves a valid .mp4 relative path", () => {
+    process.env.SD_IMAGES_ROOT = "/tmp/images";
+
+    const resolved = resolveImageFilePath("characters/3d/Anna/Base.mp4");
+
+    expect(resolved).toBe(path.resolve("/tmp/images", "characters/3d/Anna/Base.mp4"));
   });
 
   it("resolves a relative path under an extra images root", async () => {
@@ -226,6 +235,63 @@ describe("resolvePreviewFilePath", () => {
     );
 
     expect(previewPath).toBe(path.resolve("/tmp/images", "characters/3d/Anna/Base.preview.jpg"));
+  });
+
+  it("swaps the .mp4 extension for .preview.png (a manually-provided sidecar, never generated)", () => {
+    const previewPath = resolvePreviewFilePath(
+      path.resolve("/tmp/images", "characters/3d/Anna/Base.mp4"),
+    );
+
+    expect(previewPath).toBe(path.resolve("/tmp/images", "characters/3d/Anna/Base.preview.png"));
+  });
+});
+
+describe("isVideoFilePath", () => {
+  it("returns true for a .mp4 path regardless of case", () => {
+    expect(isVideoFilePath("/tmp/images/characters/3d/Anna/Base.mp4")).toBe(true);
+    expect(isVideoFilePath("/tmp/images/characters/3d/Anna/Base.MP4")).toBe(true);
+  });
+
+  it("returns false for a .png path", () => {
+    expect(isVideoFilePath("/tmp/images/characters/3d/Anna/Base.png")).toBe(false);
+  });
+});
+
+describe("readImageLibrary with video files", () => {
+  it("indexes .mp4 files as mediaType 'video' alongside .png images as 'image'", async () => {
+    const tempRoot = "/tmp/sd-library-video-index";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await fs.writeFile(path.join(characterDir, "Dance.mp4"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.images).toHaveLength(2);
+    const base = library.images.find((image) => image.poseBaseName === "Base");
+    const dance = library.images.find((image) => image.poseBaseName === "Dance");
+    expect(base?.mediaType).toBe("image");
+    expect(dance?.mediaType).toBe("video");
+  });
+
+  it("does not index a video's own .preview.png sidecar as a standalone image", async () => {
+    const tempRoot = "/tmp/sd-library-video-preview-sidecar";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Dance.mp4"), "");
+    await fs.writeFile(path.join(characterDir, "Dance.preview.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.images).toHaveLength(1);
+    expect(library.images[0].mediaType).toBe("video");
+    expect(library.images[0].relativePath).toBe("characters/3d/Anna/Dance.mp4");
   });
 });
 
@@ -727,6 +793,7 @@ describe("readImageLibrary with characters metadata", () => {
           firstSeenAt: new Date("2026-01-01T00:00:00.000Z").getTime(),
           modifiedAt: 123,
           posePatternFilterIds: [],
+          mediaType: "image",
         },
       ],
       characters: [],
@@ -744,7 +811,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 5,
+          version: 6,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],
@@ -1017,6 +1084,7 @@ const buildImage = (
   firstSeenAt: 0,
   modifiedAt: 0,
   posePatternFilterIds: [],
+  mediaType: "image",
   ...overrides,
 });
 

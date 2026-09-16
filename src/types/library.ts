@@ -4,6 +4,10 @@ export type TMajorFilter = "character" | "style" | "pose";
 
 export type TCharacterSortOrder = "name" | "date";
 
+export type TMediaType = "image" | "video";
+
+export type TMediaTypeFilter = TMediaType | "both";
+
 export interface IImageItem {
   id: string;
   style: string;
@@ -16,6 +20,7 @@ export interface IImageItem {
   firstSeenAt: number;
   modifiedAt: number;
   posePatternFilterIds: string[];
+  mediaType: TMediaType;
 }
 
 export interface ICharacterSummary {

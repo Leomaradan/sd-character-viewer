@@ -27,6 +27,7 @@ const createImage = (overrides?: Partial<IImageItem>): IImageItem => ({
   firstSeenAt: 0,
   modifiedAt: 0,
   posePatternFilterIds: [],
+  mediaType: "image",
   ...overrides,
 });
 
