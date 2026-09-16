@@ -410,13 +410,19 @@ export function ImageDetailModal({
         return;
       }
 
-      setMarksState({ path: relativePath, upscale: nextUpscale, animateAction });
+      // Merge into whatever the latest state is (functional update) rather than reconstructing
+      // it from values captured when this handler started, so a concurrent animate mark that
+      // resolved in the meantime isn't clobbered. Drop the response outright if the user has
+      // since navigated to a different image.
+      setMarksState((prev) =>
+        prev.path === relativePath ? { ...prev, upscale: nextUpscale } : prev,
+      );
     } catch {
       setUpscaleError("Could not update the upscale mark. Try again.");
     } finally {
       setIsTogglingUpscale(false);
     }
-  }, [relativePath, isUpscaleMarked, rawMetadata, animateAction]);
+  }, [relativePath, isUpscaleMarked, rawMetadata]);
 
   const handleOpenAnimateMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
     setAnimateMenuAnchorEl(event.currentTarget);
@@ -459,18 +465,21 @@ export function ImageDetailModal({
           return;
         }
 
-        setMarksState({
-          path: relativePath,
-          upscale: isUpscaleMarked,
-          animateAction: isRemoving ? null : action,
-        });
+        // See the matching comment in handleToggleUpscale: merge via functional update so a
+        // concurrent upscale toggle isn't clobbered, and drop the response if the user has
+        // since navigated to a different image.
+        setMarksState((prev) =>
+          prev.path === relativePath
+            ? { ...prev, animateAction: isRemoving ? null : action }
+            : prev,
+        );
       } catch {
         setAnimateError("Could not update the animate mark. Try again.");
       } finally {
         setIsTogglingAnimate(false);
       }
     },
-    [relativePath, animateAction, rawMetadata, isUpscaleMarked],
+    [relativePath, animateAction, rawMetadata],
   );
 
   const handleAnimateMenuItemClick = useCallback(

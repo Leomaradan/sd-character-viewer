@@ -26,7 +26,10 @@ const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
 const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
-const LIBRARY_INDEX_CACHE_VERSION = 4;
+// Bumped whenever a cached ILibraryData's shape changes, so a cache written by an older version
+// of the app (e.g. one predating the `animations` field) is treated as a miss and rebuilt, rather
+// than being returned as-is with the new field silently undefined.
+const LIBRARY_INDEX_CACHE_VERSION = 5;
 const PREVIEW_FILE_SUFFIX = ".preview.jpg";
 const LIBRARY_CONFIG_FILE_NAME = "config.json";
 const CHARACTERS_CONFIG_FILE_NAME = "characters.json";
@@ -707,6 +710,22 @@ const writeMarkedImageMap = async (
   await fs.writeFile(filePath, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
 };
 
+// Serializes read-modify-write cycles against a single marker file (to-upscale.json /
+// to-animate.json), keyed by its absolute path. Without this, two concurrent marks (or a mark
+// and an unmark) can both read the file before either writes it back, and the second write
+// silently clobbers the first one's change.
+const markedImageFileQueues = new Map<string, Promise<unknown>>();
+
+const withMarkedImageFileLock = <T>(filePath: string, task: () => Promise<T>): Promise<T> => {
+  const previousTask = markedImageFileQueues.get(filePath) ?? Promise.resolve();
+  const nextTask = previousTask.then(task, task);
+  markedImageFileQueues.set(
+    filePath,
+    nextTask.catch(() => {}),
+  );
+  return nextTask;
+};
+
 export const readToUpscaleEntries = async (rootPath: string): Promise<Record<string, string>> => {
   return readMarkedImageMap(path.join(rootPath, TO_UPSCALE_FILE_NAME), isRawMetadataEntry);
 };
@@ -716,20 +735,26 @@ export const setToUpscaleEntry = async (
   relativePath: string,
   metadata: string,
 ): Promise<void> => {
-  const entries = await readToUpscaleEntries(rootPath);
-  entries[relativePath] = metadata;
-  await writeMarkedImageMap(path.join(rootPath, TO_UPSCALE_FILE_NAME), entries);
+  const filePath = path.join(rootPath, TO_UPSCALE_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isRawMetadataEntry);
+    entries[relativePath] = metadata;
+    await writeMarkedImageMap(filePath, entries);
+  });
 };
 
 export const removeToUpscaleEntry = async (
   rootPath: string,
   relativePath: string,
 ): Promise<void> => {
-  const entries = await readToUpscaleEntries(rootPath);
-  if (relativePath in entries) {
-    delete entries[relativePath];
-    await writeMarkedImageMap(path.join(rootPath, TO_UPSCALE_FILE_NAME), entries);
-  }
+  const filePath = path.join(rootPath, TO_UPSCALE_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isRawMetadataEntry);
+    if (relativePath in entries) {
+      delete entries[relativePath];
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
 };
 
 export const readToAnimateEntries = async (
@@ -744,20 +769,26 @@ export const setToAnimateEntry = async (
   metadata: string,
   action: string,
 ): Promise<void> => {
-  const entries = await readToAnimateEntries(rootPath);
-  entries[relativePath] = { metadata, action };
-  await writeMarkedImageMap(path.join(rootPath, TO_ANIMATE_FILE_NAME), entries);
+  const filePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
+    entries[relativePath] = { metadata, action };
+    await writeMarkedImageMap(filePath, entries);
+  });
 };
 
 export const removeToAnimateEntry = async (
   rootPath: string,
   relativePath: string,
 ): Promise<void> => {
-  const entries = await readToAnimateEntries(rootPath);
-  if (relativePath in entries) {
-    delete entries[relativePath];
-    await writeMarkedImageMap(path.join(rootPath, TO_ANIMATE_FILE_NAME), entries);
-  }
+  const filePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
+    if (relativePath in entries) {
+      delete entries[relativePath];
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
 };
 
 export const parsePoseName = (
@@ -1811,6 +1842,8 @@ export const removeFirstSeenCacheEntry = async (relativePath: string): Promise<v
 
 // Called after an image is deleted or renamed (the old relativePath no longer refers to that
 // image), so any pending upscale/animate mark tied to it is dropped rather than left dangling.
+// Best-effort: the delete/rename it follows has already happened on disk, so a failure to clean
+// up a mark (e.g. a transient disk error) must not surface as a failure of that larger operation.
 export const removeMarkedActionEntries = async (relativePath: string): Promise<void> => {
   const rootPath = getImagesRootPathFromEnv();
 
@@ -1819,8 +1852,13 @@ export const removeMarkedActionEntries = async (relativePath: string): Promise<v
   }
 
   const normalizedPath = normalizeRelativePath(relativePath);
-  await Promise.all([
-    removeToUpscaleEntry(rootPath, normalizedPath),
-    removeToAnimateEntry(rootPath, normalizedPath),
-  ]);
+
+  try {
+    await Promise.all([
+      removeToUpscaleEntry(rootPath, normalizedPath),
+      removeToAnimateEntry(rootPath, normalizedPath),
+    ]);
+  } catch {
+    // Ignore: see comment above.
+  }
 };

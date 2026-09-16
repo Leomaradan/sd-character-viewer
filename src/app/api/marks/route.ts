@@ -63,6 +63,26 @@ interface IMarkRequestBody {
   metadata?: unknown;
 }
 
+const handleAnimateMark = async (
+  rootPath: string,
+  requestedPath: string,
+  rawAction: unknown,
+  metadata: string,
+): Promise<Response> => {
+  const action = typeof rawAction === "string" ? rawAction.trim() : "";
+  if (!action) {
+    return new Response("Invalid animation action", { status: 400 });
+  }
+
+  const library = await readImageLibrary();
+  if (!library.animations.includes(action)) {
+    return new Response("Unknown animation action", { status: 400 });
+  }
+
+  await setToAnimateEntry(rootPath, requestedPath, metadata, action);
+  return new Response(null, { status: 204 });
+};
+
 export const PUT = async (request: Request) => {
   if (isMisconfigured()) {
     return Response.json({ misconfigured: true, required: true, authenticated: false });
@@ -102,18 +122,7 @@ export const PUT = async (request: Request) => {
   }
 
   if (body.type === "animate") {
-    const action = typeof body.action === "string" ? body.action.trim() : "";
-    if (!action) {
-      return new Response("Invalid animation action", { status: 400 });
-    }
-
-    const library = await readImageLibrary();
-    if (!library.animations.includes(action)) {
-      return new Response("Unknown animation action", { status: 400 });
-    }
-
-    await setToAnimateEntry(rootPath, requestedPath, metadata, action);
-    return new Response(null, { status: 204 });
+    return handleAnimateMark(rootPath, requestedPath, body.action, metadata);
   }
 
   return new Response("Invalid mark type", { status: 400 });

@@ -744,7 +744,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 4,
+          version: 5,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],
@@ -772,6 +772,63 @@ describe("readImageLibrary with characters metadata", () => {
       expect.objectContaining({ id: "cached", isNew: false, modifiedAt: 123 }),
     );
     expect(library.cacheAvailable).toBe(true);
+
+    delete process.env.SD_CACHE_DIR;
+  });
+
+  it("rebuilds instead of returning a stale cache written before the animations field existed", async () => {
+    const tempRoot = "/tmp/sd-library-index-cache-pre-animations";
+    const tempCacheDir = "/tmp/sd-cache-library-index-pre-animations";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "config.json"),
+      JSON.stringify({ styles: ["3d"], defaultStyle: "3d", animations: ["Zoom In"] }),
+    );
+
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const cacheFilePath = path.join(tempCacheDir, `${rootHash}.library-index.json`);
+    await fs.mkdir(tempCacheDir, { recursive: true });
+    // Simulates a cache written by a pre-animations build of the app: same shape as a real
+    // cache file, but at the old version number and with no "animations" key anywhere in it.
+    await fs.writeFile(
+      cacheFilePath,
+      JSON.stringify({
+        version: 4,
+        rootPath: path.resolve(tempRoot),
+        generatedAt: Date.now(),
+        configFiles: [],
+        directories: [],
+        extraRootPaths: [],
+        extraDirectories: [],
+        library: {
+          rootConfigured: true,
+          rootPath: tempRoot,
+          defaultStyle: "3d",
+          styles: ["3d"],
+          styleLabels: {},
+          images: [],
+          characters: [],
+          poses: [],
+          posePatternFilters: [],
+          poseFilterOptions: [],
+          metadataFilterOptions: [],
+          characterMetadataFilterIdsByName: {},
+          warning: null,
+          cacheAvailable: true,
+        },
+      }),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    const library = await readImageLibrary();
+
+    expect(library.animations).toEqual(["Zoom In"]);
+    expect(library.images).toHaveLength(1);
 
     delete process.env.SD_CACHE_DIR;
   });
@@ -1169,6 +1226,24 @@ describe("readToUpscaleEntries / setToUpscaleEntry / removeToUpscaleEntry", () =
       removeToUpscaleEntry(tempRoot, "characters/3d/Anna/Base.png"),
     ).resolves.toBeUndefined();
     expect(await readToUpscaleEntries(tempRoot)).toEqual({});
+  });
+
+  it("does not lose an update when two marks race to read-modify-write the same file", async () => {
+    const tempRoot = "/tmp/sd-upscale-concurrent";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    // Both calls start before either has written, which would otherwise let the second write
+    // clobber the first (both read the same empty starting state) — the file lock in
+    // setToUpscaleEntry must serialize them so neither entry is lost.
+    await Promise.all([
+      setToUpscaleEntry(tempRoot, "characters/3d/Anna/Base.png", "raw-a"),
+      setToUpscaleEntry(tempRoot, "characters/3d/Anna/Full.png", "raw-b"),
+    ]);
+
+    expect(await readToUpscaleEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Base.png": "raw-a",
+      "characters/3d/Anna/Full.png": "raw-b",
+    });
   });
 
   it("ignores malformed entries and files", async () => {

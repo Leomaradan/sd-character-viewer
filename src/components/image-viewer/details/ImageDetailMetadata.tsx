@@ -55,7 +55,7 @@ const splitMetadata = (pngMetadata: string) => {
   const parts = pngMetadata.split("\n");
 
   const [prompt, ...rest] = parts;
-  let [negative, ...other] = rest;
+  let [negative = "", ...other] = rest;
 
   if (!negative.startsWith("Negative prompt: ")) {
     other = [negative, ...other];
