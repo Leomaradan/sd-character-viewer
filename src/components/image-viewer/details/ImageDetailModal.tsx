@@ -88,6 +88,7 @@ const LAZY_IMAGE_SX = {
   justifyContent: "center",
 };
 const LAZY_IMAGE_IMG_SX = { objectFit: "contain" };
+const VIDEO_SX = { width: "100%", height: "100%", objectFit: "contain" };
 const SIDEBAR_SX = {
   width: 280,
   bgcolor: "#1e1e1e",
@@ -179,6 +180,49 @@ interface IMarksApiResponse {
   animate: { action: string } | null;
 }
 
+interface IMobileViewState {
+  path: string | null;
+  view: "image" | "meta";
+}
+
+interface IVideoControlsState {
+  path: string | null;
+  shown: boolean;
+}
+
+// Small pure helpers factored out of the component body below purely to keep its own cognitive
+// complexity down (each one-line ternary/&& here would otherwise count against the component).
+const resolveMobileView = (
+  state: IMobileViewState,
+  relativePath: string | undefined,
+): "image" | "meta" => (state.path === relativePath ? state.view : "image");
+
+const resolveShowVideoControls = (
+  state: IVideoControlsState,
+  relativePath: string | undefined,
+): boolean => state.path === relativePath && state.shown;
+
+const resolveDeleteLabel = (isVideo: boolean): string =>
+  isVideo ? "Delete video" : "Delete image";
+
+const resolveIsLoadingMetadata = (
+  image: IImageItem | null,
+  isVideo: boolean,
+  metadataState: IMetadataState,
+  relativePath: string | undefined,
+): boolean => Boolean(image) && !isVideo && metadataState.path !== relativePath;
+
+const resolveMarksDerived = (
+  marksState: IMarksState,
+  relativePath: string | undefined,
+): { isUpscaleMarked: boolean; animateAction: string | null } => {
+  const isCurrentMarksState = marksState.path === relativePath;
+  return {
+    isUpscaleMarked: isCurrentMarksState && marksState.upscale,
+    animateAction: isCurrentMarksState ? marksState.animateAction : null,
+  };
+};
+
 export function ImageDetailModal({
   image,
   canDeleteImage = false,
@@ -211,11 +255,20 @@ export function ImageDetailModal({
 
   const relativePath = image?.relativePath;
 
-  const [mobileViewState, setMobileViewState] = useState<{
-    path: string | null;
-    view: "image" | "meta";
-  }>({ path: null, view: "image" });
-  const mobileView = mobileViewState.path === relativePath ? mobileViewState.view : "image";
+  const [mobileViewState, setMobileViewState] = useState<IMobileViewState>({
+    path: null,
+    view: "image",
+  });
+  const mobileView = resolveMobileView(mobileViewState, relativePath);
+
+  const [videoControlsState, setVideoControlsState] = useState<IVideoControlsState>({
+    path: null,
+    shown: false,
+  });
+  const showVideoControls = resolveShowVideoControls(videoControlsState, relativePath);
+  const handleVideoClick = useCallback(() => {
+    setVideoControlsState({ path: relativePath ?? null, shown: true });
+  }, [relativePath]);
 
   useEffect(() => {
     if (!image || isConfirmOpen || isDeleting) {
@@ -248,8 +301,11 @@ export function ImageDetailModal({
     isDeleting,
   ]);
 
+  const isVideo = image?.mediaType === "video";
+  const deleteLabel = resolveDeleteLabel(isVideo);
+
   useEffect(() => {
-    if (!relativePath) {
+    if (!relativePath || isVideo) {
       return () => {};
     }
 
@@ -274,10 +330,10 @@ export function ImageDetailModal({
     return () => {
       isMounted = false;
     };
-  }, [relativePath]);
+  }, [relativePath, isVideo]);
 
   useEffect(() => {
-    if (!relativePath || !canDeleteImage) {
+    if (!relativePath || !canDeleteImage || isVideo) {
       return () => {};
     }
 
@@ -306,12 +362,12 @@ export function ImageDetailModal({
     return () => {
       isMounted = false;
     };
-  }, [relativePath, canDeleteImage]);
+  }, [relativePath, canDeleteImage, isVideo]);
 
-  const isLoadingMetadata = Boolean(image) && metadataState.path !== relativePath;
+  const isLoadingMetadata = resolveIsLoadingMetadata(image, isVideo, metadataState, relativePath);
   const pngMetadata = useMemo(
-    () => (metadataState.path === relativePath ? metadataState.data : null),
-    [metadataState, relativePath],
+    () => (!isVideo && metadataState.path === relativePath ? metadataState.data : null),
+    [metadataState, relativePath, isVideo],
   );
 
   const handleDeleteClick = useCallback(() => {
@@ -380,9 +436,7 @@ export function ImageDetailModal({
     }
   }, [relativePath, onDeleteSuccess]);
 
-  const isCurrentMarksState = marksState.path === relativePath;
-  const isUpscaleMarked = isCurrentMarksState && marksState.upscale;
-  const animateAction = isCurrentMarksState ? marksState.animateAction : null;
+  const { isUpscaleMarked, animateAction } = resolveMarksDerived(marksState, relativePath);
   const rawMetadata = pngMetadata?.parameters ?? "";
 
   const handleToggleUpscale = useCallback(async () => {
@@ -574,15 +628,17 @@ export function ImageDetailModal({
         >
           {isRedrawing ? <CircularProgress size={18} /> : "Redraw"}
         </Button>
-        <Button
-          startIcon={<HighQualityIcon />}
-          onClick={handleToggleUpscale}
-          disabled={isTogglingUpscale}
-          sx={isUpscaleMarked ? UPSCALE_BUTTON_ACTIVE_SX : UPSCALE_BUTTON_SX}
-        >
-          {isTogglingUpscale ? <CircularProgress size={18} /> : "Upscale"}
-        </Button>
-        {animations.length > 0 && (
+        {!isVideo && (
+          <Button
+            startIcon={<HighQualityIcon />}
+            onClick={handleToggleUpscale}
+            disabled={isTogglingUpscale}
+            sx={isUpscaleMarked ? UPSCALE_BUTTON_ACTIVE_SX : UPSCALE_BUTTON_SX}
+          >
+            {isTogglingUpscale ? <CircularProgress size={18} /> : "Upscale"}
+          </Button>
+        )}
+        {!isVideo && animations.length > 0 && (
           <Button
             startIcon={<AnimationIcon />}
             endIcon={<ArrowDropDownIcon />}
@@ -599,7 +655,7 @@ export function ImageDetailModal({
           disabled={isDeleting}
           sx={DELETE_BUTTON_SX}
         >
-          {isDeleting ? <CircularProgress size={18} /> : "Delete image"}
+          {isDeleting ? <CircularProgress size={18} /> : deleteLabel}
         </Button>
       </ButtonGroup>
     </>
@@ -645,14 +701,25 @@ export function ImageDetailModal({
             {/* Image */}
             <Box sx={imageContainerSx} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
               <Box sx={IMAGE_VIEW_SX}>
-                <LazyImage
-                  relativePath={image.relativePath}
-                  alt={`${image.characterName} ${image.poseName}`}
-                  sx={LAZY_IMAGE_SX}
-                  modifiedAt={image.modifiedAt}
-                  imgSx={LAZY_IMAGE_IMG_SX}
-                  mode="magnifier"
-                />
+                {isVideo ? (
+                  <Box
+                    component="video"
+                    src={getImageUrl(image.relativePath)}
+                    controls={showVideoControls}
+                    onClick={handleVideoClick}
+                    preload="metadata"
+                    sx={VIDEO_SX}
+                  />
+                ) : (
+                  <LazyImage
+                    relativePath={image.relativePath}
+                    alt={`${image.characterName} ${image.poseName}`}
+                    sx={LAZY_IMAGE_SX}
+                    modifiedAt={image.modifiedAt}
+                    imgSx={LAZY_IMAGE_IMG_SX}
+                    mode="magnifier"
+                  />
+                )}
               </Box>
               {canDeleteImage && <Box sx={MOBILE_ACTIONS_SX}>{imageActions}</Box>}
             </Box>
@@ -739,7 +806,7 @@ export function ImageDetailModal({
       </Menu>
 
       <Dialog open={isConfirmOpen} onClose={handleConfirmClose}>
-        <DialogTitle>Delete image?</DialogTitle>
+        <DialogTitle>{isVideo ? "Delete video?" : "Delete image?"}</DialogTitle>
         <DialogContent>
           <DialogContentText>
             This will permanently delete{" "}

@@ -1,14 +1,15 @@
 "use client";
 
-import { Box, Chip, type SelectChangeEvent, Stack, TextField } from "@mui/material";
+import { Box, Chip, type SelectChangeEvent, Stack, TextField, Typography } from "@mui/material";
 import { useCallback, useMemo } from "react";
 
-import type { IImageItem, IMetadataFilterOption } from "@/types/library";
+import type { IImageItem, IMetadataFilterOption, TMediaTypeFilter } from "@/types/library";
 
 import { ImageCard } from "@/components/image-viewer/image/ImageCard";
 
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
+import { MediaTypeFilter } from "../common/MediaTypeFilter";
 import { SearchField } from "../common/SearchField";
 import { TagPicker } from "../common/TagPicker";
 import { StyleView } from "../stylesView/StyleView";
@@ -32,6 +33,8 @@ interface IPosesViewProps {
   selectedMetadataFilterId: string;
   poseFilteredImages: IImageItem[];
   showNewBadge: boolean;
+  mediaTypeFilter: TMediaTypeFilter;
+  onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   onClearPoses: () => void;
   onTogglePose: (pose: string) => void;
   onPoseStyleChange: (style: string) => void;
@@ -52,6 +55,8 @@ export const PosesView = ({
   selectedMetadataFilterId,
   poseFilteredImages,
   showNewBadge,
+  mediaTypeFilter,
+  onMediaTypeFilterChange,
   onClearPoses,
   onTogglePose,
   onPoseStyleChange,
@@ -147,6 +152,10 @@ export const PosesView = ({
             onStyleSelect={onPoseStyleChange}
           />
         ))}
+        <MediaTypeFilter
+          mediaTypeFilter={mediaTypeFilter}
+          onMediaTypeFilterChange={onMediaTypeFilterChange}
+        />
       </Stack>
 
       <TextField
@@ -166,17 +175,23 @@ export const PosesView = ({
         prefix="pose"
       />
 
-      <Box sx={GRID}>
-        {poseFilteredImages.map((image) => (
-          <ImageCard
-            key={image.id}
-            image={image}
-            showNewBadge={showNewBadge}
-            styleLabel={styleLabel}
-            onSelect={onImageSelect}
-          />
-        ))}
-      </Box>
+      {poseFilteredImages.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          No images match the current filters.
+        </Typography>
+      ) : (
+        <Box sx={GRID}>
+          {poseFilteredImages.map((image) => (
+            <ImageCard
+              key={image.id}
+              image={image}
+              showNewBadge={showNewBadge}
+              styleLabel={styleLabel}
+              onSelect={onImageSelect}
+            />
+          ))}
+        </Box>
+      )}
     </Stack>
   );
 };

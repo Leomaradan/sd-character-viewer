@@ -22,6 +22,7 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/image-library", () => ({
   resolveImageFilePath: vi.fn(),
+  isVideoFilePath: vi.fn(() => false),
 }));
 
 import { promises as fs } from "node:fs";
@@ -29,7 +30,7 @@ import { decode } from "png-chunk-text";
 import extractChunks from "png-chunks-extract";
 
 import * as auth from "@/lib/auth";
-import { resolveImageFilePath } from "@/lib/image-library";
+import { isVideoFilePath, resolveImageFilePath } from "@/lib/image-library";
 
 import { GET, invalidateMetadataCacheEntry } from "./route";
 
@@ -76,6 +77,19 @@ describe("/api/metadata GET", () => {
     const response = await GET(new Request("http://localhost/api/metadata?path=bad"));
 
     expect(response.status).toBe(400);
+  });
+
+  it("returns an empty metadata object for a video, without parsing PNG chunks", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+
+    const response = await GET(new Request("http://localhost/api/metadata?path=a.mp4"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({});
+    expect(fs.readFile).not.toHaveBeenCalled();
   });
 
   it("parses tEXt chunks, ignores others, and serves subsequent requests from cache", async () => {

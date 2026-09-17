@@ -28,7 +28,13 @@ import {
   type SubmitEvent,
 } from "react";
 
-import type { IImageItem, ILibraryData, TCharacterSortOrder, TMajorFilter } from "@/types/library";
+import type {
+  IImageItem,
+  ILibraryData,
+  TCharacterSortOrder,
+  TMajorFilter,
+  TMediaTypeFilter,
+} from "@/types/library";
 
 import { SIDEBAR_WIDTH, DEFAULT_LIBRARY } from "@/components/image-viewer/common/constants";
 import {
@@ -36,6 +42,7 @@ import {
   metadataFilterIdToQueryChanges,
   normalizePoseFilters,
   parseCharacterSortOrder,
+  parseMediaTypeFilter,
   parsePoseViewStyle,
   parseShowOnlyNewImages,
   parseSelectedMetadataFilterId,
@@ -129,6 +136,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const selectedPoseFilters = useMemo(() => parseSelectedPoseFilters(searchParams), [searchParams]);
   const showOnlyNewImages = useMemo(() => parseShowOnlyNewImages(searchParams), [searchParams]);
   const characterSortOrder = useMemo(() => parseCharacterSortOrder(searchParams), [searchParams]);
+  const mediaTypeFilter = useMemo(() => parseMediaTypeFilter(searchParams), [searchParams]);
   const styleViewStyle = useMemo(() => parseStyleViewStyle(searchParams), [searchParams]);
   const poseViewStyle = useMemo(() => parsePoseViewStyle(searchParams), [searchParams]);
   const selectedMetadataFilterId = useMemo(
@@ -415,6 +423,13 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     [updateQueryParams],
   );
 
+  const handleMediaTypeFilterChange = useCallback(
+    (nextMediaTypeFilter: TMediaTypeFilter) => {
+      updateQueryParams({ media: nextMediaTypeFilter === "both" ? null : nextMediaTypeFilter });
+    },
+    [updateQueryParams],
+  );
+
   const handleStyleViewStyleChange = useCallback(
     (nextStyle: string) => {
       updateQueryParams({ styleTab: nextStyle || null });
@@ -610,6 +625,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           selectedMetadataFilterId={selectedMetadataFilterId}
           showOnlyNewImages={showOnlyNewImages}
           characterSortOrder={characterSortOrder}
+          mediaTypeFilter={mediaTypeFilter}
           styleViewStyle={styleViewStyle}
           poseViewStyle={poseViewStyle}
           characterDetailStyle={characterDetailStyle}
@@ -622,6 +638,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           setPoseViewStyle={handlePoseViewStyleChange}
           setCharacterDetailStyle={setCharacterDetailStyle}
           setCharacterDetailPose={setCharacterDetailPose}
+          onMediaTypeFilterChange={handleMediaTypeFilterChange}
           onImageSelect={handleOpenImageModal}
           onLibraryLoad={handleLibraryLoad}
         />

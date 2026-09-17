@@ -119,6 +119,24 @@ describe("GET /api/duplicates", () => {
     expect(body.groups[0].characterName).toBe("Anna");
     expect(body.groups[0].poseBaseName).toBe("Base");
   });
+
+  it("never groups videos, even when they share a style/character/pose with duplicate images", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+
+    const tempRoot = "/tmp/sd-dup-video-exclusion";
+    const charlieDir = path.join(tempRoot, "characters", "3d", "Charlie");
+    await fs.mkdir(charlieDir, { recursive: true });
+    await fs.writeFile(path.join(charlieDir, "Base.mp4"), "");
+    await fs.writeFile(path.join(charlieDir, "Base 2.mp4"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const response = await GET(new Request("http://localhost/api/duplicates"));
+    const body = (await response.json()) as { groups: unknown[] };
+
+    expect(body.groups).toHaveLength(0);
+  });
 });
 
 describe("POST /api/duplicates", () => {
@@ -489,6 +507,37 @@ describe("POST /api/duplicates", () => {
     ).rejects.toThrow(
       "ENOENT: no such file or directory, open '/tmp/sd-dup-post-reject-all/duplicate-reviews.json'",
     );
+  });
+
+  it("rejects a video path instead of deleting PNGs that share its pose base name", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+
+    const tempRoot = "/tmp/sd-dup-post-reject-all-video";
+    const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
+    await fs.mkdir(annaDir, { recursive: true });
+    await fs.writeFile(path.join(annaDir, "Base.mp4"), "");
+    await fs.writeFile(path.join(annaDir, "Base.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 2.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          primaryRelativePath: "characters/3d/Anna/Base.mp4",
+          additionalKeptRelativePaths: [],
+          rejectAll: true,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+
+    const remainingFiles = (await fs.readdir(annaDir)).sort();
+    expect(remainingFiles).toEqual(["Base 2.png", "Base.mp4", "Base.png"]);
   });
 
   it("does not lose a reviewed record when two different groups are validated concurrently", async () => {

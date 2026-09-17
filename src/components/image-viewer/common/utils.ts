@@ -1,5 +1,9 @@
 import type { IImageItem, IPosePatternFilter } from "@/types/library";
 
+export const isVideoRelativePath = (relativePath: string): boolean => {
+  return relativePath.toLowerCase().endsWith(".mp4");
+};
+
 export const getImageUrl = (
   relativePath: string,
   options?: { preview?: boolean; timestamp?: number | null },

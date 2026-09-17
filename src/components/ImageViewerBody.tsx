@@ -5,7 +5,13 @@ import type { SelectChangeEvent } from "@mui/material";
 import { Alert, Box, CircularProgress } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { IImageItem, ILibraryData, TCharacterSortOrder, TMajorFilter } from "@/types/library";
+import type {
+  IImageItem,
+  ILibraryData,
+  TCharacterSortOrder,
+  TMajorFilter,
+  TMediaTypeFilter,
+} from "@/types/library";
 
 import { CharactersView } from "@/components/image-viewer/charactersView/CharactersView";
 import { DEFAULT_LIBRARY } from "@/components/image-viewer/common/constants";
@@ -21,6 +27,7 @@ interface IImageViewerBodyProps {
   selectedMetadataFilterId: string;
   showOnlyNewImages: boolean;
   characterSortOrder: TCharacterSortOrder;
+  mediaTypeFilter: TMediaTypeFilter;
   styleViewStyle: string;
   poseViewStyle: string;
   characterDetailStyle: string;
@@ -36,6 +43,7 @@ interface IImageViewerBodyProps {
   setPoseViewStyle: (style: string) => void;
   setCharacterDetailStyle: (style: string) => void;
   setCharacterDetailPose: (pose: string) => void;
+  onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
 }
 
 const PROGRESS_CONTAINER = {
@@ -52,6 +60,7 @@ export const ImageViewerBody = ({
   selectedMetadataFilterId,
   showOnlyNewImages,
   characterSortOrder,
+  mediaTypeFilter,
   styleViewStyle,
   poseViewStyle,
   characterDetailStyle,
@@ -66,6 +75,7 @@ export const ImageViewerBody = ({
   setPoseViewStyle,
   setCharacterDetailStyle,
   setCharacterDetailPose,
+  onMediaTypeFilterChange,
 }: Readonly<IImageViewerBodyProps>) => {
   const [library, setLibrary] = useState<ILibraryData>(DEFAULT_LIBRARY);
   const [isLoading, setIsLoading] = useState(true);
@@ -183,8 +193,14 @@ export const ImageViewerBody = ({
   ]);
 
   const filteredImages = useMemo(() => {
-    return showOnlyNewImages ? library.images.filter((image) => image.isNew) : library.images;
-  }, [library.images, showOnlyNewImages]);
+    const newOnlyImages = showOnlyNewImages
+      ? library.images.filter((image) => image.isNew)
+      : library.images;
+
+    return mediaTypeFilter === "both"
+      ? newOnlyImages
+      : newOnlyImages.filter((image) => image.mediaType === mediaTypeFilter);
+  }, [library.images, showOnlyNewImages, mediaTypeFilter]);
 
   const charactersForBrowseStyle = useMemo(() => {
     const visibleCharacterNames = new Set(filteredImages.map((image) => image.characterName));
@@ -394,15 +410,20 @@ export const ImageViewerBody = ({
     return <Alert severity="warning">{library.warning}</Alert>;
   }
 
-  if (filteredImages.length === 0) {
+  if (library.images.length === 0) {
     return (
       <EmptyState
-        title={showOnlyNewImages ? "No new images found" : "No PNG files found"}
-        description={
-          showOnlyNewImages
-            ? "No images discovered in the last 3 days are currently available."
-            : "Check the folder pattern characters/{style}/{character}/*.png and ensure style folders match your configured styles."
-        }
+        title="No media files found"
+        description="Check the folder pattern characters/{style}/{character}/*.png or *.mp4 and ensure style folders match your configured styles."
+      />
+    );
+  }
+
+  if (showOnlyNewImages && filteredImages.length === 0) {
+    return (
+      <EmptyState
+        title="No new images found"
+        description="No images discovered in the last 3 days are currently available."
       />
     );
   }
@@ -426,6 +447,8 @@ export const ImageViewerBody = ({
         visibleCharacterDetailImages={visibleCharacterDetailImages}
         showNewBadge={!showOnlyNewImages}
         characterSortOrder={characterSortOrder}
+        mediaTypeFilter={mediaTypeFilter}
+        onMediaTypeFilterChange={onMediaTypeFilterChange}
         onSelectCharacter={setSelectedCharacter}
         onCharacterDetailStyleChange={setCharacterDetailStyle}
         onCharacterDetailPoseChange={setCharacterDetailPose}
@@ -443,6 +466,8 @@ export const ImageViewerBody = ({
         selectedMetadataFilterId={effectiveStyleMetadataFilterId}
         styleFilteredImages={styleFilteredImages}
         showNewBadge={!showOnlyNewImages}
+        mediaTypeFilter={mediaTypeFilter}
+        onMediaTypeFilterChange={onMediaTypeFilterChange}
         onStyleSelect={onStyleSelect}
         onMetadataFilterChange={onMetadataFilterChange}
         onClearMetadataFilter={onClearMetadataFilter}
@@ -464,6 +489,8 @@ export const ImageViewerBody = ({
       selectedMetadataFilterId={effectivePoseMetadataFilterId}
       poseFilteredImages={poseFilteredImages}
       showNewBadge={!showOnlyNewImages}
+      mediaTypeFilter={mediaTypeFilter}
+      onMediaTypeFilterChange={onMediaTypeFilterChange}
       onClearPoses={onClearPoses}
       onTogglePose={togglePoseFilter}
       onPoseStyleChange={setPoseViewStyle}

@@ -8,12 +8,14 @@ import type {
   IImageItem,
   IMetadataFilterOption,
   TCharacterSortOrder,
+  TMediaTypeFilter,
 } from "@/types/library";
 
 import { ImageCard } from "@/components/image-viewer/image/ImageCard";
 
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
+import { MediaTypeFilter } from "../common/MediaTypeFilter";
 import { PoseView } from "../posesView/PoseView";
 import { StyleView } from "../stylesView/StyleView";
 import { CharacterView } from "./CharacterView";
@@ -35,6 +37,8 @@ interface ICharactersViewProps {
   visibleCharacterDetailImages: IImageItem[];
   showNewBadge: boolean;
   characterSortOrder: TCharacterSortOrder;
+  mediaTypeFilter: TMediaTypeFilter;
+  onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   onSelectCharacter: (characterName: string | null) => void;
   onCharacterDetailStyleChange: (style: string) => void;
   onCharacterDetailPoseChange: (pose: string) => void;
@@ -94,6 +98,8 @@ export const CharactersView = ({
   visibleCharacterDetailImages,
   showNewBadge,
   characterSortOrder,
+  mediaTypeFilter,
+  onMediaTypeFilterChange,
   onSelectCharacter,
   onMetadataFilterChange,
   onClearMetadataFilter,
@@ -198,6 +204,10 @@ export const CharactersView = ({
                 primary={characterDetailStyle === style}
               />
             ))}
+            <MediaTypeFilter
+              mediaTypeFilter={mediaTypeFilter}
+              onMediaTypeFilterChange={onMediaTypeFilterChange}
+            />
           </Stack>
 
           <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>
@@ -225,20 +235,33 @@ export const CharactersView = ({
 
           <Typography variant="h6">{selectedCharacter}</Typography>
 
-          <Box sx={GRID}>
-            {visibleCharacterDetailImages.map((image) => (
-              <ImageCard
-                key={image.id}
-                image={image}
-                showNewBadge={showNewBadge}
-                styleLabel={styleLabel}
-                onSelect={onImageSelect}
-              />
-            ))}
-          </Box>
+          {visibleCharacterDetailImages.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No images match the current filters.
+            </Typography>
+          ) : (
+            <Box sx={GRID}>
+              {visibleCharacterDetailImages.map((image) => (
+                <ImageCard
+                  key={image.id}
+                  image={image}
+                  showNewBadge={showNewBadge}
+                  styleLabel={styleLabel}
+                  onSelect={onImageSelect}
+                />
+              ))}
+            </Box>
+          )}
         </>
       ) : (
         <>
+          <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>
+            <MediaTypeFilter
+              mediaTypeFilter={mediaTypeFilter}
+              onMediaTypeFilterChange={onMediaTypeFilterChange}
+            />
+          </Stack>
+
           <CategoryFilter
             metadataFilterOptions={metadataFilterOptions}
             selectedMetadataFilterId={effectiveSelectedMetadataFilterId}
@@ -290,7 +313,7 @@ export const CharactersView = ({
           )}
           {groupedCharacters.length === 0 && (
             <Typography variant="body2" color="text.secondary">
-              No characters match the selected metadata filters.
+              No characters match the current filters.
             </Typography>
           )}
         </>

@@ -2,8 +2,11 @@
 
 import type { SxProps, Theme } from "@mui/material/styles";
 
+import { isVideoRelativePath } from "@/components/image-viewer/common/utils";
+
 import { LazyImageMagnifier } from "./LazyImageMagnifier";
 import { LazyImagePreview } from "./LazyImagePreview";
+import { LazyVideoPreview } from "./LazyVideoPreview";
 
 interface ILazyImageProps {
   relativePath: string;
@@ -27,6 +30,18 @@ export const LazyImage = ({
   if (mode === "magnifier") {
     return (
       <LazyImageMagnifier relativePath={relativePath} alt={alt} sx={sx} modifiedAt={modifiedAt} />
+    );
+  }
+
+  if (isVideoRelativePath(relativePath)) {
+    return (
+      <LazyVideoPreview
+        relativePath={relativePath}
+        alt={alt}
+        sx={sx}
+        modifiedAt={modifiedAt}
+        imgSx={imgSx}
+      />
     );
   }
 

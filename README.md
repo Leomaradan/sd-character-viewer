@@ -1,6 +1,7 @@
 # Stable Diffusion Character Viewer
 
-Next.js app to browse Stable Diffusion character PNGs using predefined filters.
+Next.js app to browse Stable Diffusion character PNGs (and optionally short video clips) using
+predefined filters.
 
 ## Image Folder Structure
 
@@ -8,6 +9,7 @@ The app expects this tree inside your configured root directory:
 
 ```text
 characters/{style}/{character_name}/*.png
+characters/{style}/{character_name}/*.mp4
 ```
 
 Styles configuration:
@@ -32,9 +34,26 @@ Example `config.json`:
 
 Pose naming rules:
 
-- One file equals one pose image (for example `Base.png`, `Lying Side.png`).
-- Variant files are supported with numeric suffixes (for example `Full.png`, `Full 2.png`).
+- One file equals one pose image or video (for example `Base.png`, `Lying Side.png`, `Dance.mp4`).
+- Variant files are supported with numeric suffixes (for example `Full.png`, `Full 2.png`, `Dance 2.mp4`).
 - `Base` is treated as the thumbnail pose for each character.
+
+### Video Support
+
+`.mp4` files are indexed alongside `.png` images using the exact same folder/naming convention, and
+appear in the character/style/pose views and filters. A switch next to the style selector lets you
+show Images, Videos, or Both. Video differs from images in a few deliberate ways:
+
+- No auto-play, anywhere in the app; playback always starts paused.
+- The detail view's magnifier/zoom is image-only; video gets standard playback controls instead.
+- No metadata panel (the SD "parameters" PNG chunk convention has no video equivalent).
+- No Upscale/Animate marking — only **Redraw** and **Delete** are available.
+- Excluded entirely from the Duplicate Finder.
+- Grid thumbnails: if a matching `<name>.preview.png` sidecar exists next to the video (for example
+  `Dance.mp4` → `Dance.preview.png`), it's shown as a static poster image. There is no
+  auto-generation for this file (unlike `.preview.jpg` for images, see [Preview Thumbnails](#preview-thumbnails))
+  — it must be provided manually. Without one, the grid falls back to a muted, controls-less
+  `<video>` element as the thumbnail.
 
 Character metadata file:
 
@@ -45,7 +64,7 @@ Character metadata file:
 ### Extra image folders:
 
 - Additional images can be loaded from folders configured with `SD_EXTRA_IMAGES_ROOT` (a list of paths separated by `:` on Linux/macOS or `;` on Windows).
-- Each configured entry is either an images root itself (it directly contains a `characters` folder) or a parent directory whose immediate subdirectories are each their own images root. The latter is what makes multiple extra folders work in Docker, where a single bind mount can only map one host path: point `SD_EXTRA_IMAGES_HOST_PATH` at a parent directory and put each additional folder inside it as a subdirectory.
+- Each configured entry is either an images root itself (it directly contains a `characters` folder) or a parent directory whose immediate subdirectories are each their own images root. The latter is what makes multiple extra folders work in Docker, where a single bind mount can only map one host path: point `SD_EXTRA_IMAGES_ROOT` at a parent directory and put each additional folder inside it as a subdirectory.
 - Extra roots only ever contribute images. `config.json`, `characters/characters.json`, `pose-filters.json`, `duplicate-reviews.json`, `to-upscale.json`, and `to-animate.json` are always read from (and written to) the main root (`SD_IMAGES_ROOT`) only — an extra root's own copies of these files, if any, are ignored. Likewise, only the main root's `config.json` determines the list of available styles; a style folder in an extra root that isn't part of that list is skipped.
 - Images found in an extra root are merged into the same browsable library as the main root (characters, poses, thumbnails, the "new" badge, and the Duplicate Finder), and support the same view/rename/delete actions. Duplicate detection only ever groups images that live in the same root, since validating a group renumbers files within a single folder.
 
@@ -83,13 +102,18 @@ This script walks every PNG under `characters/`, and for each one it skips image
 
 `GET /api/image?path=...&variant=preview` serves the JPEG preview when one exists and transparently falls back to the full PNG otherwise, so the app keeps working before previews are generated. The full-resolution modal view always requests the original PNG.
 
+This script and its `sharp`-based generation are PNG-only; it does not create `.preview.png`
+sidecars for videos (see [Video Support](#video-support)) — those must be provided manually, if at
+all. Unlike the PNG fallback above, a `variant=preview` request for a video with no such sidecar
+returns `404` rather than streaming the raw video file.
+
 ### HTTP Caching
 
 `GET /api/image` responses (both variants) carry `Cache-Control: public, max-age=86400, must-revalidate`, an `ETag`, and a `Last-Modified` header derived from the served file's size and modification time. Browsers revalidate with `If-None-Match`/`If-Modified-Since` and get a bodyless `304` when the file hasn't changed, so repeat views (scrolling back, reopening a character) cost a small header round trip instead of a full re-download. The cache key is tied to file `mtime`/size rather than the first-seen timestamp, because `firstSeenAt` never changes when a file is overwritten in place under the same name (e.g. regenerating a pose), which would make a stale image cache forever.
 
 ## Upscale and Animate Marking
 
-The image detail view has **Upscale** and **Animate** buttons (alongside Redraw/Delete) to flag an image for later, external processing — the app itself never upscales or animates anything, it just records the request.
+The image detail view has **Upscale** and **Animate** buttons (alongside Redraw/Delete) to flag an image for later, external processing — the app itself never upscales or animates anything, it just records the request. Both buttons are hidden for videos (see [Video Support](#video-support)); `GET`/`PUT`/`DELETE /api/marks` also reject a video path with `400`.
 
 - Both buttons are shown only when `SD_ALLOW_DELETE` is enabled, the same flag that gates Redraw/Delete.
 - **Upscale** is a plain toggle: click to mark, click again to unmark.
@@ -187,14 +211,14 @@ Run with Docker Compose:
 
 ```bash
 SD_IMAGES_HOST_PATH=/absolute/path/to/your/images/root
-SD_EXTRA_IMAGES_HOST_PATH=/absolute/path/to/your/extra/images
+SD_EXTRA_IMAGES_ROOT=/absolute/path/to/your/extra/images
 SD_CACHE_HOST_PATH=/absolute/path/to/your/cache/dir
 SD_PASSWORD=your-password
 SD_PASSWORD_SALT=some-random-string
 SD_ALLOW_DELETE=true
 ```
 
-`SD_EXTRA_IMAGES_HOST_PATH` is optional. Since Compose can only bind-mount one host path there, point it either directly at an extra images root (a folder containing `characters/`), or at a parent directory containing several such folders as immediate subdirectories — each one is then loaded as its own extra images root.
+`SD_EXTRA_IMAGES_ROOT` is optional. Since Compose can only bind-mount one host path there, point it either directly at an extra images root (a folder containing `characters/`), or at a parent directory containing several such folders as immediate subdirectories — each one is then loaded as its own extra images root.
 
 2. Start the app:
 
@@ -225,10 +249,10 @@ Example character flow:
 ## API Endpoints
 
 - `GET /api/library`: Returns computed library index from disk.
-- `GET /api/image?path=characters/...`: Streams a PNG image safely from configured root. Add `&variant=preview` to stream the compressed JPEG preview instead (falls back to the PNG if no preview exists yet).
-- `GET /api/marks?path=characters/...`: Returns `{ upscale: boolean, animate: { action: string } | null }`, the current upscale/animate mark state for an image. See [Upscale and Animate Marking](#upscale-and-animate-marking).
-- `PUT /api/marks`: Marks an image. Body: `{ path, type: "upscale", metadata }` or `{ path, type: "animate", action, metadata }`. Requires `SD_ALLOW_DELETE`.
-- `DELETE /api/marks?path=characters/...&type=upscale|animate`: Removes a mark. Requires `SD_ALLOW_DELETE`.
+- `GET /api/image?path=characters/...`: Streams a PNG or MP4 file safely from configured root (`Content-Type` is derived from the file's extension). Add `&variant=preview` to stream the compressed preview instead — falls back to the original PNG if no `.preview.jpg` exists yet, but returns `404` for a video with no `.preview.png` sidecar (see [Video Support](#video-support)) rather than streaming the raw video.
+- `GET /api/marks?path=characters/...`: Returns `{ upscale: boolean, animate: { action: string } | null }`, the current upscale/animate mark state for an image. See [Upscale and Animate Marking](#upscale-and-animate-marking). Returns `400` for a video path.
+- `PUT /api/marks`: Marks an image. Body: `{ path, type: "upscale", metadata }` or `{ path, type: "animate", action, metadata }`. Requires `SD_ALLOW_DELETE`. Returns `400` for a video path.
+- `DELETE /api/marks?path=characters/...&type=upscale|animate`: Removes a mark. Requires `SD_ALLOW_DELETE`. Returns `400` for a video path.
 
 ## Test And Lint
 

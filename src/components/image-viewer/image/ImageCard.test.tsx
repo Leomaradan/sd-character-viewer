@@ -27,6 +27,7 @@ const createImage = (overrides?: Partial<IImageItem>): IImageItem => ({
   firstSeenAt: 0,
   modifiedAt: 0,
   posePatternFilterIds: [],
+  mediaType: "image",
   ...overrides,
 });
 
@@ -76,5 +77,17 @@ describe("ImageCard", () => {
     render(<ImageCard image={createImage({ isNew: true })} showNewBadge={false} />);
 
     expect(screen.queryByLabelText("New image")).not.toBeInTheDocument();
+  });
+
+  it("shows a video badge when the image is a video", () => {
+    render(<ImageCard image={createImage({ mediaType: "video" })} />);
+
+    expect(screen.getByLabelText("Video")).toBeInTheDocument();
+  });
+
+  it("hides the video badge for images", () => {
+    render(<ImageCard image={createImage({ mediaType: "image" })} />);
+
+    expect(screen.queryByLabelText("Video")).not.toBeInTheDocument();
   });
 });

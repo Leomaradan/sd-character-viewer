@@ -5,6 +5,7 @@ import {
   metadataFilterIdToQueryChanges,
   normalizePoseFilters,
   parseCharacterSortOrder,
+  parseMediaTypeFilter,
   parsePoseViewStyle,
   parseShowOnlyNewImages,
   parseSelectedMetadataFilterId,
@@ -72,6 +73,19 @@ describe("persistent filters", () => {
     it("defaults to name for any other value", () => {
       expect(parseCharacterSortOrder(new URLSearchParams("sort=name"))).toBe("name");
       expect(parseCharacterSortOrder(new URLSearchParams(""))).toBe("name");
+    });
+  });
+
+  describe("parseMediaTypeFilter", () => {
+    it("reads image and video values", () => {
+      expect(parseMediaTypeFilter(new URLSearchParams("media=image"))).toBe("image");
+      expect(parseMediaTypeFilter(new URLSearchParams("media=VIDEO"))).toBe("video");
+    });
+
+    it("defaults to both for any other or missing value", () => {
+      expect(parseMediaTypeFilter(new URLSearchParams("media=both"))).toBe("both");
+      expect(parseMediaTypeFilter(new URLSearchParams("media=bogus"))).toBe("both");
+      expect(parseMediaTypeFilter(new URLSearchParams(""))).toBe("both");
     });
   });
 

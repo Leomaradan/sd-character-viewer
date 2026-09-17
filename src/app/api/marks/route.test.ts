@@ -21,12 +21,14 @@ vi.mock("@/lib/image-library", () => ({
   resolveImageFilePath: vi.fn(),
   setToAnimateEntry: vi.fn(),
   setToUpscaleEntry: vi.fn(),
+  isVideoFilePath: vi.fn(() => false),
 }));
 
 import * as auth from "@/lib/auth";
 import * as env from "@/lib/env";
 import {
   getImagesRootPathFromEnv,
+  isVideoFilePath,
   readImageLibrary,
   readToAnimateEntries,
   readToUpscaleEntries,
@@ -51,6 +53,30 @@ beforeEach(() => {
 });
 
 describe("/api/marks GET", () => {
+  it("returns misconfigured payload", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(true);
+
+    const response = await GET(new Request("http://localhost/api/marks?path=a.png"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      misconfigured: true,
+      required: true,
+      authenticated: false,
+    });
+  });
+
+  it("returns 400 when the target is a video", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+
+    const response = await GET(new Request("http://localhost/api/marks?path=a.mp4"));
+
+    expect(response.status).toBe(400);
+  });
+
   it("returns unauthorized when auth fails", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(true);
@@ -179,6 +205,20 @@ describe("/api/marks PUT", () => {
 
     const response = await PUT(
       jsonRequest("http://localhost/api/marks", "PUT", { path: "bad", type: "upscale" }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 when the target is a video", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", { path: "a.mp4", type: "upscale" }),
     );
 
     expect(response.status).toBe(400);
@@ -333,6 +373,20 @@ describe("/api/marks DELETE", () => {
 
     const response = await DELETE(
       new Request("http://localhost/api/marks?path=bad&type=upscale", { method: "DELETE" }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 when the target is a video", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+
+    const response = await DELETE(
+      new Request("http://localhost/api/marks?path=a.mp4&type=upscale", { method: "DELETE" }),
     );
 
     expect(response.status).toBe(400);

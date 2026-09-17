@@ -28,6 +28,8 @@ const createProps = (overrides?: Partial<React.ComponentProps<typeof PosesView>>
   selectedMetadataFilterId: "",
   poseFilteredImages: [],
   showNewBadge: false,
+  mediaTypeFilter: "both" as const,
+  onMediaTypeFilterChange: vi.fn(),
   onClearPoses: vi.fn(),
   onTogglePose: vi.fn(),
   onPoseStyleChange: vi.fn(),
@@ -135,5 +137,14 @@ describe("PosesView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Clear character search" }));
     expect(props.onCharacterSearchChange).toHaveBeenCalledWith("");
+  });
+
+  it("reports media type filter changes", () => {
+    const props = createProps({ mediaTypeFilter: "both" });
+
+    render(<PosesView {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Videos" }));
+    expect(props.onMediaTypeFilterChange).toHaveBeenCalledWith("video");
   });
 });

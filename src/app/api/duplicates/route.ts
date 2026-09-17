@@ -11,6 +11,7 @@ import {
   getImagesRootPathFromEnv,
   getRelativePathRootPrefix,
   isDuplicateGroupReviewed,
+  isVideoFilePath,
   parsePoseName,
   readImageLibrary,
   readReviewedDuplicateGroups,
@@ -173,7 +174,9 @@ export const GET = async (request: Request) => {
   }
 
   const reviewedGroups = await readReviewedDuplicateGroups(library.rootPath);
-  const groups = findDuplicateGroups(library.images).filter(
+  // Videos are never eligible for duplicate detection/renumbering.
+  const dedupCandidateImages = library.images.filter((image) => image.mediaType !== "video");
+  const groups = findDuplicateGroups(dedupCandidateImages).filter(
     (group) => !isDuplicateGroupReviewed(group, reviewedGroups),
   );
 
@@ -255,14 +258,14 @@ const parseValidateRequest = async (
   }
 
   const primaryFilePath = resolveImageFilePath(primaryRelativePath);
-  if (!primaryFilePath) {
+  if (!primaryFilePath || isVideoFilePath(primaryFilePath)) {
     return new Response("Invalid image path", { status: 400 });
   }
 
   const additionalFilePaths: string[] = [];
   for (const relativePath of additionalRelativePaths) {
     const filePath = resolveImageFilePath(relativePath);
-    if (!filePath) {
+    if (!filePath || isVideoFilePath(filePath)) {
       return new Response("Invalid image path", { status: 400 });
     }
     additionalFilePaths.push(filePath);
