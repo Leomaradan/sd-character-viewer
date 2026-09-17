@@ -24,7 +24,7 @@ import {
 const DEFAULT_STYLE: string = "3d";
 const PNG_EXTENSION = ".png";
 const VIDEO_EXTENSION = ".mp4";
-const MEDIA_EXTENSIONS: readonly string[] = [PNG_EXTENSION, VIDEO_EXTENSION];
+const MEDIA_EXTENSIONS: ReadonlySet<string> = new Set([PNG_EXTENSION, VIDEO_EXTENSION]);
 const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
@@ -952,7 +952,7 @@ const listMediaFiles = async (characterFolderPath: string): Promise<string[]> =>
     .filter((entry) => entry.isFile())
     .map((entry) => entry.name)
     .filter((fileName) => !isPreviewSidecarFileName(fileName))
-    .filter((fileName) => MEDIA_EXTENSIONS.includes(path.extname(fileName).toLowerCase()));
+    .filter((fileName) => MEDIA_EXTENSIONS.has(path.extname(fileName).toLowerCase()));
 };
 
 const resolveStyleFolders = async (
@@ -1810,7 +1810,7 @@ const resolveFilePathUnderRoot = (rootPath: string, relativePath: string): strin
     fullPath === resolvedCharactersRootPath ||
     fullPath.startsWith(`${resolvedCharactersRootPath}${path.sep}`);
 
-  if (!isInsideCharactersRoot || !MEDIA_EXTENSIONS.includes(path.extname(fullPath).toLowerCase())) {
+  if (!isInsideCharactersRoot || !MEDIA_EXTENSIONS.has(path.extname(fullPath).toLowerCase())) {
     return null;
   }
 

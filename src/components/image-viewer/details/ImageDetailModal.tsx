@@ -180,6 +180,49 @@ interface IMarksApiResponse {
   animate: { action: string } | null;
 }
 
+interface IMobileViewState {
+  path: string | null;
+  view: "image" | "meta";
+}
+
+interface IVideoControlsState {
+  path: string | null;
+  shown: boolean;
+}
+
+// Small pure helpers factored out of the component body below purely to keep its own cognitive
+// complexity down (each one-line ternary/&& here would otherwise count against the component).
+const resolveMobileView = (
+  state: IMobileViewState,
+  relativePath: string | undefined,
+): "image" | "meta" => (state.path === relativePath ? state.view : "image");
+
+const resolveShowVideoControls = (
+  state: IVideoControlsState,
+  relativePath: string | undefined,
+): boolean => state.path === relativePath && state.shown;
+
+const resolveDeleteLabel = (isVideo: boolean): string =>
+  isVideo ? "Delete video" : "Delete image";
+
+const resolveIsLoadingMetadata = (
+  image: IImageItem | null,
+  isVideo: boolean,
+  metadataState: IMetadataState,
+  relativePath: string | undefined,
+): boolean => Boolean(image) && !isVideo && metadataState.path !== relativePath;
+
+const resolveMarksDerived = (
+  marksState: IMarksState,
+  relativePath: string | undefined,
+): { isUpscaleMarked: boolean; animateAction: string | null } => {
+  const isCurrentMarksState = marksState.path === relativePath;
+  return {
+    isUpscaleMarked: isCurrentMarksState && marksState.upscale,
+    animateAction: isCurrentMarksState ? marksState.animateAction : null,
+  };
+};
+
 export function ImageDetailModal({
   image,
   canDeleteImage = false,
@@ -212,17 +255,17 @@ export function ImageDetailModal({
 
   const relativePath = image?.relativePath;
 
-  const [mobileViewState, setMobileViewState] = useState<{
-    path: string | null;
-    view: "image" | "meta";
-  }>({ path: null, view: "image" });
-  const mobileView = mobileViewState.path === relativePath ? mobileViewState.view : "image";
+  const [mobileViewState, setMobileViewState] = useState<IMobileViewState>({
+    path: null,
+    view: "image",
+  });
+  const mobileView = resolveMobileView(mobileViewState, relativePath);
 
-  const [videoControlsState, setVideoControlsState] = useState<{
-    path: string | null;
-    shown: boolean;
-  }>({ path: null, shown: false });
-  const showVideoControls = videoControlsState.path === relativePath && videoControlsState.shown;
+  const [videoControlsState, setVideoControlsState] = useState<IVideoControlsState>({
+    path: null,
+    shown: false,
+  });
+  const showVideoControls = resolveShowVideoControls(videoControlsState, relativePath);
   const handleVideoClick = useCallback(() => {
     setVideoControlsState({ path: relativePath ?? null, shown: true });
   }, [relativePath]);
@@ -259,7 +302,7 @@ export function ImageDetailModal({
   ]);
 
   const isVideo = image?.mediaType === "video";
-  const deleteLabel = isVideo ? "Delete video" : "Delete image";
+  const deleteLabel = resolveDeleteLabel(isVideo);
 
   useEffect(() => {
     if (!relativePath || isVideo) {
@@ -321,7 +364,7 @@ export function ImageDetailModal({
     };
   }, [relativePath, canDeleteImage, isVideo]);
 
-  const isLoadingMetadata = Boolean(image) && !isVideo && metadataState.path !== relativePath;
+  const isLoadingMetadata = resolveIsLoadingMetadata(image, isVideo, metadataState, relativePath);
   const pngMetadata = useMemo(
     () => (!isVideo && metadataState.path === relativePath ? metadataState.data : null),
     [metadataState, relativePath, isVideo],
@@ -393,9 +436,7 @@ export function ImageDetailModal({
     }
   }, [relativePath, onDeleteSuccess]);
 
-  const isCurrentMarksState = marksState.path === relativePath;
-  const isUpscaleMarked = isCurrentMarksState && marksState.upscale;
-  const animateAction = isCurrentMarksState ? marksState.animateAction : null;
+  const { isUpscaleMarked, animateAction } = resolveMarksDerived(marksState, relativePath);
   const rawMetadata = pngMetadata?.parameters ?? "";
 
   const handleToggleUpscale = useCallback(async () => {

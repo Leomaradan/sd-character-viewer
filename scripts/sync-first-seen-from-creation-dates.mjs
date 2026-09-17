@@ -10,7 +10,7 @@ const { loadEnvConfig } = nextEnv;
 
 const PNG_EXTENSION = ".png";
 const VIDEO_EXTENSION = ".mp4";
-const MEDIA_EXTENSIONS = [PNG_EXTENSION, VIDEO_EXTENSION];
+const MEDIA_EXTENSIONS = new Set([PNG_EXTENSION, VIDEO_EXTENSION]);
 const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
 const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
 const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
@@ -319,7 +319,7 @@ const collectMediaFiles = async (directoryPath) => {
       continue;
     }
 
-    if (!MEDIA_EXTENSIONS.includes(path.extname(entry.name).toLowerCase())) {
+    if (!MEDIA_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
       continue;
     }
 
@@ -443,6 +443,78 @@ const buildMetadataFilterOptions = (characters) => {
   ].sort((a, b) => compareNatural(a.label, b.label));
 };
 
+// Parses one discovered media file into an ILibraryData image entry, or returns null when the
+// path doesn't match the expected "characters/{style}/{character}/{file}" shape (e.g. it lives
+// directly under an unrecognized style folder).
+const buildImageEntryFromMediaFile = (params) => {
+  const {
+    rootPath,
+    styleSet,
+    compiledPatternFilters,
+    firstSeenByRelativePath,
+    absoluteMediaFilePath,
+    mtimeMs,
+  } = params;
+  const relativePath = normalizeRelativePath(path.relative(rootPath, absoluteMediaFilePath));
+  const parts = relativePath.split("/");
+  if (parts.length < 4 || parts[0] !== "characters" || !styleSet.has(parts[1])) {
+    return null;
+  }
+
+  const [, style, characterName, ...fileNameParts] = parts;
+  const mediaFileName = fileNameParts.join("/");
+  if (mediaFileName.includes("/")) {
+    return null;
+  }
+
+  const parsedPose = parsePoseName(mediaFileName);
+  const posePatternFilterIds = compiledPatternFilters
+    .filter((filter) => {
+      filter.regex.lastIndex = 0;
+      return filter.regex.test(parsedPose.poseBaseName);
+    })
+    .map((filter) => filter.id);
+  const mediaType =
+    path.extname(mediaFileName).toLowerCase() === VIDEO_EXTENSION ? "video" : "image";
+
+  return {
+    id: `${style}::${characterName}::${mediaFileName}`,
+    style,
+    characterName,
+    poseName: parsedPose.poseName,
+    poseBaseName: parsedPose.poseBaseName,
+    poseVariant: parsedPose.poseVariant,
+    relativePath,
+    isNew: false,
+    firstSeenAt: firstSeenByRelativePath.get(relativePath) ?? Date.now(),
+    modifiedAt: Math.trunc(mtimeMs),
+    posePatternFilterIds,
+    mediaType,
+  };
+};
+
+const updateCharacterAccumulator = (characterMap, image) => {
+  const existingCharacter = characterMap.get(image.characterName) ?? {
+    name: image.characterName,
+    imageCount: 0,
+    styles: new Set(),
+    poses: new Set(),
+    thumbnailsByStyle: {},
+    thumbnailModifiedAtByStyle: {},
+  };
+  existingCharacter.imageCount += 1;
+  existingCharacter.styles.add(image.style);
+  existingCharacter.poses.add(image.poseBaseName);
+  if (
+    image.poseBaseName.toLowerCase() === "base" &&
+    !existingCharacter.thumbnailsByStyle[image.style]
+  ) {
+    existingCharacter.thumbnailsByStyle[image.style] = image.relativePath;
+    existingCharacter.thumbnailModifiedAtByStyle[image.style] = image.modifiedAt;
+  }
+  characterMap.set(image.characterName, existingCharacter);
+};
+
 const buildLibraryIndexCache = async (
   rootPath,
   charactersRootPath,
@@ -464,65 +536,23 @@ const buildLibraryIndexCache = async (
   const poseCounter = new Map();
 
   for (const absoluteMediaFilePath of mediaFilePaths) {
-    const relativePath = normalizeRelativePath(path.relative(rootPath, absoluteMediaFilePath));
-    const parts = relativePath.split("/");
-    if (parts.length < 4 || parts[0] !== "characters" || !styleSet.has(parts[1])) {
-      continue;
-    }
-
-    const [, style, characterName, ...fileNameParts] = parts;
-    const mediaFileName = fileNameParts.join("/");
-    if (mediaFileName.includes("/")) {
-      continue;
-    }
-
-    const parsedPose = parsePoseName(mediaFileName);
     const stat = await fs.stat(absoluteMediaFilePath);
-    const posePatternFilterIds = compiledPatternFilters
-      .filter((filter) => {
-        filter.regex.lastIndex = 0;
-        return filter.regex.test(parsedPose.poseBaseName);
-      })
-      .map((filter) => filter.id);
-    const mediaType =
-      path.extname(mediaFileName).toLowerCase() === VIDEO_EXTENSION ? "video" : "image";
-    const image = {
-      id: `${style}::${characterName}::${mediaFileName}`,
-      style,
-      characterName,
-      poseName: parsedPose.poseName,
-      poseBaseName: parsedPose.poseBaseName,
-      poseVariant: parsedPose.poseVariant,
-      relativePath,
-      isNew: false,
-      firstSeenAt: firstSeenByRelativePath.get(relativePath) ?? Date.now(),
-      modifiedAt: Math.trunc(stat.mtimeMs),
-      posePatternFilterIds,
-      mediaType,
-    };
+    const image = buildImageEntryFromMediaFile({
+      rootPath,
+      styleSet,
+      compiledPatternFilters,
+      firstSeenByRelativePath,
+      absoluteMediaFilePath,
+      mtimeMs: stat.mtimeMs,
+    });
+
+    if (!image) {
+      continue;
+    }
 
     images.push(image);
     poseCounter.set(image.poseBaseName, (poseCounter.get(image.poseBaseName) ?? 0) + 1);
-
-    const existingCharacter = characterMap.get(characterName) ?? {
-      name: characterName,
-      imageCount: 0,
-      styles: new Set(),
-      poses: new Set(),
-      thumbnailsByStyle: {},
-      thumbnailModifiedAtByStyle: {},
-    };
-    existingCharacter.imageCount += 1;
-    existingCharacter.styles.add(style);
-    existingCharacter.poses.add(image.poseBaseName);
-    if (
-      image.poseBaseName.toLowerCase() === "base" &&
-      !existingCharacter.thumbnailsByStyle[style]
-    ) {
-      existingCharacter.thumbnailsByStyle[style] = image.relativePath;
-      existingCharacter.thumbnailModifiedAtByStyle[style] = image.modifiedAt;
-    }
-    characterMap.set(characterName, existingCharacter);
+    updateCharacterAccumulator(characterMap, image);
   }
 
   images.sort((a, b) => {
