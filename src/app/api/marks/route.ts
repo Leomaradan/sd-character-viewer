@@ -2,6 +2,7 @@ import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } 
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
 import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 import {
+  findAnimationNodeByKey,
   getImagesRootPathFromEnv,
   isVideoFilePath,
   readImageLibrary,
@@ -81,7 +82,7 @@ const handleAnimateMark = async (
   }
 
   const library = await readImageLibrary();
-  if (!library.animations.includes(action)) {
+  if (!findAnimationNodeByKey(library.animations, action)) {
     return new Response("Unknown animation action", { status: 400 });
   }
 

@@ -29,7 +29,7 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { IImageItem } from "@/types/library";
+import type { IAnimationConfig, IImageItem } from "@/types/library";
 
 import { formatStyleLabel, getImageUrl } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
@@ -150,6 +150,15 @@ const ANIMATE_BUTTON_ACTIVE_SX = {
   borderColor: "#ff9800",
   bgcolor: "rgba(255,152,0,0.24)",
 };
+// Precomputed per-depth sx objects for the flattened animation menu's indentation, so the JSX
+// below references a stable object rather than creating a new one on every render.
+const MAX_PRECOMPUTED_ANIMATE_MENU_INDENT_DEPTH = 6;
+const ANIMATE_MENU_ITEM_INDENT_SX_BY_DEPTH: readonly { pl: number }[] = Array.from(
+  { length: MAX_PRECOMPUTED_ANIMATE_MENU_INDENT_DEPTH },
+  (_, depth) => ({ pl: 2 + depth * 2 }),
+);
+const getAnimateMenuItemIndentSx = (depth: number): { pl: number } =>
+  ANIMATE_MENU_ITEM_INDENT_SX_BY_DEPTH[depth] ?? { pl: 2 + depth * 2 };
 
 interface IImageDetailModalProps {
   image: IImageItem | null;
@@ -161,7 +170,13 @@ interface IImageDetailModalProps {
   onNavigatePrevious?: () => void;
   onNavigateNext?: () => void;
   styleLabel?: (style: string) => string;
-  animations?: string[];
+  animations?: IAnimationConfig[];
+}
+
+interface IFlatAnimationOption {
+  key: string;
+  name: string;
+  depth: number;
 }
 
 interface IMetadataState {
@@ -222,6 +237,36 @@ const resolveMarksDerived = (
     animateAction: isCurrentMarksState ? marksState.animateAction : null,
   };
 };
+
+// Mirrors src/lib/image-library.ts's findAnimationNodeByKey - duplicated (rather than imported)
+// because that module pulls in node:fs and can't be bundled into a client component.
+const findAnimationNodeByKey = (
+  animations: IAnimationConfig[],
+  key: string,
+): IAnimationConfig | null => {
+  for (const node of animations) {
+    if (node.key === key) {
+      return node;
+    }
+
+    const foundInSubVersions = node.subVersions
+      ? findAnimationNodeByKey(node.subVersions, key)
+      : null;
+    if (foundInSubVersions) {
+      return foundInSubVersions;
+    }
+  }
+
+  return null;
+};
+
+// MUI has no built-in nested Menu, so a two-level animation config is flattened into a single
+// list with depth-based indentation instead.
+const flattenAnimations = (nodes: IAnimationConfig[], depth: number = 0): IFlatAnimationOption[] =>
+  nodes.flatMap((node) => [
+    { key: node.key, name: node.name, depth },
+    ...(node.subVersions ? flattenAnimations(node.subVersions, depth + 1) : []),
+  ]);
 
 export function ImageDetailModal({
   image,
@@ -438,6 +483,10 @@ export function ImageDetailModal({
 
   const { isUpscaleMarked, animateAction } = resolveMarksDerived(marksState, relativePath);
   const rawMetadata = pngMetadata?.parameters ?? "";
+  const flatAnimationOptions = useMemo(() => flattenAnimations(animations), [animations]);
+  const animateActionLabel = animateAction
+    ? (findAnimationNodeByKey(animations, animateAction)?.name ?? animateAction)
+    : "Animate";
 
   const handleToggleUpscale = useCallback(async () => {
     if (!relativePath) {
@@ -646,7 +695,7 @@ export function ImageDetailModal({
             disabled={isTogglingAnimate}
             sx={animateAction ? ANIMATE_BUTTON_ACTIVE_SX : ANIMATE_BUTTON_SX}
           >
-            {isTogglingAnimate ? <CircularProgress size={18} /> : (animateAction ?? "Animate")}
+            {isTogglingAnimate ? <CircularProgress size={18} /> : animateActionLabel}
           </Button>
         )}
         <Button
@@ -793,14 +842,15 @@ export function ImageDetailModal({
         open={Boolean(animateMenuAnchorEl)}
         onClose={handleCloseAnimateMenu}
       >
-        {animations.map((animationName) => (
+        {flatAnimationOptions.map((option) => (
           <MenuItem
-            key={animationName}
-            data-action={animationName}
-            selected={animateAction === animationName}
+            key={option.key}
+            data-action={option.key}
+            selected={animateAction === option.key}
             onClick={handleAnimateMenuItemClick}
+            sx={getAnimateMenuItemIndentSx(option.depth)}
           >
-            {animationName}
+            {option.name}
           </MenuItem>
         ))}
       </Menu>

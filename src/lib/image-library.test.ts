@@ -17,10 +17,12 @@ import path from "node:path";
 import type { IImageItem, ILibraryData } from "@/types/library";
 
 import {
+  findAnimationNodeByKey,
   findDuplicateGroups,
   getExtraImagesRootPathsFromEnv,
   isDuplicateGroupReviewed,
   isVideoFilePath,
+  normalizeAnimationsConfig,
   parsePoseName,
   readImageLibrary,
   readReviewedDuplicateGroups,
@@ -330,7 +332,10 @@ describe("readImageLibrary with characters metadata", () => {
       sketch: "Sketch Art",
       "unused-style": "Unused",
     });
-    expect(library.animations).toEqual(["Zoom In", "Pan"]);
+    expect(library.animations).toEqual([
+      { key: "Zoom In", name: "Zoom In", prompt: "" },
+      { key: "Pan", name: "Pan", prompt: "" },
+    ]);
     expect(library.images).toHaveLength(2);
     expect(library.images.every((image) => ["comic", "sketch"].includes(image.style))).toBe(true);
   });
@@ -811,7 +816,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 6,
+          version: 7,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],
@@ -894,7 +899,7 @@ describe("readImageLibrary with characters metadata", () => {
 
     const library = await readImageLibrary();
 
-    expect(library.animations).toEqual(["Zoom In"]);
+    expect(library.animations).toEqual([{ key: "Zoom In", name: "Zoom In", prompt: "" }]);
     expect(library.images).toHaveLength(1);
 
     delete process.env.SD_CACHE_DIR;
@@ -949,6 +954,108 @@ describe("readImageLibrary with characters metadata", () => {
     await expect(fs.stat(cacheFilePath)).rejects.toThrow("ENOENT: no such file or directory");
 
     delete process.env.SD_CACHE_DIR;
+  });
+});
+
+describe("normalizeAnimationsConfig", () => {
+  it("migrates plain strings to leaf nodes, trimming and deduplicating them", () => {
+    expect(normalizeAnimationsConfig(["Zoom In", "Zoom In", " Pan ", ""])).toEqual([
+      { key: "Zoom In", name: "Zoom In", prompt: "" },
+      { key: "Pan", name: "Pan", prompt: "" },
+    ]);
+  });
+
+  it("normalizes nested sub-version nodes with prompts", () => {
+    expect(
+      normalizeAnimationsConfig([
+        {
+          key: "dance",
+          name: "Dance",
+          prompt: "dancing",
+          subVersions: [
+            { key: "latin-dance", name: "Latin Dance", prompt: "latin dancing" },
+            { key: "sensual-dance", name: "Sensual Dance" },
+          ],
+        },
+      ]),
+    ).toEqual([
+      {
+        key: "dance",
+        name: "Dance",
+        prompt: "dancing",
+        subVersions: [
+          { key: "latin-dance", name: "Latin Dance", prompt: "latin dancing" },
+          { key: "sensual-dance", name: "Sensual Dance", prompt: "" },
+        ],
+      },
+    ]);
+  });
+
+  it("skips invalid entries (missing key/name, wrong types, non-array input)", () => {
+    expect(
+      normalizeAnimationsConfig([
+        123,
+        null,
+        {},
+        { key: "only-key" },
+        { name: "only-name" },
+        { key: "", name: "Empty Key" },
+        { key: "valid", name: "Valid" },
+      ]),
+    ).toEqual([{ key: "valid", name: "Valid", prompt: "" }]);
+
+    expect(normalizeAnimationsConfig("not-an-array")).toEqual([]);
+    expect(normalizeAnimationsConfig(undefined)).toEqual([]);
+  });
+
+  it("deduplicates by key, keeping the first occurrence", () => {
+    expect(
+      normalizeAnimationsConfig([
+        { key: "dance", name: "Dance", prompt: "first" },
+        { key: "dance", name: "Dance Duplicate", prompt: "second" },
+      ]),
+    ).toEqual([{ key: "dance", name: "Dance", prompt: "first" }]);
+  });
+
+  it("drops an empty subVersions array rather than keeping it on the node", () => {
+    expect(normalizeAnimationsConfig([{ key: "dance", name: "Dance", subVersions: [] }])).toEqual([
+      { key: "dance", name: "Dance", prompt: "" },
+    ]);
+  });
+});
+
+describe("findAnimationNodeByKey", () => {
+  const animations = [
+    { key: "zoom-in", name: "Zoom In", prompt: "" },
+    {
+      key: "dance",
+      name: "Dance",
+      prompt: "",
+      subVersions: [
+        { key: "latin-dance", name: "Latin Dance", prompt: "" },
+        { key: "sensual-dance", name: "Sensual Dance", prompt: "" },
+      ],
+    },
+  ];
+
+  it("finds a top-level node by key", () => {
+    expect(findAnimationNodeByKey(animations, "zoom-in")).toEqual({
+      key: "zoom-in",
+      name: "Zoom In",
+      prompt: "",
+    });
+  });
+
+  it("finds a nested sub-version node by key", () => {
+    expect(findAnimationNodeByKey(animations, "latin-dance")).toEqual({
+      key: "latin-dance",
+      name: "Latin Dance",
+      prompt: "",
+    });
+  });
+
+  it("returns null for an unknown key", () => {
+    expect(findAnimationNodeByKey(animations, "unknown")).toBeNull();
   });
 });
 
