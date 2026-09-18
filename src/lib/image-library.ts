@@ -1,5 +1,5 @@
 import Ajv from "ajv";
-import { promises as fs, readdirSync, statSync, type Dirent } from "node:fs";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { ensureLocalEnvLoaded } from "@/lib/env";
@@ -8,6 +8,11 @@ import {
   SD_EXTRA_IMAGES_ROOT_ENV_KEY,
   SD_IMAGES_ROOT_ENV_KEY,
 } from "@/lib/env-keys";
+import {
+  buildExtraRootRelativePrefix,
+  EXTRA_ROOT_PATH_SEGMENT,
+  resolveExtraImageRoots,
+} from "@/lib/extra-image-roots";
 import {
   STYLES,
   type ICharacterSummary,
@@ -45,11 +50,6 @@ const DUPLICATE_REVIEW_CONFIG_FILE_NAME = "duplicate-reviews.json";
 const TO_UPSCALE_FILE_NAME = "to-upscale.json";
 const TO_ANIMATE_FILE_NAME = "to-animate.json";
 const DEFAULT_POSE_PATTERN_FILTER_CONFIGS = [{ label: "With Somebody", pattern: "^With " }];
-// Extra image roots are exposed to the client as a virtual relativePath prefix
-// (e.g. "extra-roots/0/characters/3d/Anna/Base.png") so the same "path" query param used to
-// view/delete/rename a main-root image can also address an image living in an extra root,
-// without colliding with a same-named file in the main root or another extra root.
-const EXTRA_ROOT_PATH_SEGMENT = "extra-roots";
 const MAIN_ROOT_KEY = "main";
 
 interface ILibraryConfig {
@@ -338,10 +338,6 @@ const compareNatural = (a: string, b: string): number => {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 };
 
-const buildExtraRootRelativePrefix = (extraRootIndex: number): string => {
-  return `${EXTRA_ROOT_PATH_SEGMENT}/${extraRootIndex}`;
-};
-
 const parseExtraRootRelativePath = (
   relativePath: string,
 ): { extraRootIndex: number; remainder: string } | null => {
@@ -364,65 +360,9 @@ export const getRelativePathRootPrefix = (relativePath: string): string => {
   return extraRootMatch ? buildExtraRootRelativePrefix(extraRootMatch.extraRootIndex) : "";
 };
 
-const directoryHasCharactersFolder = (directoryPath: string): boolean => {
-  try {
-    return statSync(path.join(directoryPath, "characters")).isDirectory();
-  } catch {
-    return false;
-  }
-};
-
-// Each configured entry is either an images root itself (it directly contains a "characters"
-// folder) or a parent directory whose immediate subdirectories are each their own images root
-// (useful for Docker, where a single bind mount can only map one host path: mounting a parent
-// directory lets several unrelated host folders act as separate extra roots).
-const resolveExtraImageRoots = (): string[] => {
-  const rawValue = process.env[SD_EXTRA_IMAGES_ROOT_ENV_KEY]?.trim();
-
-  if (!rawValue) {
-    return [];
-  }
-
-  const configuredPaths = rawValue
-    .split(path.delimiter)
-    .map((value) => value.trim())
-    .filter((value) => value !== "");
-
-  const resolvedRoots: string[] = [];
-
-  for (const configuredPath of configuredPaths) {
-    if (directoryHasCharactersFolder(configuredPath)) {
-      resolvedRoots.push(path.resolve(configuredPath));
-      continue;
-    }
-
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(configuredPath, { withFileTypes: true, encoding: "utf8" });
-    } catch {
-      continue;
-    }
-
-    const subdirectoryRoots = entries
-      // A symlinked subdirectory is reported as a symlink, not a directory, by Dirent; treat it
-      // the same as a real directory (directoryHasCharactersFolder follows symlinks via
-      // statSync), matching how a symlink is already accepted when it's the configured entry
-      // itself rather than one of its subdirectories.
-      .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
-      .map((entry) => entry.name)
-      .filter((name) => directoryHasCharactersFolder(path.join(configuredPath, name)))
-      .sort(compareNatural)
-      .map((name) => path.resolve(path.join(configuredPath, name)));
-
-    resolvedRoots.push(...subdirectoryRoots);
-  }
-
-  return [...new Set(resolvedRoots)];
-};
-
 export const getExtraImagesRootPathsFromEnv = (): string[] => {
   ensureLocalEnvLoaded();
-  return resolveExtraImageRoots();
+  return resolveExtraImageRoots(process.env[SD_EXTRA_IMAGES_ROOT_ENV_KEY]);
 };
 
 const ucFirst = (value: string): string => {
