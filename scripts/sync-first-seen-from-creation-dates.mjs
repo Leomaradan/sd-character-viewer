@@ -8,6 +8,11 @@ import process from "node:process";
 import { promisify } from "node:util";
 import sharp from "sharp";
 
+import {
+  buildExtraRootRelativePrefix,
+  resolveExtraImageRoots,
+} from "../src/lib/extra-image-roots.js";
+
 const { loadEnvConfig } = nextEnv;
 
 const execFileAsync = promisify(execFile);
@@ -352,6 +357,43 @@ const buildFirstSeenMapFromFilesystem = async (rootPath, mediaFilePaths) => {
   }
 
   return firstSeenByRelativePath;
+};
+
+// Mirrors how src/lib/image-library.ts merges extra-root images into the same first-seen cache
+// as the main root: each extra root's relative paths get an "extra-roots/{index}/" prefix so
+// they can't collide with the main root or with each other, and a root that's missing/unreadable
+// at scan time is skipped rather than failing the whole run.
+const collectExtraRootMediaAndFirstSeen = async (extraRootPaths) => {
+  const mediaFilePaths = [];
+  const firstSeenByRelativePath = new Map();
+
+  for (const [extraRootIndex, extraRootPath] of extraRootPaths.entries()) {
+    const extraCharactersRootPath = path.join(extraRootPath, "characters");
+
+    try {
+      const extraMediaFilePaths = await collectMediaFiles(extraCharactersRootPath);
+      const extraFirstSeen = await buildFirstSeenMapFromFilesystem(
+        extraRootPath,
+        extraMediaFilePaths,
+      );
+      const prefix = buildExtraRootRelativePrefix(extraRootIndex);
+
+      for (const [relativePath, firstSeenAt] of extraFirstSeen) {
+        firstSeenByRelativePath.set(
+          normalizeRelativePath(`${prefix}/${relativePath}`),
+          firstSeenAt,
+        );
+      }
+
+      mediaFilePaths.push(...extraMediaFilePaths);
+    } catch (error) {
+      console.warn(
+        `Skipping extra image root ${extraRootPath}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  return { mediaFilePaths, firstSeenByRelativePath };
 };
 
 const getFileSnapshot = async (rootPath, absolutePath) => {
@@ -839,6 +881,19 @@ const run = async () => {
     resolvedRootPath,
     mediaFilePaths,
   );
+
+  const extraRootPaths = resolveExtraImageRoots(process.env.SD_EXTRA_IMAGES_ROOT);
+  if (extraRootPaths.length > 0) {
+    console.log(`Found ${extraRootPaths.length} extra image root(s).`);
+  }
+
+  const extraRootData = await collectExtraRootMediaAndFirstSeen(extraRootPaths);
+  for (const [relativePath, firstSeenAt] of extraRootData.firstSeenByRelativePath) {
+    firstSeenByRelativePath.set(relativePath, firstSeenAt);
+  }
+
+  const allMediaFilePaths = [...mediaFilePaths, ...extraRootData.mediaFilePaths];
+
   const sortedEntries = [...firstSeenByRelativePath.entries()].sort((a, b) =>
     compareNatural(a[0], b[0]),
   );
@@ -865,7 +920,7 @@ const run = async () => {
   );
 
   if (!skipThumbnails) {
-    await generatePreviewThumbnails(mediaFilePaths, isDryRun);
+    await generatePreviewThumbnails(allMediaFilePaths, isDryRun);
   }
 };
 
