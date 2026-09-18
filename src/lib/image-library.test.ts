@@ -1022,6 +1022,38 @@ describe("normalizeAnimationsConfig", () => {
       { key: "dance", name: "Dance", prompt: "" },
     ]);
   });
+
+  it("deduplicates a key reused by a nested sub-version, not just among siblings", () => {
+    // A key repeated across nesting levels would otherwise make the nested node unreachable by
+    // findAnimationNodeByKey (which always finds the outer one first) and produce duplicate
+    // React keys in the flattened UI menu.
+    expect(
+      normalizeAnimationsConfig([
+        {
+          key: "dance",
+          name: "Dance",
+          subVersions: [{ key: "dance", name: "Duplicate Nested Dance" }],
+        },
+      ]),
+    ).toEqual([{ key: "dance", name: "Dance", prompt: "" }]);
+  });
+
+  it("deduplicates a key reused across different subtrees", () => {
+    expect(
+      normalizeAnimationsConfig([
+        { key: "a", name: "A", subVersions: [{ key: "shared", name: "First" }] },
+        { key: "b", name: "B", subVersions: [{ key: "shared", name: "Second" }] },
+      ]),
+    ).toEqual([
+      {
+        key: "a",
+        name: "A",
+        prompt: "",
+        subVersions: [{ key: "shared", name: "First", prompt: "" }],
+      },
+      { key: "b", name: "B", prompt: "" },
+    ]);
+  });
 });
 
 describe("findAnimationNodeByKey", () => {

@@ -300,6 +300,25 @@ describe("/api/marks PUT", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 500 when the image library fails to load for an animate mark", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(readImageLibrary).mockRejectedValue(new Error("ENOENT"));
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.png",
+        type: "animate",
+        action: "Zoom In",
+      }),
+    );
+
+    expect(response.status).toBe(500);
+  });
+
   it("marks an image for animate with a configured action", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);

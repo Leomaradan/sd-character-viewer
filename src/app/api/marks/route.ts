@@ -81,7 +81,13 @@ const handleAnimateMark = async (
     return new Response("Invalid animation action", { status: 400 });
   }
 
-  const library = await readImageLibrary();
+  let library;
+  try {
+    library = await readImageLibrary();
+  } catch {
+    return new Response("Could not read the image library", { status: 500 });
+  }
+
   if (!findAnimationNodeByKey(library.animations, action)) {
     return new Response("Unknown animation action", { status: 400 });
   }

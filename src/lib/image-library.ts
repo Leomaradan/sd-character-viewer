@@ -230,11 +230,21 @@ const normalizeStyleNames = (styles: string[] | undefined): string[] => {
 // {key: s, name: s, prompt: ""}) or an object node with required key/name strings, an optional
 // prompt string (defaulting to ""), and optional recursively-normalized subVersions. Anything
 // else (wrong types, missing key/name) is silently skipped, matching readMarkedImageMap's
-// existing leniency toward malformed entries elsewhere in this file.
-const normalizeAnimationConfigEntry = (entry: unknown): IAnimationConfig | null => {
+// existing leniency toward malformed entries elsewhere in this file. `seenKeys` is shared across
+// the whole tree (not just siblings), since findAnimationNodeByKey resolves by key alone: a key
+// reused at a different nesting level would otherwise shadow the earlier node and make the
+// later one unreachable (and produce duplicate React keys in the flattened UI menu).
+const normalizeAnimationConfigEntry = (
+  entry: unknown,
+  seenKeys: Set<string>,
+): IAnimationConfig | null => {
   if (typeof entry === "string") {
     const trimmedName = entry.trim();
-    return trimmedName ? { key: trimmedName, name: trimmedName, prompt: "" } : null;
+    if (!trimmedName || seenKeys.has(trimmedName)) {
+      return null;
+    }
+    seenKeys.add(trimmedName);
+    return { key: trimmedName, name: trimmedName, prompt: "" };
   }
 
   if (!isPlainObjectRecord(entry)) {
@@ -243,16 +253,30 @@ const normalizeAnimationConfigEntry = (entry: unknown): IAnimationConfig | null 
 
   const key = typeof entry.key === "string" ? entry.key.trim() : "";
   const name = typeof entry.name === "string" ? entry.name.trim() : "";
-  if (!key || !name) {
+  if (!key || !name || seenKeys.has(key)) {
     return null;
   }
+  seenKeys.add(key);
 
   const prompt = typeof entry.prompt === "string" ? entry.prompt : "";
   const subVersions = Array.isArray(entry.subVersions)
-    ? normalizeAnimationsConfig(entry.subVersions)
+    ? normalizeAnimationEntries(entry.subVersions, seenKeys)
     : [];
 
   return subVersions.length > 0 ? { key, name, prompt, subVersions } : { key, name, prompt };
+};
+
+const normalizeAnimationEntries = (raw: unknown[], seenKeys: Set<string>): IAnimationConfig[] => {
+  const nodes: IAnimationConfig[] = [];
+
+  for (const rawEntry of raw) {
+    const node = normalizeAnimationConfigEntry(rawEntry, seenKeys);
+    if (node) {
+      nodes.push(node);
+    }
+  }
+
+  return nodes;
 };
 
 export const normalizeAnimationsConfig = (raw: unknown): IAnimationConfig[] => {
@@ -260,16 +284,7 @@ export const normalizeAnimationsConfig = (raw: unknown): IAnimationConfig[] => {
     return [];
   }
 
-  const nodesByKey = new Map<string, IAnimationConfig>();
-
-  for (const rawEntry of raw) {
-    const node = normalizeAnimationConfigEntry(rawEntry);
-    if (node && !nodesByKey.has(node.key)) {
-      nodesByKey.set(node.key, node);
-    }
-  }
-
-  return [...nodesByKey.values()];
+  return normalizeAnimationEntries(raw, new Set<string>());
 };
 
 export const findAnimationNodeByKey = (
