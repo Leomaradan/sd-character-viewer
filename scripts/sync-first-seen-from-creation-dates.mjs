@@ -695,7 +695,7 @@ const runFfmpegFrameExtraction = async (videoFilePath, previewFilePath, maxSize,
     "-frames:v",
     "1",
     "-vf",
-    `scale=w=min(iw\\,${maxSize}):h=min(ih\\,${maxSize}):force_original_aspect_ratio=decrease`,
+    String.raw`scale=w=min(iw\,${maxSize}):h=min(ih\,${maxSize}):force_original_aspect_ratio=decrease`,
     previewFilePath,
   ]);
 };
