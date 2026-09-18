@@ -92,7 +92,7 @@ Generate (or refresh) previews with:
 pnpm sync:first-seen:creation-dates
 ```
 
-This script walks every PNG and MP4 under `characters/`, and for each one it skips files whose preview is already newer than the source file. Video previews require `ffmpeg` to be installed and available on `PATH` — the script extracts a frame one second into the clip (falling back to the first frame for clips shorter than that). Options:
+This script walks every PNG and MP4 under `characters/`, and for each one it skips files whose preview is already newer than the source file. Video previews require `ffmpeg` to be installed and available on `PATH` — the script extracts the first frame of the clip. Options:
 
 - `--dry-run`: report how many previews would be generated without writing anything.
 - `--skip-thumbnails`: only sync the first-seen cache, skip preview generation.
