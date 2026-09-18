@@ -1,25 +1,25 @@
 {
   "name": "sd-character-viewer",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "sync:first-seen:creation-dates": "node scripts/sync-first-seen-from-creation-dates.mjs",
+    "dev": "next dev",
     "format": "oxfmt \"src/**/*.{ts,tsx}\" \"*.{ts,mjs}\"",
     "format:check": "oxfmt --check \"src/**/*.{ts,tsx}\" \"*.{ts,mjs}\"",
+    "knip": "knip",
     "lint": "oxlint",
     "lint:ci": "oxlint . --max-warnings=0",
-    "knip": "knip",
     "precommit:check": "pnpm format && pnpm lint:ci && pnpm typecheck && pnpm test:hook && pnpm knip",
+    "prepare": "husky || true",
     "prepush:check": "pnpm build",
-    "typecheck": "tsc --noEmit",
+    "start": "next start",
+    "sync:first-seen:creation-dates": "node scripts/sync-first-seen-from-creation-dates.mjs",
     "test": "vitest run --coverage",
-    "test:watch": "vitest",
     "test:hook": "vitest run --coverage=false",
-    "prepare": "husky || true"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",

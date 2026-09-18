@@ -34,8 +34,9 @@ const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
 // than being returned as-is with the new field silently undefined.
 const LIBRARY_INDEX_CACHE_VERSION = 6;
 const PREVIEW_FILE_SUFFIX = ".preview.jpg";
-// Video previews use a distinct suffix/extension from image previews: they are never
-// auto-generated (no ffmpeg/poster-frame tooling exists), only manually provided by an operator.
+// Video previews use a distinct suffix/extension from image previews: the running app never
+// generates them itself (no ffmpeg invoked at request time), only the offline sync script
+// (via ffmpeg) or an operator can provide one.
 const VIDEO_PREVIEW_FILE_SUFFIX = ".preview.png";
 const LIBRARY_CONFIG_FILE_NAME = "config.json";
 const CHARACTERS_CONFIG_FILE_NAME = "characters.json";

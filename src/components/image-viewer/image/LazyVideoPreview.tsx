@@ -22,11 +22,12 @@ const MEDIA_SX: SxProps<Theme> = {
   display: "block",
 };
 
-// There is no automatic poster-frame generation for video (no ffmpeg tooling in this project),
-// only a manually-provided "<name>.preview.png" sidecar. This component optimistically requests
-// that sidecar as a plain <img>; the backend 404s a variant=preview request for video when no
-// sidecar exists (see /api/image), so onError reliably signals "no sidecar" and this swaps to a
-// native, non-autoplaying <video> thumbnail instead.
+// The running app never generates a poster frame itself at request time; it only reads a
+// "<name>.preview.png" sidecar, whether provided manually or by the offline sync script (which
+// uses ffmpeg). This component optimistically requests that sidecar as a plain <img>; the backend
+// 404s a variant=preview request for video when no sidecar exists (see /api/image), so onError
+// reliably signals "no sidecar" and this swaps to a native, non-autoplaying <video> thumbnail
+// instead.
 export const LazyVideoPreview = ({
   relativePath,
   alt,

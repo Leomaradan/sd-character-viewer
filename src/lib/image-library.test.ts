@@ -237,7 +237,7 @@ describe("resolvePreviewFilePath", () => {
     expect(previewPath).toBe(path.resolve("/tmp/images", "characters/3d/Anna/Base.preview.jpg"));
   });
 
-  it("swaps the .mp4 extension for .preview.png (a manually-provided sidecar, never generated)", () => {
+  it("swaps the .mp4 extension for .preview.png (a sidecar the running app never generates itself)", () => {
     const previewPath = resolvePreviewFilePath(
       path.resolve("/tmp/images", "characters/3d/Anna/Base.mp4"),
     );

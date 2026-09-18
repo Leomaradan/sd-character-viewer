@@ -25,6 +25,8 @@ FROM base AS runner
 ENV NODE_ENV=production
 ENV PORT=3000
 
+RUN apk add --no-cache ffmpeg
+
 WORKDIR /app
 
 COPY --from=builder /app/package.json ./package.json
