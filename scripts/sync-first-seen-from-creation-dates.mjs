@@ -715,13 +715,8 @@ const generateVideoPreview = async (videoFilePath, previewFilePath, maxSize) => 
         { cause: error },
       );
     }
-  }
 
-  // Seeking past the end of a short clip either makes ffmpeg exit non-zero, or (depending on
-  // the codec) exit 0 while writing no frames at all. Either way, retry from the start of the
-  // stream instead of failing the whole run.
-  if (!(await fs.stat(previewFilePath).catch(() => null))) {
-    await runFfmpegFrameExtraction(videoFilePath, previewFilePath, maxSize, 0);
+    throw error;
   }
 };
 
