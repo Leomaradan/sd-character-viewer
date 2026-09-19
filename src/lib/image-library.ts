@@ -24,6 +24,7 @@ import {
   type IPoseFilterOption,
   type IPosePatternFilter,
   type IPoseSummary,
+  type IVideoLink,
   type TMediaType,
 } from "@/types/library";
 
@@ -935,18 +936,6 @@ export const removeToExtendEntry = async (
     }
   });
 };
-
-// Persisted once a generated video is matched back to the pending mark that requested it (see
-// reconcilePendingAnimationMarks below). Not folded into ILibraryData/the index cache - fetched
-// on-demand per-video via GET /api/marks, exactly like today's per-image upscale/animate state.
-export interface IVideoLink {
-  sourceRelativePath: string;
-  sourceMediaType: TMediaType; // "image" for an animate source, "video" for an extend source
-  action: string; // IAnimationConfig.key used
-  prompt: string; // prompt actually used at fulfillment time (post-edit, if any)
-  metadata: string; // carried-forward metadata string
-  linkedAt: number; // diagnostic only
-}
 
 const isVideoLink = (value: unknown): value is IVideoLink => {
   return (
