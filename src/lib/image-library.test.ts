@@ -27,15 +27,21 @@ import {
   readImageLibrary,
   readReviewedDuplicateGroups,
   readToAnimateEntries,
+  readToExtendEntries,
   readToUpscaleEntries,
+  readToUpscaleVideoEntries,
   removeLibraryIndexCache,
   removeMarkedActionEntries,
   removeToAnimateEntry,
+  removeToExtendEntry,
   removeToUpscaleEntry,
+  removeToUpscaleVideoEntry,
   resolveImageFilePath,
   resolvePreviewFilePath,
   setToAnimateEntry,
+  setToExtendEntry,
   setToUpscaleEntry,
+  setToUpscaleVideoEntry,
   writeReviewedDuplicateGroups,
 } from "@/lib/image-library";
 
@@ -1530,6 +1536,93 @@ describe("readToAnimateEntries / setToAnimateEntry / removeToAnimateEntry", () =
   });
 });
 
+describe("readToUpscaleVideoEntries / setToUpscaleVideoEntry / removeToUpscaleVideoEntry", () => {
+  it("returns an empty object when to-upscale-video.json does not exist", async () => {
+    expect(await readToUpscaleVideoEntries("/tmp/sd-upscale-video-missing")).toEqual({});
+  });
+
+  it("round-trips a marked entry through disk, creating the file if needed", async () => {
+    const tempRoot = "/tmp/sd-upscale-video-roundtrip";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "");
+
+    expect(await readToUpscaleVideoEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Dance.mp4": "",
+    });
+  });
+
+  it("removes a marked entry, leaving other entries untouched", async () => {
+    const tempRoot = "/tmp/sd-upscale-video-remove";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "");
+    await setToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Jump.mp4", "");
+    await removeToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Dance.mp4");
+
+    expect(await readToUpscaleVideoEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Jump.mp4": "",
+    });
+  });
+
+  it("is a no-op when removing an entry that is not marked", async () => {
+    const tempRoot = "/tmp/sd-upscale-video-remove-missing";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await expect(
+      removeToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Dance.mp4"),
+    ).resolves.toBeUndefined();
+    expect(await readToUpscaleVideoEntries(tempRoot)).toEqual({});
+  });
+});
+
+describe("readToExtendEntries / setToExtendEntry / removeToExtendEntry", () => {
+  it("returns an empty object when to-extends.json does not exist", async () => {
+    expect(await readToExtendEntries("/tmp/sd-extend-missing")).toEqual({});
+  });
+
+  it("round-trips a marked entry through disk, creating the file if needed", async () => {
+    const tempRoot = "/tmp/sd-extend-roundtrip";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "", "Zoom In");
+
+    expect(await readToExtendEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Dance.mp4": { metadata: "", action: "Zoom In" },
+    });
+  });
+
+  it("removes a marked entry, leaving other entries untouched", async () => {
+    const tempRoot = "/tmp/sd-extend-remove";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "", "Zoom In");
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Jump.mp4", "", "Pan");
+    await removeToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4");
+
+    expect(await readToExtendEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Jump.mp4": { metadata: "", action: "Pan" },
+    });
+  });
+
+  it("ignores malformed entries", async () => {
+    const tempRoot = "/tmp/sd-extend-malformed";
+    await fs.mkdir(tempRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(tempRoot, "to-extends.json"),
+      JSON.stringify({
+        "a.mp4": { metadata: "", action: "Pan" },
+        "b.mp4": { metadata: "" },
+        "c.mp4": "not-an-object",
+      }),
+    );
+
+    expect(await readToExtendEntries(tempRoot)).toEqual({
+      "a.mp4": { metadata: "", action: "Pan" },
+    });
+  });
+});
+
 describe("removeMarkedActionEntries", () => {
   it("is a no-op when no images root is configured", async () => {
     delete process.env.SD_IMAGES_ROOT;
@@ -1537,17 +1630,21 @@ describe("removeMarkedActionEntries", () => {
     await expect(removeMarkedActionEntries("characters/3d/Anna/Base.png")).resolves.toBeUndefined();
   });
 
-  it("removes the entry from both to-upscale.json and to-animate.json", async () => {
-    const tempRoot = "/tmp/sd-marks-remove-both";
+  it("removes the entry from to-upscale.json, to-animate.json, to-extends.json and to-upscale-video.json", async () => {
+    const tempRoot = "/tmp/sd-marks-remove-all";
     await fs.mkdir(tempRoot, { recursive: true });
     process.env.SD_IMAGES_ROOT = tempRoot;
 
     await setToUpscaleEntry(tempRoot, "characters/3d/Anna/Base.png", "raw");
     await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Zoom In");
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Base.png", "", "Zoom In");
+    await setToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Base.png", "");
 
     await removeMarkedActionEntries("characters/3d/Anna/Base.png");
 
     expect(await readToUpscaleEntries(tempRoot)).toEqual({});
     expect(await readToAnimateEntries(tempRoot)).toEqual({});
+    expect(await readToExtendEntries(tempRoot)).toEqual({});
+    expect(await readToUpscaleVideoEntries(tempRoot)).toEqual({});
   });
 });

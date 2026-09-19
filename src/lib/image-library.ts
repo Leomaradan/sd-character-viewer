@@ -50,6 +50,8 @@ const POSE_FILTERS_FILE_NAME = "pose-filters.json";
 const DUPLICATE_REVIEW_CONFIG_FILE_NAME = "duplicate-reviews.json";
 const TO_UPSCALE_FILE_NAME = "to-upscale.json";
 const TO_ANIMATE_FILE_NAME = "to-animate.json";
+const TO_EXTEND_FILE_NAME = "to-extends.json";
+const TO_UPSCALE_VIDEO_FILE_NAME = "to-upscale-video.json";
 const DEFAULT_POSE_PATTERN_FILTER_CONFIGS = [{ label: "With Somebody", pattern: "^With " }];
 const MAIN_ROOT_KEY = "main";
 
@@ -73,6 +75,11 @@ export interface IToAnimateEntry {
   metadata: string;
   action: string;
 }
+
+// Same shape as IToAnimateEntry (a video-source mirror of it, for the Extend mark) - kept as a
+// distinct name since the two are conceptually different marks even though the entry shape
+// happens to match today.
+export type IToExtendEntry = IToAnimateEntry;
 
 interface ICharacterAccumulator {
   name: string;
@@ -815,6 +822,73 @@ export const removeToAnimateEntry = async (
   relativePath: string,
 ): Promise<void> => {
   const filePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
+    if (relativePath in entries) {
+      delete entries[relativePath];
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
+};
+
+export const readToUpscaleVideoEntries = async (
+  rootPath: string,
+): Promise<Record<string, string>> => {
+  return readMarkedImageMap(path.join(rootPath, TO_UPSCALE_VIDEO_FILE_NAME), isRawMetadataEntry);
+};
+
+export const setToUpscaleVideoEntry = async (
+  rootPath: string,
+  relativePath: string,
+  metadata: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, TO_UPSCALE_VIDEO_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isRawMetadataEntry);
+    entries[relativePath] = metadata;
+    await writeMarkedImageMap(filePath, entries);
+  });
+};
+
+export const removeToUpscaleVideoEntry = async (
+  rootPath: string,
+  relativePath: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, TO_UPSCALE_VIDEO_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isRawMetadataEntry);
+    if (relativePath in entries) {
+      delete entries[relativePath];
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
+};
+
+export const readToExtendEntries = async (
+  rootPath: string,
+): Promise<Record<string, IToExtendEntry>> => {
+  return readMarkedImageMap(path.join(rootPath, TO_EXTEND_FILE_NAME), isToAnimateEntry);
+};
+
+export const setToExtendEntry = async (
+  rootPath: string,
+  relativePath: string,
+  metadata: string,
+  action: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
+    entries[relativePath] = { metadata, action };
+    await writeMarkedImageMap(filePath, entries);
+  });
+};
+
+export const removeToExtendEntry = async (
+  rootPath: string,
+  relativePath: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
   await withMarkedImageFileLock(filePath, async () => {
     const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
     if (relativePath in entries) {
@@ -1892,10 +1966,11 @@ export const removeFirstSeenCacheEntry = async (relativePath: string): Promise<v
   }
 };
 
-// Called after an image is deleted or renamed (the old relativePath no longer refers to that
-// image), so any pending upscale/animate mark tied to it is dropped rather than left dangling.
-// Best-effort: the delete/rename it follows has already happened on disk, so a failure to clean
-// up a mark (e.g. a transient disk error) must not surface as a failure of that larger operation.
+// Called after an image or video is deleted or renamed (the old relativePath no longer refers
+// to it), so any pending upscale/animate/extend/upscale-video mark tied to it is dropped rather
+// than left dangling. Best-effort: the delete/rename it follows has already happened on disk,
+// so a failure to clean up a mark (e.g. a transient disk error) must not surface as a failure of
+// that larger operation.
 export const removeMarkedActionEntries = async (relativePath: string): Promise<void> => {
   const rootPath = getImagesRootPathFromEnv();
 
@@ -1909,6 +1984,8 @@ export const removeMarkedActionEntries = async (relativePath: string): Promise<v
     await Promise.all([
       removeToUpscaleEntry(rootPath, normalizedPath),
       removeToAnimateEntry(rootPath, normalizedPath),
+      removeToExtendEntry(rootPath, normalizedPath),
+      removeToUpscaleVideoEntry(rootPath, normalizedPath),
     ]);
   } catch {
     // Ignore: see comment above.

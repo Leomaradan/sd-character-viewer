@@ -1,20 +1,13 @@
 "use client";
 
-import AnimationIcon from "@mui/icons-material/Animation";
-import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloseIcon from "@mui/icons-material/Close";
-import DeleteIcon from "@mui/icons-material/Delete";
-import HighQualityIcon from "@mui/icons-material/HighQuality";
 import InfoIcon from "@mui/icons-material/Info";
 import PhotoIcon from "@mui/icons-material/Photo";
-import RefreshIcon from "@mui/icons-material/Refresh";
 import {
-  Alert,
   Box,
   Button,
-  ButtonGroup,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -35,6 +28,7 @@ import { formatStyleLabel, getImageUrl } from "@/components/image-viewer/common/
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 
 import { CAPTION_SX, META_TITLE_SX } from "../common/constants";
+import { ImageDetailActions } from "./ImageDetailActions";
 import { ImageDetailMetadata } from "./ImageDetailMetadata";
 
 const DIALOG_SX = { "& .MuiDialog-paper": { height: "95vh", m: 1 } };
@@ -119,37 +113,6 @@ const SIDEBAR_ACTIONS_SX = {
 
 const DIVIDER_SX = { borderColor: "rgba(255,255,255,0.1)" };
 const SPINNER_SX = { color: "rgba(255,255,255,0.5)" };
-const DELETE_BUTTON_SX = {
-  borderColor: "rgba(255,255,255,0.3)",
-  color: "#f44336",
-  "&:hover": { borderColor: "#f44336", bgcolor: "rgba(244,67,54,0.08)" },
-};
-const DELETE_ERROR_SX = { fontSize: "0.75rem" };
-const REDRAW_BUTTON_SX = {
-  borderColor: "rgba(255,255,255,0.3)",
-  color: "#2196f3",
-  "&:hover": { borderColor: "#2196f3", bgcolor: "rgba(33,150,243,0.08)" },
-};
-const UPSCALE_BUTTON_SX = {
-  borderColor: "rgba(255,255,255,0.3)",
-  color: "#9c27b0",
-  "&:hover": { borderColor: "#9c27b0", bgcolor: "rgba(156,39,176,0.08)" },
-};
-const UPSCALE_BUTTON_ACTIVE_SX = {
-  ...UPSCALE_BUTTON_SX,
-  borderColor: "#9c27b0",
-  bgcolor: "rgba(156,39,176,0.24)",
-};
-const ANIMATE_BUTTON_SX = {
-  borderColor: "rgba(255,255,255,0.3)",
-  color: "#ff9800",
-  "&:hover": { borderColor: "#ff9800", bgcolor: "rgba(255,152,0,0.08)" },
-};
-const ANIMATE_BUTTON_ACTIVE_SX = {
-  ...ANIMATE_BUTTON_SX,
-  borderColor: "#ff9800",
-  bgcolor: "rgba(255,152,0,0.24)",
-};
 // Precomputed per-depth sx objects for the flattened animation menu's indentation, so the JSX
 // below references a stable object rather than creating a new one on every render.
 const MAX_PRECOMPUTED_ANIMATE_MENU_INDENT_DEPTH = 6;
@@ -188,11 +151,15 @@ interface IMarksState {
   path: string | null;
   upscale: boolean;
   animateAction: string | null;
+  upscaleVideo: boolean;
+  extendAction: string | null;
 }
 
 interface IMarksApiResponse {
-  upscale: boolean;
-  animate: { action: string } | null;
+  upscale?: boolean;
+  animate?: { action: string } | null;
+  upscaleVideo?: boolean;
+  extend?: { action: string } | null;
 }
 
 interface IMobileViewState {
@@ -230,11 +197,18 @@ const resolveIsLoadingMetadata = (
 const resolveMarksDerived = (
   marksState: IMarksState,
   relativePath: string | undefined,
-): { isUpscaleMarked: boolean; animateAction: string | null } => {
+): {
+  isUpscaleMarked: boolean;
+  animateAction: string | null;
+  isUpscaleVideoMarked: boolean;
+  extendAction: string | null;
+} => {
   const isCurrentMarksState = marksState.path === relativePath;
   return {
     isUpscaleMarked: isCurrentMarksState && marksState.upscale,
     animateAction: isCurrentMarksState ? marksState.animateAction : null,
+    isUpscaleVideoMarked: isCurrentMarksState && marksState.upscaleVideo,
+    extendAction: isCurrentMarksState ? marksState.extendAction : null,
   };
 };
 
@@ -290,12 +264,19 @@ export function ImageDetailModal({
     path: null,
     upscale: false,
     animateAction: null,
+    upscaleVideo: false,
+    extendAction: null,
   });
   const [isTogglingUpscale, setIsTogglingUpscale] = useState(false);
   const [upscaleError, setUpscaleError] = useState<string | null>(null);
   const [isTogglingAnimate, setIsTogglingAnimate] = useState(false);
   const [animateError, setAnimateError] = useState<string | null>(null);
   const [animateMenuAnchorEl, setAnimateMenuAnchorEl] = useState<HTMLElement | null>(null);
+  const [isTogglingUpscaleVideo, setIsTogglingUpscaleVideo] = useState(false);
+  const [upscaleVideoError, setUpscaleVideoError] = useState<string | null>(null);
+  const [isTogglingExtend, setIsTogglingExtend] = useState(false);
+  const [extendError, setExtendError] = useState<string | null>(null);
+  const [extendMenuAnchorEl, setExtendMenuAnchorEl] = useState<HTMLElement | null>(null);
   const touchStartXRef = useRef(0);
 
   const relativePath = image?.relativePath;
@@ -378,11 +359,18 @@ export function ImageDetailModal({
   }, [relativePath, isVideo]);
 
   useEffect(() => {
-    if (!relativePath || !canDeleteImage || isVideo) {
+    if (!relativePath || !canDeleteImage) {
       return () => {};
     }
 
     let isMounted = true;
+    const emptyMarksState: IMarksState = {
+      path: relativePath,
+      upscale: false,
+      animateAction: null,
+      upscaleVideo: false,
+      extendAction: null,
+    };
 
     fetch(`/api/marks?path=${encodeURIComponent(relativePath)}`)
       .then((res) =>
@@ -395,19 +383,21 @@ export function ImageDetailModal({
             path: relativePath,
             upscale: data?.upscale ?? false,
             animateAction: data?.animate?.action ?? null,
+            upscaleVideo: data?.upscaleVideo ?? false,
+            extendAction: data?.extend?.action ?? null,
           });
         }
       })
       .catch(() => {
         if (isMounted) {
-          setMarksState({ path: relativePath, upscale: false, animateAction: null });
+          setMarksState(emptyMarksState);
         }
       });
 
     return () => {
       isMounted = false;
     };
-  }, [relativePath, canDeleteImage, isVideo]);
+  }, [relativePath, canDeleteImage]);
 
   const isLoadingMetadata = resolveIsLoadingMetadata(image, isVideo, metadataState, relativePath);
   const pngMetadata = useMemo(
@@ -481,12 +471,16 @@ export function ImageDetailModal({
     }
   }, [relativePath, onDeleteSuccess]);
 
-  const { isUpscaleMarked, animateAction } = resolveMarksDerived(marksState, relativePath);
+  const { isUpscaleMarked, animateAction, isUpscaleVideoMarked, extendAction } =
+    resolveMarksDerived(marksState, relativePath);
   const rawMetadata = pngMetadata?.parameters ?? "";
   const flatAnimationOptions = useMemo(() => flattenAnimations(animations), [animations]);
   const animateActionLabel = animateAction
     ? (findAnimationNodeByKey(animations, animateAction)?.name ?? animateAction)
     : "Animate";
+  const extendActionLabel = extendAction
+    ? (findAnimationNodeByKey(animations, extendAction)?.name ?? extendAction)
+    : "Extend";
 
   const handleToggleUpscale = useCallback(async () => {
     if (!relativePath) {
@@ -595,6 +589,99 @@ export function ImageDetailModal({
     [handleSelectAnimateAction],
   );
 
+  const handleToggleUpscaleVideo = useCallback(async () => {
+    if (!relativePath) {
+      return;
+    }
+
+    setIsTogglingUpscaleVideo(true);
+    setUpscaleVideoError(null);
+
+    try {
+      const nextUpscaleVideo = !isUpscaleVideoMarked;
+      const response = nextUpscaleVideo
+        ? await fetch("/api/marks", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: relativePath, type: "upscaleVideo" }),
+          })
+        : await fetch(`/api/marks?path=${encodeURIComponent(relativePath)}&type=upscaleVideo`, {
+            method: "DELETE",
+          });
+
+      if (!response.ok) {
+        setUpscaleVideoError("Could not update the upscale mark. Try again.");
+        return;
+      }
+
+      setMarksState((prev) =>
+        prev.path === relativePath ? { ...prev, upscaleVideo: nextUpscaleVideo } : prev,
+      );
+    } catch {
+      setUpscaleVideoError("Could not update the upscale mark. Try again.");
+    } finally {
+      setIsTogglingUpscaleVideo(false);
+    }
+  }, [relativePath, isUpscaleVideoMarked]);
+
+  const handleOpenExtendMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    setExtendMenuAnchorEl(event.currentTarget);
+  }, []);
+
+  const handleCloseExtendMenu = useCallback(() => {
+    setExtendMenuAnchorEl(null);
+  }, []);
+
+  const handleSelectExtendAction = useCallback(
+    async (action: string) => {
+      setExtendMenuAnchorEl(null);
+
+      if (!relativePath) {
+        return;
+      }
+
+      setIsTogglingExtend(true);
+      setExtendError(null);
+
+      try {
+        const isRemoving = extendAction === action;
+        const response = isRemoving
+          ? await fetch(`/api/marks?path=${encodeURIComponent(relativePath)}&type=extend`, {
+              method: "DELETE",
+            })
+          : await fetch("/api/marks", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: relativePath, type: "extend", action }),
+            });
+
+        if (!response.ok) {
+          setExtendError("Could not update the extend mark. Try again.");
+          return;
+        }
+
+        setMarksState((prev) =>
+          prev.path === relativePath ? { ...prev, extendAction: isRemoving ? null : action } : prev,
+        );
+      } catch {
+        setExtendError("Could not update the extend mark. Try again.");
+      } finally {
+        setIsTogglingExtend(false);
+      }
+    },
+    [relativePath, extendAction],
+  );
+
+  const handleExtendMenuItemClick = useCallback(
+    (event: React.MouseEvent<HTMLLIElement>) => {
+      const action = event.currentTarget.dataset.action;
+      if (action) {
+        void handleSelectExtendAction(action);
+      }
+    },
+    [handleSelectExtendAction],
+  );
+
   const handleToggleMobileView = useCallback(() => {
     setMobileViewState((prev) => ({
       path: relativePath ?? null,
@@ -647,67 +734,35 @@ export function ImageDetailModal({
   );
 
   const imageActions = (
-    <>
-      {deleteError && (
-        <Alert severity="error" sx={DELETE_ERROR_SX}>
-          {deleteError}
-        </Alert>
-      )}
-      {redrawError && (
-        <Alert severity="error" sx={DELETE_ERROR_SX}>
-          {redrawError}
-        </Alert>
-      )}
-      {upscaleError && (
-        <Alert severity="error" sx={DELETE_ERROR_SX}>
-          {upscaleError}
-        </Alert>
-      )}
-      {animateError && (
-        <Alert severity="error" sx={DELETE_ERROR_SX}>
-          {animateError}
-        </Alert>
-      )}
-      <ButtonGroup variant="outlined" size="small">
-        <Button
-          startIcon={<RefreshIcon />}
-          onClick={handleRedrawClick}
-          disabled={isRedrawing}
-          sx={REDRAW_BUTTON_SX}
-        >
-          {isRedrawing ? <CircularProgress size={18} /> : "Redraw"}
-        </Button>
-        {!isVideo && (
-          <Button
-            startIcon={<HighQualityIcon />}
-            onClick={handleToggleUpscale}
-            disabled={isTogglingUpscale}
-            sx={isUpscaleMarked ? UPSCALE_BUTTON_ACTIVE_SX : UPSCALE_BUTTON_SX}
-          >
-            {isTogglingUpscale ? <CircularProgress size={18} /> : "Upscale"}
-          </Button>
-        )}
-        {!isVideo && animations.length > 0 && (
-          <Button
-            startIcon={<AnimationIcon />}
-            endIcon={<ArrowDropDownIcon />}
-            onClick={handleOpenAnimateMenu}
-            disabled={isTogglingAnimate}
-            sx={animateAction ? ANIMATE_BUTTON_ACTIVE_SX : ANIMATE_BUTTON_SX}
-          >
-            {isTogglingAnimate ? <CircularProgress size={18} /> : animateActionLabel}
-          </Button>
-        )}
-        <Button
-          startIcon={<DeleteIcon />}
-          onClick={handleDeleteClick}
-          disabled={isDeleting}
-          sx={DELETE_BUTTON_SX}
-        >
-          {isDeleting ? <CircularProgress size={18} /> : deleteLabel}
-        </Button>
-      </ButtonGroup>
-    </>
+    <ImageDetailActions
+      deleteError={deleteError}
+      redrawError={redrawError}
+      upscaleError={upscaleError}
+      animateError={animateError}
+      upscaleVideoError={upscaleVideoError}
+      extendError={extendError}
+      isVideo={isVideo}
+      hasAnimations={animations.length > 0}
+      isRedrawing={isRedrawing}
+      onRedraw={handleRedrawClick}
+      isTogglingUpscale={isTogglingUpscale}
+      isUpscaleMarked={isUpscaleMarked}
+      onToggleUpscale={handleToggleUpscale}
+      isTogglingAnimate={isTogglingAnimate}
+      animateAction={animateAction}
+      animateActionLabel={animateActionLabel}
+      onOpenAnimateMenu={handleOpenAnimateMenu}
+      isTogglingUpscaleVideo={isTogglingUpscaleVideo}
+      isUpscaleVideoMarked={isUpscaleVideoMarked}
+      onToggleUpscaleVideo={handleToggleUpscaleVideo}
+      isTogglingExtend={isTogglingExtend}
+      extendAction={extendAction}
+      extendActionLabel={extendActionLabel}
+      onOpenExtendMenu={handleOpenExtendMenu}
+      isDeleting={isDeleting}
+      deleteLabel={deleteLabel}
+      onDelete={handleDeleteClick}
+    />
   );
 
   if (!image) {
@@ -848,6 +903,24 @@ export function ImageDetailModal({
             data-action={option.key}
             selected={animateAction === option.key}
             onClick={handleAnimateMenuItemClick}
+            sx={getAnimateMenuItemIndentSx(option.depth)}
+          >
+            {option.name}
+          </MenuItem>
+        ))}
+      </Menu>
+
+      <Menu
+        anchorEl={extendMenuAnchorEl}
+        open={Boolean(extendMenuAnchorEl)}
+        onClose={handleCloseExtendMenu}
+      >
+        {flatAnimationOptions.map((option) => (
+          <MenuItem
+            key={option.key}
+            data-action={option.key}
+            selected={extendAction === option.key}
+            onClick={handleExtendMenuItemClick}
             sx={getAnimateMenuItemIndentSx(option.depth)}
           >
             {option.name}
