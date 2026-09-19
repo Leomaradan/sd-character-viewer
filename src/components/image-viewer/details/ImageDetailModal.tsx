@@ -420,7 +420,12 @@ export function ImageDetailModal({
   }, [relativePath, isVideo]);
 
   useEffect(() => {
-    if (!relativePath || !canDeleteImage) {
+    // The upscale/animate/extend mark state this fetch also carries is only ever rendered
+    // inside imageActions, itself gated on canDeleteImage - but a video's provenance link
+    // (the "Came From" block) is plain informational display, shown to every viewer regardless
+    // of delete permission. Skipping this fetch outright for a read-only video would silently
+    // suppress that block for the vast majority of viewers (SD_ALLOW_DELETE defaults off).
+    if (!relativePath || (!canDeleteImage && !isVideo)) {
       return () => {};
     }
 
@@ -464,7 +469,7 @@ export function ImageDetailModal({
     return () => {
       isMounted = false;
     };
-  }, [relativePath, canDeleteImage]);
+  }, [relativePath, canDeleteImage, isVideo]);
 
   const isLoadingMetadata = resolveIsLoadingMetadata(image, isVideo, metadataState, relativePath);
   const pngMetadata = useMemo(
