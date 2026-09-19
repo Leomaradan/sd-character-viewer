@@ -1643,6 +1643,13 @@ const collectConfigFileSnapshots = async (rootPath: string): Promise<ICacheFileS
     path.join(rootPath, LIBRARY_CONFIG_FILE_NAME),
     path.join(rootPath, POSE_FILTERS_FILE_NAME),
     path.join(rootPath, "characters", CHARACTERS_CONFIG_FILE_NAME),
+    // Watched so that marking an image/video (which never touches the characters/ directory
+    // tree the snapshots below watch) still invalidates the cache and gives
+    // reconcilePendingAnimationMarks a chance to run - otherwise a mark added for a video that
+    // already existed at the time of the last uncached rebuild would never be reconciled until
+    // something unrelated happened to change a watched directory's mtime.
+    path.join(rootPath, TO_ANIMATE_FILE_NAME),
+    path.join(rootPath, TO_EXTEND_FILE_NAME),
   ];
   const snapshots = await Promise.all(
     configPaths.map((configPath) => getFileSnapshot(rootPath, configPath)),
