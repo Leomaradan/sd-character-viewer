@@ -15,6 +15,7 @@ import {
 } from "@/lib/extra-image-roots";
 import {
   STYLES,
+  type IAnimationConfig,
   type ICharacterSummary,
   type IDuplicateGroup,
   type IImageItem,
@@ -23,6 +24,7 @@ import {
   type IPoseFilterOption,
   type IPosePatternFilter,
   type IPoseSummary,
+  type IVideoLink,
   type TMediaType,
 } from "@/types/library";
 
@@ -37,7 +39,7 @@ const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
 // Bumped whenever a cached ILibraryData's shape changes, so a cache written by an older version
 // of the app (e.g. one predating the `mediaType` field) is treated as a miss and rebuilt, rather
 // than being returned as-is with the new field silently undefined.
-const LIBRARY_INDEX_CACHE_VERSION = 6;
+const LIBRARY_INDEX_CACHE_VERSION = 7;
 const PREVIEW_FILE_SUFFIX = ".preview.jpg";
 // Video previews use a distinct suffix/extension from image previews: the running app never
 // generates them itself (no ffmpeg invoked at request time), only the offline sync script
@@ -49,6 +51,9 @@ const POSE_FILTERS_FILE_NAME = "pose-filters.json";
 const DUPLICATE_REVIEW_CONFIG_FILE_NAME = "duplicate-reviews.json";
 const TO_UPSCALE_FILE_NAME = "to-upscale.json";
 const TO_ANIMATE_FILE_NAME = "to-animate.json";
+const TO_EXTEND_FILE_NAME = "to-extends.json";
+const TO_UPSCALE_VIDEO_FILE_NAME = "to-upscale-video.json";
+const VIDEO_LINKS_FILE_NAME = "video-links.json";
 const DEFAULT_POSE_PATTERN_FILTER_CONFIGS = [{ label: "With Somebody", pattern: "^With " }];
 const MAIN_ROOT_KEY = "main";
 
@@ -56,20 +61,30 @@ interface ILibraryConfig {
   styles?: string[];
   defaultStyle?: string;
   styleLabels?: Record<string, string>;
-  animations?: string[];
+  // Recursive shape (plain strings, or {key,name,prompt,subVersions} nodes) validated by
+  // normalizeAnimationsConfig, not Ajv - see its comment.
+  animations?: unknown[];
 }
 
 interface IStyleConfig {
   styles: string[];
   defaultStyle: string;
   styleLabels: Partial<Record<string, string>>;
-  animations: string[];
+  animations: IAnimationConfig[];
 }
 
 export interface IToAnimateEntry {
   metadata: string;
   action: string;
+  // Required in the type, but tolerated as missing on read (defaults to "") so pre-existing
+  // to-animate.json/to-extends.json entries written before Edit Animation existed still parse.
+  prompt: string;
 }
+
+// Same shape as IToAnimateEntry (a video-source mirror of it, for the Extend mark) - kept as a
+// distinct name since the two are conceptually different marks even though the entry shape
+// happens to match today.
+export type IToExtendEntry = IToAnimateEntry;
 
 interface ICharacterAccumulator {
   name: string;
@@ -146,9 +161,11 @@ const libraryConfigValidator = ajv.compile<ILibraryConfig>({
       type: "object",
       additionalProperties: { type: "string" },
     },
+    // Items aren't constrained here: animations is a recursive shape (plain strings, or
+    // {key,name,prompt,subVersions} nodes) that normalizeAnimationsConfig validates/normalizes
+    // instead, since Ajv's `strict: false` mode doesn't support recursive schemas cleanly.
     animations: {
       type: "array",
-      items: { type: "string" },
     },
   },
   additionalProperties: true,
@@ -221,6 +238,87 @@ const normalizeStyleNames = (styles: string[] | undefined): string[] => {
   return [...new Set(normalizedStyles)];
 };
 
+// A single raw `animations` entry: either a plain string (legacy leaf, auto-migrated to
+// {key: s, name: s, prompt: ""}) or an object node with required key/name strings, an optional
+// prompt string (defaulting to ""), and optional recursively-normalized subVersions. Anything
+// else (wrong types, missing key/name) is silently skipped, matching readMarkedImageMap's
+// existing leniency toward malformed entries elsewhere in this file. `seenKeys` is shared across
+// the whole tree (not just siblings), since findAnimationNodeByKey resolves by key alone: a key
+// reused at a different nesting level would otherwise shadow the earlier node and make the
+// later one unreachable (and produce duplicate React keys in the flattened UI menu).
+const normalizeAnimationConfigEntry = (
+  entry: unknown,
+  seenKeys: Set<string>,
+): IAnimationConfig | null => {
+  if (typeof entry === "string") {
+    const trimmedName = entry.trim();
+    if (!trimmedName || seenKeys.has(trimmedName)) {
+      return null;
+    }
+    seenKeys.add(trimmedName);
+    return { key: trimmedName, name: trimmedName, prompt: "" };
+  }
+
+  if (!isPlainObjectRecord(entry)) {
+    return null;
+  }
+
+  const key = typeof entry.key === "string" ? entry.key.trim() : "";
+  const name = typeof entry.name === "string" ? entry.name.trim() : "";
+  if (!key || !name || seenKeys.has(key)) {
+    return null;
+  }
+  seenKeys.add(key);
+
+  const prompt = typeof entry.prompt === "string" ? entry.prompt : "";
+  const subVersions = Array.isArray(entry.subVersions)
+    ? normalizeAnimationEntries(entry.subVersions, seenKeys)
+    : [];
+
+  return subVersions.length > 0 ? { key, name, prompt, subVersions } : { key, name, prompt };
+};
+
+const normalizeAnimationEntries = (raw: unknown[], seenKeys: Set<string>): IAnimationConfig[] => {
+  const nodes: IAnimationConfig[] = [];
+
+  for (const rawEntry of raw) {
+    const node = normalizeAnimationConfigEntry(rawEntry, seenKeys);
+    if (node) {
+      nodes.push(node);
+    }
+  }
+
+  return nodes;
+};
+
+export const normalizeAnimationsConfig = (raw: unknown): IAnimationConfig[] => {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return normalizeAnimationEntries(raw, new Set<string>());
+};
+
+export const findAnimationNodeByKey = (
+  animations: IAnimationConfig[],
+  key: string,
+): IAnimationConfig | null => {
+  for (const node of animations) {
+    if (node.key === key) {
+      return node;
+    }
+
+    const foundInSubVersions = node.subVersions
+      ? findAnimationNodeByKey(node.subVersions, key)
+      : null;
+    if (foundInSubVersions) {
+      return foundInSubVersions;
+    }
+  }
+
+  return null;
+};
+
 const resolveDefaultStyle = (styles: string[], rawDefaultStyle: unknown): string => {
   if (typeof rawDefaultStyle === "string") {
     const normalizedDefaultStyle = rawDefaultStyle.trim();
@@ -267,7 +365,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
   const configPath = path.join(rootPath, LIBRARY_CONFIG_FILE_NAME);
   const fallbackStyles = [...STYLES];
   const fallbackStyleLabels: Partial<Record<string, string>> = {};
-  const fallbackAnimations: string[] = [];
+  const fallbackAnimations: IAnimationConfig[] = [];
 
   let fileContent = "";
   try {
@@ -309,7 +407,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         styles: fallbackStyles,
         defaultStyle: DEFAULT_STYLE,
         styleLabels: fallbackStyleLabels,
-        animations: normalizeStyleNames(parsedContent.animations),
+        animations: normalizeAnimationsConfig(parsedContent.animations),
       };
     }
 
@@ -317,7 +415,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       styles,
       defaultStyle: resolveDefaultStyle(styles, parsedContent.defaultStyle),
       styleLabels: normalizeStyleLabels(styles, parsedContent.styleLabels),
-      animations: normalizeStyleNames(parsedContent.animations),
+      animations: normalizeAnimationsConfig(parsedContent.animations),
     };
   } catch {
     // Fallback to legacy defaults when config.json is malformed.
@@ -609,12 +707,36 @@ const isPlainObjectRecord = (value: unknown): value is Record<string, unknown> =
   return typeof value === "object" && value !== null && !Array.isArray(value);
 };
 
-const isToAnimateEntry = (value: unknown): value is IToAnimateEntry => {
+// Accepts entries with no prompt field (or a malformed one) at parse time - normalizeToAnimateEntry
+// below is what actually guarantees the IToAnimateEntry contract's prompt: string.
+const isToAnimateEntry = (
+  value: unknown,
+): value is { metadata: string; action: string; prompt?: unknown } => {
   return (
     isPlainObjectRecord(value) &&
     typeof value.metadata === "string" &&
     typeof value.action === "string"
   );
+};
+
+const normalizeToAnimateEntry = (entry: {
+  metadata: string;
+  action: string;
+  prompt?: unknown;
+}): IToAnimateEntry => ({
+  metadata: entry.metadata,
+  action: entry.action,
+  prompt: typeof entry.prompt === "string" ? entry.prompt : "",
+});
+
+const normalizeToAnimateEntries = (
+  entries: Record<string, { metadata: string; action: string; prompt?: unknown }>,
+): Record<string, IToAnimateEntry> => {
+  const normalizedEntries: Record<string, IToAnimateEntry> = {};
+  for (const [relativePath, entry] of Object.entries(entries)) {
+    normalizedEntries[relativePath] = normalizeToAnimateEntry(entry);
+  }
+  return normalizedEntries;
 };
 
 const isRawMetadataEntry = (value: unknown): value is string => typeof value === "string";
@@ -707,7 +829,11 @@ export const removeToUpscaleEntry = async (
 export const readToAnimateEntries = async (
   rootPath: string,
 ): Promise<Record<string, IToAnimateEntry>> => {
-  return readMarkedImageMap(path.join(rootPath, TO_ANIMATE_FILE_NAME), isToAnimateEntry);
+  const entries = await readMarkedImageMap(
+    path.join(rootPath, TO_ANIMATE_FILE_NAME),
+    isToAnimateEntry,
+  );
+  return normalizeToAnimateEntries(entries);
 };
 
 export const setToAnimateEntry = async (
@@ -715,11 +841,12 @@ export const setToAnimateEntry = async (
   relativePath: string,
   metadata: string,
   action: string,
+  prompt: string,
 ): Promise<void> => {
   const filePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
   await withMarkedImageFileLock(filePath, async () => {
     const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
-    entries[relativePath] = { metadata, action };
+    entries[relativePath] = { metadata, action, prompt };
     await writeMarkedImageMap(filePath, entries);
   });
 };
@@ -736,6 +863,391 @@ export const removeToAnimateEntry = async (
       await writeMarkedImageMap(filePath, entries);
     }
   });
+};
+
+export const readToUpscaleVideoEntries = async (
+  rootPath: string,
+): Promise<Record<string, string>> => {
+  return readMarkedImageMap(path.join(rootPath, TO_UPSCALE_VIDEO_FILE_NAME), isRawMetadataEntry);
+};
+
+export const setToUpscaleVideoEntry = async (
+  rootPath: string,
+  relativePath: string,
+  metadata: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, TO_UPSCALE_VIDEO_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isRawMetadataEntry);
+    entries[relativePath] = metadata;
+    await writeMarkedImageMap(filePath, entries);
+  });
+};
+
+export const removeToUpscaleVideoEntry = async (
+  rootPath: string,
+  relativePath: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, TO_UPSCALE_VIDEO_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isRawMetadataEntry);
+    if (relativePath in entries) {
+      delete entries[relativePath];
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
+};
+
+export const readToExtendEntries = async (
+  rootPath: string,
+): Promise<Record<string, IToExtendEntry>> => {
+  const entries = await readMarkedImageMap(
+    path.join(rootPath, TO_EXTEND_FILE_NAME),
+    isToAnimateEntry,
+  );
+  return normalizeToAnimateEntries(entries);
+};
+
+export const setToExtendEntry = async (
+  rootPath: string,
+  relativePath: string,
+  metadata: string,
+  action: string,
+  prompt: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
+    entries[relativePath] = { metadata, action, prompt };
+    await writeMarkedImageMap(filePath, entries);
+  });
+};
+
+export const removeToExtendEntry = async (
+  rootPath: string,
+  relativePath: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
+    if (relativePath in entries) {
+      delete entries[relativePath];
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
+};
+
+const isVideoLink = (value: unknown): value is IVideoLink => {
+  return (
+    isPlainObjectRecord(value) &&
+    typeof value.sourceRelativePath === "string" &&
+    (value.sourceMediaType === "image" || value.sourceMediaType === "video") &&
+    typeof value.action === "string" &&
+    typeof value.prompt === "string" &&
+    typeof value.metadata === "string" &&
+    typeof value.linkedAt === "number"
+  );
+};
+
+export const readVideoLinks = async (rootPath: string): Promise<Record<string, IVideoLink>> => {
+  return readMarkedImageMap(path.join(rootPath, VIDEO_LINKS_FILE_NAME), isVideoLink);
+};
+
+export const removeVideoLink = async (rootPath: string, relativePath: string): Promise<void> => {
+  const filePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isVideoLink);
+    if (relativePath in entries) {
+      delete entries[relativePath];
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
+};
+
+// Rekeys a link when its video is renamed (Redraw-on-video), returning the migrated record, or
+// null when the renamed video had no link (nothing to migrate).
+export const migrateVideoLink = async (
+  rootPath: string,
+  oldRelativePath: string,
+  newRelativePath: string,
+): Promise<IVideoLink | null> => {
+  const filePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
+  return withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isVideoLink);
+    const link = entries[oldRelativePath];
+    if (!link) {
+      return null;
+    }
+
+    delete entries[oldRelativePath];
+    entries[newRelativePath] = link;
+    await writeMarkedImageMap(filePath, entries);
+    return link;
+  });
+};
+
+// One pending request to animate/extend, resolved against the image library so it carries the
+// style/character/target-name needed to group it with candidate videos.
+interface IPendingAnimationClaim {
+  sourceRelativePath: string;
+  sourceMediaType: TMediaType;
+  action: string;
+  metadata: string;
+  prompt: string;
+  markFile: "animate" | "extend";
+}
+
+// Groups to-animate.json/to-extends.json entries by `${style}::${characterName}::${targetName}`
+// (targetName = the resolved animation node's display name, sanitized the same way parsePoseName
+// sanitizes a video's on-disk filename - so an animation named e.g. "Dance_Party" still matches a
+// generated "Dance_Party.mp4", whose parsed poseBaseName has the underscore normalized to a
+// space). Deliberately root-agnostic (no getRelativePathRootPrefix component): a source image in
+// the main root commonly needs to match a generated video that an external tool wrote into an
+// extra root used purely as its output folder - the two roots aren't necessarily unrelated
+// character libraries the way findDuplicateGroups' grouping (which does key by root) has to
+// assume. Iterates to-animate.json first, then to-extends.json, so a group's claims list is
+// naturally in the documented file-order tie-break. Entries whose source no longer exists, or
+// whose action key no longer resolves in the (possibly since-edited) animations config, are
+// skipped - left pending, same as any other orphaned mark.
+const buildPendingAnimationClaims = (
+  animateEntries: Record<string, IToAnimateEntry>,
+  extendEntries: Record<string, IToExtendEntry>,
+  itemsByRelativePath: Map<string, IImageItem>,
+  animations: IAnimationConfig[],
+): Map<string, IPendingAnimationClaim[]> => {
+  const claimsByGroupKey = new Map<string, IPendingAnimationClaim[]>();
+
+  const addClaims = (
+    entries: Record<string, IToAnimateEntry | IToExtendEntry>,
+    sourceMediaType: TMediaType,
+    markFile: "animate" | "extend",
+  ): void => {
+    for (const [sourceRelativePath, entry] of Object.entries(entries)) {
+      const sourceItem = itemsByRelativePath.get(sourceRelativePath);
+      if (!sourceItem) {
+        continue;
+      }
+
+      const node = findAnimationNodeByKey(animations, entry.action);
+      if (!node) {
+        continue;
+      }
+
+      const groupKey = `${sourceItem.style}::${sourceItem.characterName}::${sanitizePoseName(node.name)}`;
+      const claim: IPendingAnimationClaim = {
+        sourceRelativePath,
+        sourceMediaType,
+        action: entry.action,
+        metadata: entry.metadata,
+        prompt: entry.prompt,
+        markFile,
+      };
+
+      const existingClaims = claimsByGroupKey.get(groupKey);
+      if (existingClaims) {
+        existingClaims.push(claim);
+      } else {
+        claimsByGroupKey.set(groupKey, [claim]);
+      }
+    }
+  };
+
+  addClaims(animateEntries, "image", "animate");
+  addClaims(extendEntries, "video", "extend");
+
+  return claimsByGroupKey;
+};
+
+// Groups not-yet-linked video items by the same `${style}::${characterName}::${poseBaseName}`
+// key a matching claim would produce (a generated video's poseBaseName is its filename before
+// the numeric variant suffix, e.g. "Dance" for both "Dance.mp4"/"Dance 2.mp4"). Videos in an
+// extra root are valid candidates too, and deliberately grouped without regard to root (see
+// buildPendingAnimationClaims) - a source image in the main root commonly needs to match a video
+// an external tool wrote into an extra root used purely as its output folder. Also excluded: any
+// video that is itself the source of a pending claim (an extend mark's source is a video) -
+// otherwise a video marked for extend could self-link (or satisfy someone else's claim) as if it
+// were a freshly generated output. Each group is sorted by poseVariant (the only available proxy
+// for generation order), tie-broken by modifiedAt.
+const buildUnclaimedVideoCandidates = (
+  imageItems: IImageItem[],
+  videoLinks: Record<string, IVideoLink>,
+  claimSourceRelativePaths: Set<string>,
+): Map<string, IImageItem[]> => {
+  const candidatesByGroupKey = new Map<string, IImageItem[]>();
+
+  for (const item of imageItems) {
+    if (item.mediaType !== "video") {
+      continue;
+    }
+
+    if (item.relativePath in videoLinks || claimSourceRelativePaths.has(item.relativePath)) {
+      continue;
+    }
+
+    const groupKey = `${item.style}::${item.characterName}::${item.poseBaseName}`;
+    const existingCandidates = candidatesByGroupKey.get(groupKey);
+    if (existingCandidates) {
+      existingCandidates.push(item);
+    } else {
+      candidatesByGroupKey.set(groupKey, [item]);
+    }
+  }
+
+  for (const candidates of candidatesByGroupKey.values()) {
+    candidates.sort((a, b) => {
+      return a.poseVariant !== b.poseVariant
+        ? a.poseVariant - b.poseVariant
+        : a.modifiedAt - b.modifiedAt;
+    });
+  }
+
+  return candidatesByGroupKey;
+};
+
+// Deletes a to-animate.json/to-extends.json entry only if it still deep-equals what
+// reconciliation observed when it built the claim being fulfilled, so a concurrent PUT that
+// changed or replaced the mark in the window between reading claims and removing them here
+// survives instead of being silently discarded. Compares against the *normalized* entry (prompt
+// defaulted to "" when absent), matching what buildPendingAnimationClaims read the claim from -
+// comparing raw disk entries would never match a legacy mark file written before `prompt`
+// existed, since it lacks the key entirely.
+const removeMarkedImageMapEntryIfUnchanged = async (
+  filePath: string,
+  relativePath: string,
+  expectedEntry: IToAnimateEntry,
+): Promise<void> => {
+  await withMarkedImageFileLock(filePath, async () => {
+    const rawEntries = await readMarkedImageMap(filePath, isToAnimateEntry);
+    const currentEntry = normalizeToAnimateEntries(rawEntries)[relativePath];
+    if (currentEntry && JSON.stringify(currentEntry) === JSON.stringify(expectedEntry)) {
+      delete rawEntries[relativePath];
+      await writeMarkedImageMap(filePath, rawEntries);
+    }
+  });
+};
+
+// Matches newly-indexed, unclaimed videos to pending to-animate.json/to-extends.json marks and
+// persists the result as video-links.json entries, freeing the fulfilled marks. Called once per
+// uncached readImageLibrary() rebuild, right after pose-pattern filters are applied and before
+// the library is materialized - wrapped end-to-end in try/catch since a failure here must never
+// fail the library read it's embedded in.
+//
+// The FIFO pairing within a group (see buildUnclaimedVideoCandidates) is a heuristic: when
+// generation order and mark-insertion order diverge, it can mis-attribute a link. That's the one
+// accepted risk in this design (see VIDEO_FEATURES_PLAN.md).
+export const reconcilePendingAnimationMarks = async (
+  rootPath: string,
+  imageItems: IImageItem[],
+  animations: IAnimationConfig[],
+): Promise<void> => {
+  try {
+    const [animateEntries, extendEntries, videoLinks] = await Promise.all([
+      readToAnimateEntries(rootPath),
+      readToExtendEntries(rootPath),
+      readVideoLinks(rootPath),
+    ]);
+
+    const itemsByRelativePath = new Map(imageItems.map((item) => [item.relativePath, item]));
+    const claimsByGroupKey = buildPendingAnimationClaims(
+      animateEntries,
+      extendEntries,
+      itemsByRelativePath,
+      animations,
+    );
+
+    if (claimsByGroupKey.size === 0) {
+      return;
+    }
+
+    // A video that is itself the source of one of these claims (an extend mark's source is a
+    // video) must never also be treated as an unclaimed candidate output - see
+    // buildUnclaimedVideoCandidates.
+    const claimSourceRelativePaths = new Set<string>();
+    for (const claims of claimsByGroupKey.values()) {
+      for (const claim of claims) {
+        claimSourceRelativePaths.add(claim.sourceRelativePath);
+      }
+    }
+
+    const candidatesByGroupKey = buildUnclaimedVideoCandidates(
+      imageItems,
+      videoLinks,
+      claimSourceRelativePaths,
+    );
+
+    const newLinksByRelativePath: Record<string, IVideoLink> = {};
+    const fulfilledAnimateClaims: { relativePath: string; entry: IToAnimateEntry }[] = [];
+    const fulfilledExtendClaims: { relativePath: string; entry: IToExtendEntry }[] = [];
+    const linkedAt = Date.now();
+
+    for (const [groupKey, claims] of claimsByGroupKey.entries()) {
+      const candidates = candidatesByGroupKey.get(groupKey);
+      if (!candidates) {
+        continue;
+      }
+
+      const pairCount = Math.min(claims.length, candidates.length);
+      for (let index = 0; index < pairCount; index += 1) {
+        const claim = claims[index];
+        const candidate = candidates[index];
+
+        newLinksByRelativePath[candidate.relativePath] = {
+          sourceRelativePath: claim.sourceRelativePath,
+          sourceMediaType: claim.sourceMediaType,
+          action: claim.action,
+          prompt: claim.prompt,
+          metadata: claim.metadata,
+          linkedAt,
+        };
+
+        // The entry reconciliation actually observed when it built this claim, used below to
+        // compare-and-delete rather than blindly deleting by key.
+        const fulfilledEntry = {
+          metadata: claim.metadata,
+          action: claim.action,
+          prompt: claim.prompt,
+        };
+        if (claim.markFile === "animate") {
+          fulfilledAnimateClaims.push({
+            relativePath: claim.sourceRelativePath,
+            entry: fulfilledEntry,
+          });
+        } else {
+          fulfilledExtendClaims.push({
+            relativePath: claim.sourceRelativePath,
+            entry: fulfilledEntry,
+          });
+        }
+      }
+    }
+
+    if (Object.keys(newLinksByRelativePath).length === 0) {
+      return;
+    }
+
+    // Persist the links before removing the marks that produced them: if this write fails (e.g.
+    // disk full), the marks stay pending for a future reconciliation pass to retry, rather than
+    // being deleted with no matching link to show for it.
+    const videoLinksFilePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
+    await withMarkedImageFileLock(videoLinksFilePath, async () => {
+      const currentEntries = await readMarkedImageMap(videoLinksFilePath, isVideoLink);
+      Object.assign(currentEntries, newLinksByRelativePath);
+      await writeMarkedImageMap(videoLinksFilePath, currentEntries);
+    });
+
+    const toAnimateFilePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
+    const toExtendFilePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
+    await Promise.all([
+      ...fulfilledAnimateClaims.map(({ relativePath, entry }) =>
+        removeMarkedImageMapEntryIfUnchanged(toAnimateFilePath, relativePath, entry),
+      ),
+      ...fulfilledExtendClaims.map(({ relativePath, entry }) =>
+        removeMarkedImageMapEntryIfUnchanged(toExtendFilePath, relativePath, entry),
+      ),
+    ]);
+  } catch {
+    // Best-effort: see the comment above.
+  }
 };
 
 export const parsePoseName = (
@@ -1133,6 +1645,13 @@ const collectConfigFileSnapshots = async (rootPath: string): Promise<ICacheFileS
     path.join(rootPath, LIBRARY_CONFIG_FILE_NAME),
     path.join(rootPath, POSE_FILTERS_FILE_NAME),
     path.join(rootPath, "characters", CHARACTERS_CONFIG_FILE_NAME),
+    // Watched so that marking an image/video (which never touches the characters/ directory
+    // tree the snapshots below watch) still invalidates the cache and gives
+    // reconcilePendingAnimationMarks a chance to run - otherwise a mark added for a video that
+    // already existed at the time of the last uncached rebuild would never be reconciled until
+    // something unrelated happened to change a watched directory's mtime.
+    path.join(rootPath, TO_ANIMATE_FILE_NAME),
+    path.join(rootPath, TO_EXTEND_FILE_NAME),
   ];
   const snapshots = await Promise.all(
     configPaths.map((configPath) => getFileSnapshot(rootPath, configPath)),
@@ -1701,6 +2220,11 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
 
   sortImageItems(indexState.imageItems);
   applyPosePatternFilterIds(indexState.imageItems, posePatternFilters);
+  await reconcilePendingAnimationMarks(
+    rootPath,
+    indexState.imageItems,
+    effectiveStyleConfig.animations,
+  );
   const { cache: firstSeenCache, available: cacheReadable } = await loadFirstSeenCache(rootPath);
   const hasCacheChanges = markNewImages(indexState.imageItems, Date.now(), firstSeenCache);
 
@@ -1806,10 +2330,11 @@ export const removeFirstSeenCacheEntry = async (relativePath: string): Promise<v
   }
 };
 
-// Called after an image is deleted or renamed (the old relativePath no longer refers to that
-// image), so any pending upscale/animate mark tied to it is dropped rather than left dangling.
-// Best-effort: the delete/rename it follows has already happened on disk, so a failure to clean
-// up a mark (e.g. a transient disk error) must not surface as a failure of that larger operation.
+// Called after an image or video is deleted or renamed (the old relativePath no longer refers
+// to it), so any pending upscale/animate/extend/upscale-video mark tied to it is dropped rather
+// than left dangling. Best-effort: the delete/rename it follows has already happened on disk,
+// so a failure to clean up a mark (e.g. a transient disk error) must not surface as a failure of
+// that larger operation.
 export const removeMarkedActionEntries = async (relativePath: string): Promise<void> => {
   const rootPath = getImagesRootPathFromEnv();
 
@@ -1823,6 +2348,8 @@ export const removeMarkedActionEntries = async (relativePath: string): Promise<v
     await Promise.all([
       removeToUpscaleEntry(rootPath, normalizedPath),
       removeToAnimateEntry(rootPath, normalizedPath),
+      removeToExtendEntry(rootPath, normalizedPath),
+      removeToUpscaleVideoEntry(rootPath, normalizedPath),
     ]);
   } catch {
     // Ignore: see comment above.

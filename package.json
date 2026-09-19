@@ -10,7 +10,7 @@
     "format:check": "oxfmt --check \"src/**/*.{ts,tsx}\" \"*.{ts,mjs}\"",
     "knip": "knip",
     "lint": "oxlint",
-    "lint:ci": "oxlint . --max-warnings=0",
+    "lint:ci": "oxlint . --quiet",
     "precommit:check": "pnpm format && pnpm lint:ci && pnpm typecheck && pnpm test:hook && pnpm knip",
     "prepare": "husky || true",
     "prepush:check": "pnpm build",

@@ -17,23 +17,34 @@ import path from "node:path";
 import type { IImageItem, ILibraryData } from "@/types/library";
 
 import {
+  findAnimationNodeByKey,
   findDuplicateGroups,
   getExtraImagesRootPathsFromEnv,
   isDuplicateGroupReviewed,
   isVideoFilePath,
+  migrateVideoLink,
+  normalizeAnimationsConfig,
   parsePoseName,
   readImageLibrary,
   readReviewedDuplicateGroups,
   readToAnimateEntries,
+  readToExtendEntries,
   readToUpscaleEntries,
+  readToUpscaleVideoEntries,
+  readVideoLinks,
   removeLibraryIndexCache,
   removeMarkedActionEntries,
   removeToAnimateEntry,
+  removeToExtendEntry,
   removeToUpscaleEntry,
+  removeToUpscaleVideoEntry,
+  removeVideoLink,
   resolveImageFilePath,
   resolvePreviewFilePath,
   setToAnimateEntry,
+  setToExtendEntry,
   setToUpscaleEntry,
+  setToUpscaleVideoEntry,
   writeReviewedDuplicateGroups,
 } from "@/lib/image-library";
 
@@ -293,6 +304,66 @@ describe("readImageLibrary with video files", () => {
     expect(library.images[0].mediaType).toBe("video");
     expect(library.images[0].relativePath).toBe("characters/3d/Anna/Dance.mp4");
   });
+
+  // Pose counting/filtering never gated on mediaType to begin with - these confirm an
+  // animation-named video surfaces through the same pose-summary/character-summary/pose-filter
+  // machinery as an image, with no video-specific code path needed (see VIDEO_FEATURES_PLAN.md
+  // Phase 4).
+  it("counts an animation-named video toward pose summaries, character counts, and pose filter chips", async () => {
+    const tempRoot = "/tmp/sd-library-video-pose-counting";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await Promise.all([
+      fs.writeFile(path.join(characterDir, "Base.png"), ""),
+      fs.writeFile(path.join(characterDir, "Dance.mp4"), ""),
+    ]);
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.poses).toEqual(
+      expect.arrayContaining([
+        { name: "Base", imageCount: 1 },
+        { name: "Dance", imageCount: 1 },
+      ]),
+    );
+    expect(library.poseFilterOptions).toEqual(
+      expect.arrayContaining([
+        { value: "Base", label: "Base" },
+        { value: "Dance", label: "Dance" },
+      ]),
+    );
+
+    const anna = library.characters.find((character) => character.name === "Anna");
+    expect(anna?.imageCount).toBe(2);
+    expect(anna?.poseCount).toBe(2);
+  });
+
+  it("applies a pose-pattern filter to an animation-named video the same as it would to an image", async () => {
+    const tempRoot = "/tmp/sd-library-video-pose-pattern-filter";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Cuddle Dance.mp4"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "pose-filters.json"),
+      JSON.stringify([{ label: "Cuddle Somebody", pattern: "^Cuddle ", flags: "i" }]),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    const video = library.images.find((image) => image.mediaType === "video");
+    expect(video?.posePatternFilterIds).toEqual([library.posePatternFilters[0].id]);
+    // A video whose pose is fully absorbed by a pattern filter is excluded from the flat pose
+    // option list, replaced by the pattern's own chip - same as an image would be.
+    expect(library.poseFilterOptions).toEqual([
+      { value: library.posePatternFilters[0].id, label: "Cuddle Somebody" },
+    ]);
+  });
 });
 
 describe("readImageLibrary with characters metadata", () => {
@@ -330,7 +401,10 @@ describe("readImageLibrary with characters metadata", () => {
       sketch: "Sketch Art",
       "unused-style": "Unused",
     });
-    expect(library.animations).toEqual(["Zoom In", "Pan"]);
+    expect(library.animations).toEqual([
+      { key: "Zoom In", name: "Zoom In", prompt: "" },
+      { key: "Pan", name: "Pan", prompt: "" },
+    ]);
     expect(library.images).toHaveLength(2);
     expect(library.images.every((image) => ["comic", "sketch"].includes(image.style))).toBe(true);
   });
@@ -811,7 +885,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 6,
+          version: 7,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],
@@ -894,8 +968,51 @@ describe("readImageLibrary with characters metadata", () => {
 
     const library = await readImageLibrary();
 
-    expect(library.animations).toEqual(["Zoom In"]);
+    expect(library.animations).toEqual([{ key: "Zoom In", name: "Zoom In", prompt: "" }]);
     expect(library.images).toHaveLength(1);
+
+    delete process.env.SD_CACHE_DIR;
+  });
+
+  it("invalidates the library index cache when a mark is added for an already-indexed video, so reconciliation gets a chance to run", async () => {
+    const tempRoot = "/tmp/sd-library-index-cache-mark-invalidation";
+    const tempCacheDir = "/tmp/sd-cache-library-index-mark-invalidation";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await fs.writeFile(path.join(characterDir, "Dance.mp4"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "config.json"),
+      JSON.stringify({
+        styles: ["3d"],
+        defaultStyle: "3d",
+        animations: [{ key: "dance", name: "Dance", prompt: "" }],
+      }),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    // First read: the video already exists but nothing is marked yet - this is what primes the
+    // library index cache while there is still nothing for reconciliation to claim.
+    const firstRead = await readImageLibrary();
+    expect(firstRead.cacheAvailable).toBe(true);
+
+    // Marking never touches the characters/ directory tree the cache's directory snapshots
+    // watch - only collectConfigFileSnapshots watching to-animate.json/to-extends.json catches
+    // this. Without that, the next read below would incorrectly serve the stale (pre-mark)
+    // cached library and reconciliation would never run for this already-indexed video.
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "dance", "");
+
+    await readImageLibrary();
+
+    expect(await readVideoLinks(tempRoot)).toEqual({
+      "characters/3d/Anna/Dance.mp4": expect.objectContaining({
+        sourceRelativePath: "characters/3d/Anna/Base.png",
+      }),
+    });
+    expect(await readToAnimateEntries(tempRoot)).toEqual({});
 
     delete process.env.SD_CACHE_DIR;
   });
@@ -949,6 +1066,140 @@ describe("readImageLibrary with characters metadata", () => {
     await expect(fs.stat(cacheFilePath)).rejects.toThrow("ENOENT: no such file or directory");
 
     delete process.env.SD_CACHE_DIR;
+  });
+});
+
+describe("normalizeAnimationsConfig", () => {
+  it("migrates plain strings to leaf nodes, trimming and deduplicating them", () => {
+    expect(normalizeAnimationsConfig(["Zoom In", "Zoom In", " Pan ", ""])).toEqual([
+      { key: "Zoom In", name: "Zoom In", prompt: "" },
+      { key: "Pan", name: "Pan", prompt: "" },
+    ]);
+  });
+
+  it("normalizes nested sub-version nodes with prompts", () => {
+    expect(
+      normalizeAnimationsConfig([
+        {
+          key: "dance",
+          name: "Dance",
+          prompt: "dancing",
+          subVersions: [
+            { key: "latin-dance", name: "Latin Dance", prompt: "latin dancing" },
+            { key: "sensual-dance", name: "Sensual Dance" },
+          ],
+        },
+      ]),
+    ).toEqual([
+      {
+        key: "dance",
+        name: "Dance",
+        prompt: "dancing",
+        subVersions: [
+          { key: "latin-dance", name: "Latin Dance", prompt: "latin dancing" },
+          { key: "sensual-dance", name: "Sensual Dance", prompt: "" },
+        ],
+      },
+    ]);
+  });
+
+  it("skips invalid entries (missing key/name, wrong types, non-array input)", () => {
+    expect(
+      normalizeAnimationsConfig([
+        123,
+        null,
+        {},
+        { key: "only-key" },
+        { name: "only-name" },
+        { key: "", name: "Empty Key" },
+        { key: "valid", name: "Valid" },
+      ]),
+    ).toEqual([{ key: "valid", name: "Valid", prompt: "" }]);
+
+    expect(normalizeAnimationsConfig("not-an-array")).toEqual([]);
+    expect(normalizeAnimationsConfig(undefined)).toEqual([]);
+  });
+
+  it("deduplicates by key, keeping the first occurrence", () => {
+    expect(
+      normalizeAnimationsConfig([
+        { key: "dance", name: "Dance", prompt: "first" },
+        { key: "dance", name: "Dance Duplicate", prompt: "second" },
+      ]),
+    ).toEqual([{ key: "dance", name: "Dance", prompt: "first" }]);
+  });
+
+  it("drops an empty subVersions array rather than keeping it on the node", () => {
+    expect(normalizeAnimationsConfig([{ key: "dance", name: "Dance", subVersions: [] }])).toEqual([
+      { key: "dance", name: "Dance", prompt: "" },
+    ]);
+  });
+
+  it("deduplicates a key reused by a nested sub-version, not just among siblings", () => {
+    // A key repeated across nesting levels would otherwise make the nested node unreachable by
+    // findAnimationNodeByKey (which always finds the outer one first) and produce duplicate
+    // React keys in the flattened UI menu.
+    expect(
+      normalizeAnimationsConfig([
+        {
+          key: "dance",
+          name: "Dance",
+          subVersions: [{ key: "dance", name: "Duplicate Nested Dance" }],
+        },
+      ]),
+    ).toEqual([{ key: "dance", name: "Dance", prompt: "" }]);
+  });
+
+  it("deduplicates a key reused across different subtrees", () => {
+    expect(
+      normalizeAnimationsConfig([
+        { key: "a", name: "A", subVersions: [{ key: "shared", name: "First" }] },
+        { key: "b", name: "B", subVersions: [{ key: "shared", name: "Second" }] },
+      ]),
+    ).toEqual([
+      {
+        key: "a",
+        name: "A",
+        prompt: "",
+        subVersions: [{ key: "shared", name: "First", prompt: "" }],
+      },
+      { key: "b", name: "B", prompt: "" },
+    ]);
+  });
+});
+
+describe("findAnimationNodeByKey", () => {
+  const animations = [
+    { key: "zoom-in", name: "Zoom In", prompt: "" },
+    {
+      key: "dance",
+      name: "Dance",
+      prompt: "",
+      subVersions: [
+        { key: "latin-dance", name: "Latin Dance", prompt: "" },
+        { key: "sensual-dance", name: "Sensual Dance", prompt: "" },
+      ],
+    },
+  ];
+
+  it("finds a top-level node by key", () => {
+    expect(findAnimationNodeByKey(animations, "zoom-in")).toEqual({
+      key: "zoom-in",
+      name: "Zoom In",
+      prompt: "",
+    });
+  });
+
+  it("finds a nested sub-version node by key", () => {
+    expect(findAnimationNodeByKey(animations, "latin-dance")).toEqual({
+      key: "latin-dance",
+      name: "Latin Dance",
+      prompt: "",
+    });
+  });
+
+  it("returns null for an unknown key", () => {
+    expect(findAnimationNodeByKey(animations, "unknown")).toBeNull();
   });
 });
 
@@ -1341,10 +1592,20 @@ describe("readToAnimateEntries / setToAnimateEntry / removeToAnimateEntry", () =
     const tempRoot = "/tmp/sd-animate-roundtrip";
     await fs.mkdir(tempRoot, { recursive: true });
 
-    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "Steps: 30", "Zoom In");
+    await setToAnimateEntry(
+      tempRoot,
+      "characters/3d/Anna/Base.png",
+      "Steps: 30",
+      "Zoom In",
+      "zoom in slowly",
+    );
 
     expect(await readToAnimateEntries(tempRoot)).toEqual({
-      "characters/3d/Anna/Base.png": { metadata: "Steps: 30", action: "Zoom In" },
+      "characters/3d/Anna/Base.png": {
+        metadata: "Steps: 30",
+        action: "Zoom In",
+        prompt: "zoom in slowly",
+      },
     });
   });
 
@@ -1352,11 +1613,11 @@ describe("readToAnimateEntries / setToAnimateEntry / removeToAnimateEntry", () =
     const tempRoot = "/tmp/sd-animate-overwrite";
     await fs.mkdir(tempRoot, { recursive: true });
 
-    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Zoom In");
-    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Pan");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Zoom In", "");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Pan", "");
 
     expect(await readToAnimateEntries(tempRoot)).toEqual({
-      "characters/3d/Anna/Base.png": { metadata: "raw", action: "Pan" },
+      "characters/3d/Anna/Base.png": { metadata: "raw", action: "Pan", prompt: "" },
     });
   });
 
@@ -1364,16 +1625,16 @@ describe("readToAnimateEntries / setToAnimateEntry / removeToAnimateEntry", () =
     const tempRoot = "/tmp/sd-animate-remove";
     await fs.mkdir(tempRoot, { recursive: true });
 
-    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw-a", "Zoom In");
-    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Full.png", "raw-b", "Pan");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw-a", "Zoom In", "");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Full.png", "raw-b", "Pan", "");
     await removeToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png");
 
     expect(await readToAnimateEntries(tempRoot)).toEqual({
-      "characters/3d/Anna/Full.png": { metadata: "raw-b", action: "Pan" },
+      "characters/3d/Anna/Full.png": { metadata: "raw-b", action: "Pan", prompt: "" },
     });
   });
 
-  it("ignores malformed entries", async () => {
+  it('ignores malformed entries, and defaults prompt to "" when a well-formed entry omits it', async () => {
     const tempRoot = "/tmp/sd-animate-malformed";
     await fs.mkdir(tempRoot, { recursive: true });
     await fs.writeFile(
@@ -1382,12 +1643,192 @@ describe("readToAnimateEntries / setToAnimateEntry / removeToAnimateEntry", () =
         "a.png": { metadata: "raw", action: "Pan" },
         "b.png": { metadata: "raw" },
         "c.png": "not-an-object",
+        "d.png": { metadata: "raw", action: "Pan", prompt: 42 },
       }),
     );
 
     expect(await readToAnimateEntries(tempRoot)).toEqual({
-      "a.png": { metadata: "raw", action: "Pan" },
+      "a.png": { metadata: "raw", action: "Pan", prompt: "" },
+      "d.png": { metadata: "raw", action: "Pan", prompt: "" },
     });
+  });
+});
+
+describe("readToUpscaleVideoEntries / setToUpscaleVideoEntry / removeToUpscaleVideoEntry", () => {
+  it("returns an empty object when to-upscale-video.json does not exist", async () => {
+    expect(await readToUpscaleVideoEntries("/tmp/sd-upscale-video-missing")).toEqual({});
+  });
+
+  it("round-trips a marked entry through disk, creating the file if needed", async () => {
+    const tempRoot = "/tmp/sd-upscale-video-roundtrip";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "");
+
+    expect(await readToUpscaleVideoEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Dance.mp4": "",
+    });
+  });
+
+  it("removes a marked entry, leaving other entries untouched", async () => {
+    const tempRoot = "/tmp/sd-upscale-video-remove";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "");
+    await setToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Jump.mp4", "");
+    await removeToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Dance.mp4");
+
+    expect(await readToUpscaleVideoEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Jump.mp4": "",
+    });
+  });
+
+  it("is a no-op when removing an entry that is not marked", async () => {
+    const tempRoot = "/tmp/sd-upscale-video-remove-missing";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await expect(
+      removeToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Dance.mp4"),
+    ).resolves.toBeUndefined();
+    expect(await readToUpscaleVideoEntries(tempRoot)).toEqual({});
+  });
+});
+
+describe("readToExtendEntries / setToExtendEntry / removeToExtendEntry", () => {
+  it("returns an empty object when to-extends.json does not exist", async () => {
+    expect(await readToExtendEntries("/tmp/sd-extend-missing")).toEqual({});
+  });
+
+  it("round-trips a marked entry through disk, creating the file if needed", async () => {
+    const tempRoot = "/tmp/sd-extend-roundtrip";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "", "Zoom In", "zoom in");
+
+    expect(await readToExtendEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Dance.mp4": { metadata: "", action: "Zoom In", prompt: "zoom in" },
+    });
+  });
+
+  it("removes a marked entry, leaving other entries untouched", async () => {
+    const tempRoot = "/tmp/sd-extend-remove";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "", "Zoom In", "");
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Jump.mp4", "", "Pan", "");
+    await removeToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4");
+
+    expect(await readToExtendEntries(tempRoot)).toEqual({
+      "characters/3d/Anna/Jump.mp4": { metadata: "", action: "Pan", prompt: "" },
+    });
+  });
+
+  it("ignores malformed entries", async () => {
+    const tempRoot = "/tmp/sd-extend-malformed";
+    await fs.mkdir(tempRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(tempRoot, "to-extends.json"),
+      JSON.stringify({
+        "a.mp4": { metadata: "", action: "Pan" },
+        "b.mp4": { metadata: "" },
+        "c.mp4": "not-an-object",
+      }),
+    );
+
+    expect(await readToExtendEntries(tempRoot)).toEqual({
+      "a.mp4": { metadata: "", action: "Pan", prompt: "" },
+    });
+  });
+});
+
+describe("readVideoLinks / removeVideoLink / migrateVideoLink", () => {
+  const buildLink = (overrides: Partial<Record<string, unknown>> = {}) => ({
+    sourceRelativePath: "characters/3d/Anna/Base.png",
+    sourceMediaType: "image",
+    action: "dance",
+    prompt: "",
+    metadata: "raw",
+    linkedAt: 1234,
+    ...overrides,
+  });
+
+  it("returns an empty object when video-links.json does not exist", async () => {
+    expect(await readVideoLinks("/tmp/sd-video-links-missing")).toEqual({});
+  });
+
+  it("reads a well-formed video-links.json", async () => {
+    const tempRoot = "/tmp/sd-video-links-read";
+    await fs.mkdir(tempRoot, { recursive: true });
+    const link = buildLink();
+    await fs.writeFile(
+      path.join(tempRoot, "video-links.json"),
+      JSON.stringify({ "characters/3d/Anna/Dance.mp4": link }),
+    );
+
+    expect(await readVideoLinks(tempRoot)).toEqual({ "characters/3d/Anna/Dance.mp4": link });
+  });
+
+  it("ignores malformed entries", async () => {
+    const tempRoot = "/tmp/sd-video-links-malformed";
+    await fs.mkdir(tempRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(tempRoot, "video-links.json"),
+      JSON.stringify({
+        "a.mp4": buildLink(),
+        "b.mp4": { sourceRelativePath: "b.png" },
+        "c.mp4": "not-an-object",
+        "d.mp4": buildLink({ sourceMediaType: "audio" }),
+      }),
+    );
+
+    expect(await readVideoLinks(tempRoot)).toEqual({ "a.mp4": buildLink() });
+  });
+
+  it("removes a link, leaving other entries untouched", async () => {
+    const tempRoot = "/tmp/sd-video-links-remove";
+    await fs.mkdir(tempRoot, { recursive: true });
+    const linkB = buildLink({ sourceRelativePath: "characters/3d/Anna/Other.png" });
+    await fs.writeFile(
+      path.join(tempRoot, "video-links.json"),
+      JSON.stringify({ "a.mp4": buildLink(), "b.mp4": linkB }),
+    );
+
+    await removeVideoLink(tempRoot, "a.mp4");
+
+    expect(await readVideoLinks(tempRoot)).toEqual({ "b.mp4": linkB });
+  });
+
+  it("is a no-op when removing a link that does not exist", async () => {
+    const tempRoot = "/tmp/sd-video-links-remove-missing";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await expect(removeVideoLink(tempRoot, "a.mp4")).resolves.toBeUndefined();
+    expect(await readVideoLinks(tempRoot)).toEqual({});
+  });
+
+  it("migrates a link to a new relativePath on rename, returning the migrated record", async () => {
+    const tempRoot = "/tmp/sd-video-links-migrate";
+    await fs.mkdir(tempRoot, { recursive: true });
+    const link = buildLink();
+    await fs.writeFile(
+      path.join(tempRoot, "video-links.json"),
+      JSON.stringify({ "old.mp4": link }),
+    );
+
+    const migrated = await migrateVideoLink(tempRoot, "old.mp4", "new.mp4");
+
+    expect(migrated).toEqual(link);
+    expect(await readVideoLinks(tempRoot)).toEqual({ "new.mp4": link });
+  });
+
+  it("returns null and makes no changes when the renamed video has no link", async () => {
+    const tempRoot = "/tmp/sd-video-links-migrate-missing";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    const migrated = await migrateVideoLink(tempRoot, "old.mp4", "new.mp4");
+
+    expect(migrated).toBeNull();
+    expect(await readVideoLinks(tempRoot)).toEqual({});
   });
 });
 
@@ -1398,17 +1839,21 @@ describe("removeMarkedActionEntries", () => {
     await expect(removeMarkedActionEntries("characters/3d/Anna/Base.png")).resolves.toBeUndefined();
   });
 
-  it("removes the entry from both to-upscale.json and to-animate.json", async () => {
-    const tempRoot = "/tmp/sd-marks-remove-both";
+  it("removes the entry from to-upscale.json, to-animate.json, to-extends.json and to-upscale-video.json", async () => {
+    const tempRoot = "/tmp/sd-marks-remove-all";
     await fs.mkdir(tempRoot, { recursive: true });
     process.env.SD_IMAGES_ROOT = tempRoot;
 
     await setToUpscaleEntry(tempRoot, "characters/3d/Anna/Base.png", "raw");
-    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Zoom In");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Zoom In", "");
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Base.png", "", "Zoom In", "");
+    await setToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Base.png", "");
 
     await removeMarkedActionEntries("characters/3d/Anna/Base.png");
 
     expect(await readToUpscaleEntries(tempRoot)).toEqual({});
     expect(await readToAnimateEntries(tempRoot)).toEqual({});
+    expect(await readToExtendEntries(tempRoot)).toEqual({});
+    expect(await readToUpscaleVideoEntries(tempRoot)).toEqual({});
   });
 });
