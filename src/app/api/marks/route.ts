@@ -10,6 +10,7 @@ import {
   readToExtendEntries,
   readToUpscaleEntries,
   readToUpscaleVideoEntries,
+  readVideoLinks,
   removeToAnimateEntry,
   removeToExtendEntry,
   removeToUpscaleEntry,
@@ -138,6 +139,15 @@ const handleAnimateMark = async (
   return new Response(null, { status: 204 });
 };
 
+// A video's metadata is never client-supplied (there's no PNG chunk to source it from for a
+// .mp4) - it's always resolved server-side from video-links.json, carrying forward whatever
+// metadata string the video's original source (image or video) was marked with. A video with no
+// link yet (reconciliation hasn't matched it to a source) resolves to "".
+const resolveVideoMetadata = async (rootPath: string, requestedPath: string): Promise<string> => {
+  const videoLinks = await readVideoLinks(rootPath);
+  return videoLinks[requestedPath]?.metadata ?? "";
+};
+
 const handleExtendMark = async (
   rootPath: string,
   requestedPath: string,
@@ -148,9 +158,8 @@ const handleExtendMark = async (
     return resolved.error;
   }
 
-  // A video's metadata isn't client-supplied (there's no PNG chunk to source it from for a
-  // .mp4) - it resolves to "" until video-links.json exists to trace it back to a source image.
-  await setToExtendEntry(rootPath, requestedPath, "", resolved.action);
+  const metadata = await resolveVideoMetadata(rootPath, requestedPath);
+  await setToExtendEntry(rootPath, requestedPath, metadata, resolved.action);
   return new Response(null, { status: 204 });
 };
 
@@ -203,7 +212,8 @@ export const PUT = async (request: Request) => {
   }
 
   if (body.type === "upscaleVideo") {
-    await setToUpscaleVideoEntry(rootPath, requestedPath, "");
+    const upscaleVideoMetadata = await resolveVideoMetadata(rootPath, requestedPath);
+    await setToUpscaleVideoEntry(rootPath, requestedPath, upscaleVideoMetadata);
     return new Response(null, { status: 204 });
   }
 

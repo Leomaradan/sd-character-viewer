@@ -52,6 +52,7 @@ const TO_UPSCALE_FILE_NAME = "to-upscale.json";
 const TO_ANIMATE_FILE_NAME = "to-animate.json";
 const TO_EXTEND_FILE_NAME = "to-extends.json";
 const TO_UPSCALE_VIDEO_FILE_NAME = "to-upscale-video.json";
+const VIDEO_LINKS_FILE_NAME = "video-links.json";
 const DEFAULT_POSE_PATTERN_FILTER_CONFIGS = [{ label: "With Somebody", pattern: "^With " }];
 const MAIN_ROOT_KEY = "main";
 
@@ -896,6 +897,264 @@ export const removeToExtendEntry = async (
       await writeMarkedImageMap(filePath, entries);
     }
   });
+};
+
+// Persisted once a generated video is matched back to the pending mark that requested it (see
+// reconcilePendingAnimationMarks below). Not folded into ILibraryData/the index cache - fetched
+// on-demand per-video via GET /api/marks, exactly like today's per-image upscale/animate state.
+export interface IVideoLink {
+  sourceRelativePath: string;
+  sourceMediaType: TMediaType; // "image" for an animate source, "video" for an extend source
+  action: string; // IAnimationConfig.key used
+  prompt: string; // prompt actually used at fulfillment time (post-edit, if any)
+  metadata: string; // carried-forward metadata string
+  linkedAt: number; // diagnostic only
+}
+
+const isVideoLink = (value: unknown): value is IVideoLink => {
+  return (
+    isPlainObjectRecord(value) &&
+    typeof value.sourceRelativePath === "string" &&
+    (value.sourceMediaType === "image" || value.sourceMediaType === "video") &&
+    typeof value.action === "string" &&
+    typeof value.prompt === "string" &&
+    typeof value.metadata === "string" &&
+    typeof value.linkedAt === "number"
+  );
+};
+
+export const readVideoLinks = async (rootPath: string): Promise<Record<string, IVideoLink>> => {
+  return readMarkedImageMap(path.join(rootPath, VIDEO_LINKS_FILE_NAME), isVideoLink);
+};
+
+export const removeVideoLink = async (rootPath: string, relativePath: string): Promise<void> => {
+  const filePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isVideoLink);
+    if (relativePath in entries) {
+      delete entries[relativePath];
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
+};
+
+// Rekeys a link when its video is renamed (Redraw-on-video), returning the migrated record, or
+// null when the renamed video had no link (nothing to migrate).
+export const migrateVideoLink = async (
+  rootPath: string,
+  oldRelativePath: string,
+  newRelativePath: string,
+): Promise<IVideoLink | null> => {
+  const filePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
+  return withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isVideoLink);
+    const link = entries[oldRelativePath];
+    if (!link) {
+      return null;
+    }
+
+    delete entries[oldRelativePath];
+    entries[newRelativePath] = link;
+    await writeMarkedImageMap(filePath, entries);
+    return link;
+  });
+};
+
+// One pending request to animate/extend, resolved against the image library so it carries the
+// style/character/target-name needed to group it with candidate videos.
+interface IPendingAnimationClaim {
+  sourceRelativePath: string;
+  sourceMediaType: TMediaType;
+  action: string;
+  metadata: string;
+  markFile: "animate" | "extend";
+}
+
+// Groups to-animate.json/to-extends.json entries by `${style}::${characterName}::${targetName}`
+// (targetName = the resolved animation node's display name, since that's what a generated video
+// is expected to be named after). Iterates to-animate.json first, then to-extends.json, so a
+// group's claims list is naturally in the documented file-order tie-break. Entries whose source
+// no longer exists, or whose action key no longer resolves in the (possibly since-edited)
+// animations config, are skipped - left pending, same as any other orphaned mark.
+const buildPendingAnimationClaims = (
+  animateEntries: Record<string, IToAnimateEntry>,
+  extendEntries: Record<string, IToExtendEntry>,
+  itemsByRelativePath: Map<string, IImageItem>,
+  animations: IAnimationConfig[],
+): Map<string, IPendingAnimationClaim[]> => {
+  const claimsByGroupKey = new Map<string, IPendingAnimationClaim[]>();
+
+  const addClaims = (
+    entries: Record<string, IToAnimateEntry | IToExtendEntry>,
+    sourceMediaType: TMediaType,
+    markFile: "animate" | "extend",
+  ): void => {
+    for (const [sourceRelativePath, entry] of Object.entries(entries)) {
+      const sourceItem = itemsByRelativePath.get(sourceRelativePath);
+      if (!sourceItem) {
+        continue;
+      }
+
+      const node = findAnimationNodeByKey(animations, entry.action);
+      if (!node) {
+        continue;
+      }
+
+      const groupKey = `${sourceItem.style}::${sourceItem.characterName}::${node.name}`;
+      const claim: IPendingAnimationClaim = {
+        sourceRelativePath,
+        sourceMediaType,
+        action: entry.action,
+        metadata: entry.metadata,
+        markFile,
+      };
+
+      const existingClaims = claimsByGroupKey.get(groupKey);
+      if (existingClaims) {
+        existingClaims.push(claim);
+      } else {
+        claimsByGroupKey.set(groupKey, [claim]);
+      }
+    }
+  };
+
+  addClaims(animateEntries, "image", "animate");
+  addClaims(extendEntries, "video", "extend");
+
+  return claimsByGroupKey;
+};
+
+// Groups not-yet-linked, main-root video items by the same `${style}::${characterName}::
+// ${poseBaseName}` key a matching claim would produce (a generated video's poseBaseName is its
+// filename before the numeric variant suffix, e.g. "Dance" for both "Dance.mp4"/"Dance 2.mp4").
+// Extra-root videos are excluded: the external tool that fulfills marks only ever writes into
+// the main root. Each group is sorted by poseVariant (the only available proxy for generation
+// order), tie-broken by modifiedAt.
+const buildUnclaimedVideoCandidates = (
+  imageItems: IImageItem[],
+  videoLinks: Record<string, IVideoLink>,
+): Map<string, IImageItem[]> => {
+  const candidatesByGroupKey = new Map<string, IImageItem[]>();
+
+  for (const item of imageItems) {
+    if (item.mediaType !== "video") {
+      continue;
+    }
+
+    if (getRelativePathRootPrefix(item.relativePath) !== "" || item.relativePath in videoLinks) {
+      continue;
+    }
+
+    const groupKey = `${item.style}::${item.characterName}::${item.poseBaseName}`;
+    const existingCandidates = candidatesByGroupKey.get(groupKey);
+    if (existingCandidates) {
+      existingCandidates.push(item);
+    } else {
+      candidatesByGroupKey.set(groupKey, [item]);
+    }
+  }
+
+  for (const candidates of candidatesByGroupKey.values()) {
+    candidates.sort((a, b) => {
+      return a.poseVariant !== b.poseVariant
+        ? a.poseVariant - b.poseVariant
+        : a.modifiedAt - b.modifiedAt;
+    });
+  }
+
+  return candidatesByGroupKey;
+};
+
+// Matches newly-indexed, unclaimed videos to pending to-animate.json/to-extends.json marks and
+// persists the result as video-links.json entries, freeing the fulfilled marks. Called once per
+// uncached readImageLibrary() rebuild, right after pose-pattern filters are applied and before
+// the library is materialized - wrapped end-to-end in try/catch since a failure here must never
+// fail the library read it's embedded in.
+//
+// The FIFO pairing within a group (see buildUnclaimedVideoCandidates) is a heuristic: when
+// generation order and mark-insertion order diverge, it can mis-attribute a link. That's the one
+// accepted risk in this design (see VIDEO_FEATURES_PLAN.md).
+export const reconcilePendingAnimationMarks = async (
+  rootPath: string,
+  imageItems: IImageItem[],
+  animations: IAnimationConfig[],
+): Promise<void> => {
+  try {
+    const [animateEntries, extendEntries, videoLinks] = await Promise.all([
+      readToAnimateEntries(rootPath),
+      readToExtendEntries(rootPath),
+      readVideoLinks(rootPath),
+    ]);
+
+    const itemsByRelativePath = new Map(imageItems.map((item) => [item.relativePath, item]));
+    const claimsByGroupKey = buildPendingAnimationClaims(
+      animateEntries,
+      extendEntries,
+      itemsByRelativePath,
+      animations,
+    );
+
+    if (claimsByGroupKey.size === 0) {
+      return;
+    }
+
+    const candidatesByGroupKey = buildUnclaimedVideoCandidates(imageItems, videoLinks);
+
+    const newLinksByRelativePath: Record<string, IVideoLink> = {};
+    const fulfilledAnimateRelativePaths: string[] = [];
+    const fulfilledExtendRelativePaths: string[] = [];
+    const linkedAt = Date.now();
+
+    for (const [groupKey, claims] of claimsByGroupKey.entries()) {
+      const candidates = candidatesByGroupKey.get(groupKey);
+      if (!candidates) {
+        continue;
+      }
+
+      const pairCount = Math.min(claims.length, candidates.length);
+      for (let index = 0; index < pairCount; index += 1) {
+        const claim = claims[index];
+        const candidate = candidates[index];
+
+        newLinksByRelativePath[candidate.relativePath] = {
+          sourceRelativePath: claim.sourceRelativePath,
+          sourceMediaType: claim.sourceMediaType,
+          action: claim.action,
+          prompt: "",
+          metadata: claim.metadata,
+          linkedAt,
+        };
+
+        if (claim.markFile === "animate") {
+          fulfilledAnimateRelativePaths.push(claim.sourceRelativePath);
+        } else {
+          fulfilledExtendRelativePaths.push(claim.sourceRelativePath);
+        }
+      }
+    }
+
+    if (Object.keys(newLinksByRelativePath).length === 0) {
+      return;
+    }
+
+    await Promise.all([
+      ...fulfilledAnimateRelativePaths.map((relativePath) =>
+        removeToAnimateEntry(rootPath, relativePath),
+      ),
+      ...fulfilledExtendRelativePaths.map((relativePath) =>
+        removeToExtendEntry(rootPath, relativePath),
+      ),
+    ]);
+
+    const videoLinksFilePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
+    await withMarkedImageFileLock(videoLinksFilePath, async () => {
+      const currentEntries = await readMarkedImageMap(videoLinksFilePath, isVideoLink);
+      Object.assign(currentEntries, newLinksByRelativePath);
+      await writeMarkedImageMap(videoLinksFilePath, currentEntries);
+    });
+  } catch {
+    // Best-effort: see the comment above.
+  }
 };
 
 export const parsePoseName = (
@@ -1861,6 +2120,11 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
 
   sortImageItems(indexState.imageItems);
   applyPosePatternFilterIds(indexState.imageItems, posePatternFilters);
+  await reconcilePendingAnimationMarks(
+    rootPath,
+    indexState.imageItems,
+    effectiveStyleConfig.animations,
+  );
   const { cache: firstSeenCache, available: cacheReadable } = await loadFirstSeenCache(rootPath);
   const hasCacheChanges = markNewImages(indexState.imageItems, Date.now(), firstSeenCache);
 

@@ -22,6 +22,7 @@ import {
   getExtraImagesRootPathsFromEnv,
   isDuplicateGroupReviewed,
   isVideoFilePath,
+  migrateVideoLink,
   normalizeAnimationsConfig,
   parsePoseName,
   readImageLibrary,
@@ -30,12 +31,14 @@ import {
   readToExtendEntries,
   readToUpscaleEntries,
   readToUpscaleVideoEntries,
+  readVideoLinks,
   removeLibraryIndexCache,
   removeMarkedActionEntries,
   removeToAnimateEntry,
   removeToExtendEntry,
   removeToUpscaleEntry,
   removeToUpscaleVideoEntry,
+  removeVideoLink,
   resolveImageFilePath,
   resolvePreviewFilePath,
   setToAnimateEntry,
@@ -1620,6 +1623,97 @@ describe("readToExtendEntries / setToExtendEntry / removeToExtendEntry", () => {
     expect(await readToExtendEntries(tempRoot)).toEqual({
       "a.mp4": { metadata: "", action: "Pan" },
     });
+  });
+});
+
+describe("readVideoLinks / removeVideoLink / migrateVideoLink", () => {
+  const buildLink = (overrides: Partial<Record<string, unknown>> = {}) => ({
+    sourceRelativePath: "characters/3d/Anna/Base.png",
+    sourceMediaType: "image",
+    action: "dance",
+    prompt: "",
+    metadata: "raw",
+    linkedAt: 1234,
+    ...overrides,
+  });
+
+  it("returns an empty object when video-links.json does not exist", async () => {
+    expect(await readVideoLinks("/tmp/sd-video-links-missing")).toEqual({});
+  });
+
+  it("reads a well-formed video-links.json", async () => {
+    const tempRoot = "/tmp/sd-video-links-read";
+    await fs.mkdir(tempRoot, { recursive: true });
+    const link = buildLink();
+    await fs.writeFile(
+      path.join(tempRoot, "video-links.json"),
+      JSON.stringify({ "characters/3d/Anna/Dance.mp4": link }),
+    );
+
+    expect(await readVideoLinks(tempRoot)).toEqual({ "characters/3d/Anna/Dance.mp4": link });
+  });
+
+  it("ignores malformed entries", async () => {
+    const tempRoot = "/tmp/sd-video-links-malformed";
+    await fs.mkdir(tempRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(tempRoot, "video-links.json"),
+      JSON.stringify({
+        "a.mp4": buildLink(),
+        "b.mp4": { sourceRelativePath: "b.png" },
+        "c.mp4": "not-an-object",
+        "d.mp4": buildLink({ sourceMediaType: "audio" }),
+      }),
+    );
+
+    expect(await readVideoLinks(tempRoot)).toEqual({ "a.mp4": buildLink() });
+  });
+
+  it("removes a link, leaving other entries untouched", async () => {
+    const tempRoot = "/tmp/sd-video-links-remove";
+    await fs.mkdir(tempRoot, { recursive: true });
+    const linkB = buildLink({ sourceRelativePath: "characters/3d/Anna/Other.png" });
+    await fs.writeFile(
+      path.join(tempRoot, "video-links.json"),
+      JSON.stringify({ "a.mp4": buildLink(), "b.mp4": linkB }),
+    );
+
+    await removeVideoLink(tempRoot, "a.mp4");
+
+    expect(await readVideoLinks(tempRoot)).toEqual({ "b.mp4": linkB });
+  });
+
+  it("is a no-op when removing a link that does not exist", async () => {
+    const tempRoot = "/tmp/sd-video-links-remove-missing";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await expect(removeVideoLink(tempRoot, "a.mp4")).resolves.toBeUndefined();
+    expect(await readVideoLinks(tempRoot)).toEqual({});
+  });
+
+  it("migrates a link to a new relativePath on rename, returning the migrated record", async () => {
+    const tempRoot = "/tmp/sd-video-links-migrate";
+    await fs.mkdir(tempRoot, { recursive: true });
+    const link = buildLink();
+    await fs.writeFile(
+      path.join(tempRoot, "video-links.json"),
+      JSON.stringify({ "old.mp4": link }),
+    );
+
+    const migrated = await migrateVideoLink(tempRoot, "old.mp4", "new.mp4");
+
+    expect(migrated).toEqual(link);
+    expect(await readVideoLinks(tempRoot)).toEqual({ "new.mp4": link });
+  });
+
+  it("returns null and makes no changes when the renamed video has no link", async () => {
+    const tempRoot = "/tmp/sd-video-links-migrate-missing";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    const migrated = await migrateVideoLink(tempRoot, "old.mp4", "new.mp4");
+
+    expect(migrated).toBeNull();
+    expect(await readVideoLinks(tempRoot)).toEqual({});
   });
 });
 

@@ -23,6 +23,7 @@ vi.mock("@/lib/image-library", async (importOriginal) => {
     readToExtendEntries: vi.fn(),
     readToUpscaleEntries: vi.fn(),
     readToUpscaleVideoEntries: vi.fn(),
+    readVideoLinks: vi.fn(),
     removeToAnimateEntry: vi.fn(),
     removeToExtendEntry: vi.fn(),
     removeToUpscaleEntry: vi.fn(),
@@ -46,6 +47,7 @@ import {
   readToExtendEntries,
   readToUpscaleEntries,
   readToUpscaleVideoEntries,
+  readVideoLinks,
   removeToAnimateEntry,
   removeToExtendEntry,
   removeToUpscaleEntry,
@@ -452,6 +454,7 @@ describe("/api/marks PUT", () => {
     vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
     vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
     vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    vi.mocked(readVideoLinks).mockResolvedValue({});
     vi.mocked(setToUpscaleVideoEntry).mockResolvedValue(undefined);
 
     const response = await PUT(
@@ -463,6 +466,33 @@ describe("/api/marks PUT", () => {
     );
 
     expect(setToUpscaleVideoEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "");
+    expect(response.status).toBe(204);
+  });
+
+  it("marks a video for upscaleVideo with the metadata carried forward from its video-links.json entry", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    vi.mocked(readVideoLinks).mockResolvedValue({
+      "a.mp4": {
+        sourceRelativePath: "characters/3d/Anna/Base.png",
+        sourceMediaType: "image",
+        action: "Zoom In",
+        prompt: "",
+        metadata: "Steps: 30, Seed: 1",
+        linkedAt: 0,
+      },
+    });
+    vi.mocked(setToUpscaleVideoEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", { path: "a.mp4", type: "upscaleVideo" }),
+    );
+
+    expect(setToUpscaleVideoEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "Steps: 30, Seed: 1");
     expect(response.status).toBe(204);
   });
 
@@ -535,6 +565,7 @@ describe("/api/marks PUT", () => {
     vi.mocked(readImageLibrary).mockResolvedValue({
       animations: [{ key: "Zoom In", name: "Zoom In", prompt: "" }],
     } as never);
+    vi.mocked(readVideoLinks).mockResolvedValue({});
     vi.mocked(setToExtendEntry).mockResolvedValue(undefined);
 
     const response = await PUT(
@@ -547,6 +578,41 @@ describe("/api/marks PUT", () => {
     );
 
     expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "", "Zoom In");
+    expect(response.status).toBe(204);
+  });
+
+  it("marks a video for extend with the metadata carried forward from its video-links.json entry", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [{ key: "Pan", name: "Pan", prompt: "" }],
+    } as never);
+    vi.mocked(readVideoLinks).mockResolvedValue({
+      "a.mp4": {
+        sourceRelativePath: "characters/3d/Anna/Dance.mp4",
+        sourceMediaType: "video",
+        action: "Zoom In",
+        prompt: "",
+        metadata: "raw",
+        linkedAt: 0,
+      },
+    });
+    vi.mocked(setToExtendEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.mp4",
+        type: "extend",
+        action: "Pan",
+      }),
+    );
+
+    expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "raw", "Pan");
     expect(response.status).toBe(204);
   });
 
@@ -568,6 +634,7 @@ describe("/api/marks PUT", () => {
         },
       ],
     } as never);
+    vi.mocked(readVideoLinks).mockResolvedValue({});
     vi.mocked(setToExtendEntry).mockResolvedValue(undefined);
 
     const response = await PUT(
