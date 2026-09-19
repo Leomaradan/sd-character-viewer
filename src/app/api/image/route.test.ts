@@ -25,6 +25,10 @@ vi.mock("@/lib/image-library", () => ({
   removeMarkedActionEntries: vi.fn(),
   removeLibraryIndexCache: vi.fn(),
   isVideoFilePath: vi.fn((filePath: string) => filePath.toLowerCase().endsWith(".mp4")),
+  getImagesRootPathFromEnv: vi.fn(),
+  migrateVideoLink: vi.fn(),
+  setToAnimateEntry: vi.fn(),
+  setToExtendEntry: vi.fn(),
 }));
 
 vi.mock("@/app/api/metadata/route", () => ({
@@ -47,6 +51,10 @@ import {
   removeFirstSeenCacheEntry,
   removeMarkedActionEntries,
   removeLibraryIndexCache,
+  getImagesRootPathFromEnv,
+  migrateVideoLink,
+  setToAnimateEntry,
+  setToExtendEntry,
 } from "@/lib/image-library";
 
 import { DELETE, GET, PATCH } from "./route";
@@ -567,5 +575,153 @@ describe("/api/image PATCH", () => {
     const response = await PATCH(new Request("http://localhost/api/image?path=ImageA.png"));
 
     expect(response.status).toBe(500);
+  });
+
+  it("PATCH requeues an image-sourced mark when a linked video is redrawn", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const readBooleanEnvFlagMock = vi.mocked(env.readBooleanEnvFlag);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const renameMock = vi.mocked(fs.rename);
+    const readdirMock = vi.mocked(fs.readdir);
+    const getImagesRootPathFromEnvMock = vi.mocked(getImagesRootPathFromEnv);
+    const migrateVideoLinkMock = vi.mocked(migrateVideoLink);
+    const setToAnimateEntryMock = vi.mocked(setToAnimateEntry);
+
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    readBooleanEnvFlagMock.mockReturnValue(true);
+    resolveImageFilePathMock.mockReturnValue("/tmp/characters/3d/Anna/Dance.mp4");
+    renameMock.mockResolvedValue(undefined);
+    readdirMock.mockResolvedValue([]);
+    getImagesRootPathFromEnvMock.mockReturnValue("/tmp");
+    migrateVideoLinkMock.mockResolvedValue({
+      sourceRelativePath: "characters/3d/Anna/Base.png",
+      sourceMediaType: "image",
+      action: "dance",
+      prompt: "zoom in slowly",
+      metadata: "Steps: 30",
+      linkedAt: 0,
+    });
+
+    const response = await PATCH(
+      new Request("http://localhost/api/image?path=characters/3d/Anna/Dance.mp4"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(migrateVideoLinkMock).toHaveBeenCalledWith(
+      "/tmp",
+      "characters/3d/Anna/Dance.mp4",
+      "characters/3d/Anna/Dance 2.mp4",
+    );
+    expect(setToAnimateEntryMock).toHaveBeenCalledWith(
+      "/tmp",
+      "characters/3d/Anna/Base.png",
+      "Steps: 30",
+      "dance",
+      "zoom in slowly",
+    );
+    const data = (await response.json()) as { newPath: string; requeued: boolean };
+    expect(data.newPath).toBe("characters/3d/Anna/Dance 2.mp4");
+    expect(data.requeued).toBe(true);
+  });
+
+  it("PATCH requeues a video-sourced mark when a linked video is redrawn", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const readBooleanEnvFlagMock = vi.mocked(env.readBooleanEnvFlag);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const renameMock = vi.mocked(fs.rename);
+    const readdirMock = vi.mocked(fs.readdir);
+    const getImagesRootPathFromEnvMock = vi.mocked(getImagesRootPathFromEnv);
+    const migrateVideoLinkMock = vi.mocked(migrateVideoLink);
+    const setToExtendEntryMock = vi.mocked(setToExtendEntry);
+
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    readBooleanEnvFlagMock.mockReturnValue(true);
+    resolveImageFilePathMock.mockReturnValue("/tmp/characters/3d/Anna/Dance.mp4");
+    renameMock.mockResolvedValue(undefined);
+    readdirMock.mockResolvedValue([]);
+    getImagesRootPathFromEnvMock.mockReturnValue("/tmp");
+    migrateVideoLinkMock.mockResolvedValue({
+      sourceRelativePath: "characters/3d/Anna/Dance-source.mp4",
+      sourceMediaType: "video",
+      action: "dance",
+      prompt: "zoom in slowly",
+      metadata: "",
+      linkedAt: 0,
+    });
+
+    const response = await PATCH(
+      new Request("http://localhost/api/image?path=characters/3d/Anna/Dance.mp4"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(setToExtendEntryMock).toHaveBeenCalledWith(
+      "/tmp",
+      "characters/3d/Anna/Dance-source.mp4",
+      "",
+      "dance",
+      "zoom in slowly",
+    );
+    const data = (await response.json()) as { requeued: boolean };
+    expect(data.requeued).toBe(true);
+  });
+
+  it("PATCH does not requeue (and still succeeds) when a redrawn video has no link", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const readBooleanEnvFlagMock = vi.mocked(env.readBooleanEnvFlag);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const renameMock = vi.mocked(fs.rename);
+    const readdirMock = vi.mocked(fs.readdir);
+    const getImagesRootPathFromEnvMock = vi.mocked(getImagesRootPathFromEnv);
+    const migrateVideoLinkMock = vi.mocked(migrateVideoLink);
+    const setToAnimateEntryMock = vi.mocked(setToAnimateEntry);
+    const setToExtendEntryMock = vi.mocked(setToExtendEntry);
+
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    readBooleanEnvFlagMock.mockReturnValue(true);
+    resolveImageFilePathMock.mockReturnValue("/tmp/characters/3d/Anna/Dance.mp4");
+    renameMock.mockResolvedValue(undefined);
+    readdirMock.mockResolvedValue([]);
+    getImagesRootPathFromEnvMock.mockReturnValue("/tmp");
+    migrateVideoLinkMock.mockResolvedValue(null);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/image?path=characters/3d/Anna/Dance.mp4"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(setToAnimateEntryMock).not.toHaveBeenCalled();
+    expect(setToExtendEntryMock).not.toHaveBeenCalled();
+    const data = (await response.json()) as { requeued: boolean };
+    expect(data.requeued).toBe(false);
+  });
+
+  it("PATCH never calls migrateVideoLink when redrawing an image", async () => {
+    const isMisconfiguredMock = vi.mocked(auth.isMisconfigured);
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const readBooleanEnvFlagMock = vi.mocked(env.readBooleanEnvFlag);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const renameMock = vi.mocked(fs.rename);
+    const readdirMock = vi.mocked(fs.readdir);
+    const migrateVideoLinkMock = vi.mocked(migrateVideoLink);
+
+    isMisconfiguredMock.mockReturnValue(false);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    readBooleanEnvFlagMock.mockReturnValue(true);
+    resolveImageFilePathMock.mockReturnValue("/tmp/ImageA.png");
+    renameMock.mockResolvedValue(undefined);
+    readdirMock.mockResolvedValue([]);
+
+    const response = await PATCH(new Request("http://localhost/api/image?path=ImageA.png"));
+
+    expect(response.status).toBe(200);
+    expect(migrateVideoLinkMock).not.toHaveBeenCalled();
+    const data = (await response.json()) as { requeued: boolean };
+    expect(data.requeued).toBe(false);
   });
 });
