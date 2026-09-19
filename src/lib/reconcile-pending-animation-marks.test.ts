@@ -339,4 +339,59 @@ describe("reconcilePendingAnimationMarks", () => {
       expect.objectContaining({ sourceRelativePath: baseImage.relativePath }),
     );
   });
+
+  it("matches a claim to a video whose filename normalizes underscores/hyphens differently than the animation's raw name", async () => {
+    const animations: IAnimationConfig[] = [
+      { key: "dance-party", name: "Dance_Party", prompt: "" },
+    ];
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance-party");
+    // A video named "Dance_Party.mp4" is parsed (via sanitizePoseName) to poseBaseName
+    // "Dance Party" (underscore -> space) - the claim's groupKey must be sanitized the same way
+    // to still match it.
+    const video = buildImage({
+      relativePath: "characters/3d/Anna/Dance Party.mp4",
+      poseName: "Dance Party",
+      poseBaseName: "Dance Party",
+      mediaType: "video",
+    });
+
+    await reconcilePendingAnimationMarks(TEMP_ROOT, [baseImage, video], animations);
+
+    expect(await readVideoLinks(TEMP_ROOT)).toEqual({
+      [video.relativePath]: expect.objectContaining({ sourceRelativePath: baseImage.relativePath }),
+    });
+    expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({});
+  });
+
+  it("does not let a video pending its own extend mark self-link or claim another pending claim", async () => {
+    // Dance.mp4 is itself marked for extend targeting "dance" (whose name is also "Dance") - it
+    // must not be treated as an unclaimed candidate for that claim (or any other).
+    const video = danceVideo();
+    await setToExtendEntry(TEMP_ROOT, video.relativePath, "raw", "dance");
+
+    await reconcilePendingAnimationMarks(TEMP_ROOT, [video], DANCE_ANIMATIONS);
+
+    expect(await readVideoLinks(TEMP_ROOT)).toEqual({});
+    expect(await readToExtendEntries(TEMP_ROOT)).toEqual({
+      [video.relativePath]: { metadata: "raw", action: "dance" },
+    });
+  });
+
+  it("does not let a video pending its own extend mark satisfy a different claim in the same group", async () => {
+    const video = danceVideo();
+    await setToExtendEntry(TEMP_ROOT, video.relativePath, "extend-raw", "dance");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "animate-raw", "dance");
+
+    // video is the only video in this group, but it's excluded as a candidate (it's a pending
+    // claim's own source), so the animate claim has nothing to pair with either.
+    await reconcilePendingAnimationMarks(TEMP_ROOT, [baseImage, video], DANCE_ANIMATIONS);
+
+    expect(await readVideoLinks(TEMP_ROOT)).toEqual({});
+    expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({
+      [baseImage.relativePath]: { metadata: "animate-raw", action: "dance" },
+    });
+    expect(await readToExtendEntries(TEMP_ROOT)).toEqual({
+      [video.relativePath]: { metadata: "extend-raw", action: "dance" },
+    });
+  });
 });

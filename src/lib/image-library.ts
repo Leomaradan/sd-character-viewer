@@ -971,11 +971,13 @@ interface IPendingAnimationClaim {
 }
 
 // Groups to-animate.json/to-extends.json entries by `${style}::${characterName}::${targetName}`
-// (targetName = the resolved animation node's display name, since that's what a generated video
-// is expected to be named after). Iterates to-animate.json first, then to-extends.json, so a
-// group's claims list is naturally in the documented file-order tie-break. Entries whose source
-// no longer exists, or whose action key no longer resolves in the (possibly since-edited)
-// animations config, are skipped - left pending, same as any other orphaned mark.
+// (targetName = the resolved animation node's display name, sanitized the same way parsePoseName
+// sanitizes a video's on-disk filename - so an animation named e.g. "Dance_Party" still matches a
+// generated "Dance_Party.mp4", whose parsed poseBaseName has the underscore normalized to a
+// space). Iterates to-animate.json first, then to-extends.json, so a group's claims list is
+// naturally in the documented file-order tie-break. Entries whose source no longer exists, or
+// whose action key no longer resolves in the (possibly since-edited) animations config, are
+// skipped - left pending, same as any other orphaned mark.
 const buildPendingAnimationClaims = (
   animateEntries: Record<string, IToAnimateEntry>,
   extendEntries: Record<string, IToExtendEntry>,
@@ -1000,7 +1002,7 @@ const buildPendingAnimationClaims = (
         continue;
       }
 
-      const groupKey = `${sourceItem.style}::${sourceItem.characterName}::${node.name}`;
+      const groupKey = `${sourceItem.style}::${sourceItem.characterName}::${sanitizePoseName(node.name)}`;
       const claim: IPendingAnimationClaim = {
         sourceRelativePath,
         sourceMediaType,
@@ -1028,11 +1030,14 @@ const buildPendingAnimationClaims = (
 // ${poseBaseName}` key a matching claim would produce (a generated video's poseBaseName is its
 // filename before the numeric variant suffix, e.g. "Dance" for both "Dance.mp4"/"Dance 2.mp4").
 // Extra-root videos are excluded: the external tool that fulfills marks only ever writes into
-// the main root. Each group is sorted by poseVariant (the only available proxy for generation
-// order), tie-broken by modifiedAt.
+// the main root. Also excluded: any video that is itself the source of a pending claim (an
+// extend mark's source is a video) - otherwise a video marked for extend could self-link (or
+// satisfy someone else's claim) as if it were a freshly generated output. Each group is sorted
+// by poseVariant (the only available proxy for generation order), tie-broken by modifiedAt.
 const buildUnclaimedVideoCandidates = (
   imageItems: IImageItem[],
   videoLinks: Record<string, IVideoLink>,
+  claimSourceRelativePaths: Set<string>,
 ): Map<string, IImageItem[]> => {
   const candidatesByGroupKey = new Map<string, IImageItem[]>();
 
@@ -1041,7 +1046,11 @@ const buildUnclaimedVideoCandidates = (
       continue;
     }
 
-    if (getRelativePathRootPrefix(item.relativePath) !== "" || item.relativePath in videoLinks) {
+    if (
+      getRelativePathRootPrefix(item.relativePath) !== "" ||
+      item.relativePath in videoLinks ||
+      claimSourceRelativePaths.has(item.relativePath)
+    ) {
       continue;
     }
 
@@ -1063,6 +1072,26 @@ const buildUnclaimedVideoCandidates = (
   }
 
   return candidatesByGroupKey;
+};
+
+// Deletes a marked-image-map entry only if it still deep-equals what reconciliation observed
+// when it built the claim being fulfilled, so a concurrent PUT that changed or replaced the mark
+// in the window between reading claims and removing them here survives instead of being silently
+// discarded.
+const removeMarkedImageMapEntryIfUnchanged = async <T>(
+  filePath: string,
+  relativePath: string,
+  expectedEntry: T,
+  isValidEntry: (value: unknown) => value is T,
+): Promise<void> => {
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isValidEntry);
+    const currentEntry = entries[relativePath];
+    if (currentEntry && JSON.stringify(currentEntry) === JSON.stringify(expectedEntry)) {
+      delete entries[relativePath];
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
 };
 
 // Matches newly-indexed, unclaimed videos to pending to-animate.json/to-extends.json marks and
@@ -1098,11 +1127,25 @@ export const reconcilePendingAnimationMarks = async (
       return;
     }
 
-    const candidatesByGroupKey = buildUnclaimedVideoCandidates(imageItems, videoLinks);
+    // A video that is itself the source of one of these claims (an extend mark's source is a
+    // video) must never also be treated as an unclaimed candidate output - see
+    // buildUnclaimedVideoCandidates.
+    const claimSourceRelativePaths = new Set<string>();
+    for (const claims of claimsByGroupKey.values()) {
+      for (const claim of claims) {
+        claimSourceRelativePaths.add(claim.sourceRelativePath);
+      }
+    }
+
+    const candidatesByGroupKey = buildUnclaimedVideoCandidates(
+      imageItems,
+      videoLinks,
+      claimSourceRelativePaths,
+    );
 
     const newLinksByRelativePath: Record<string, IVideoLink> = {};
-    const fulfilledAnimateRelativePaths: string[] = [];
-    const fulfilledExtendRelativePaths: string[] = [];
+    const fulfilledAnimateClaims: { relativePath: string; entry: IToAnimateEntry }[] = [];
+    const fulfilledExtendClaims: { relativePath: string; entry: IToExtendEntry }[] = [];
     const linkedAt = Date.now();
 
     for (const [groupKey, claims] of claimsByGroupKey.entries()) {
@@ -1125,10 +1168,19 @@ export const reconcilePendingAnimationMarks = async (
           linkedAt,
         };
 
+        // The entry reconciliation actually observed when it built this claim, used below to
+        // compare-and-delete rather than blindly deleting by key.
+        const fulfilledEntry = { metadata: claim.metadata, action: claim.action };
         if (claim.markFile === "animate") {
-          fulfilledAnimateRelativePaths.push(claim.sourceRelativePath);
+          fulfilledAnimateClaims.push({
+            relativePath: claim.sourceRelativePath,
+            entry: fulfilledEntry,
+          });
         } else {
-          fulfilledExtendRelativePaths.push(claim.sourceRelativePath);
+          fulfilledExtendClaims.push({
+            relativePath: claim.sourceRelativePath,
+            entry: fulfilledEntry,
+          });
         }
       }
     }
@@ -1137,21 +1189,36 @@ export const reconcilePendingAnimationMarks = async (
       return;
     }
 
-    await Promise.all([
-      ...fulfilledAnimateRelativePaths.map((relativePath) =>
-        removeToAnimateEntry(rootPath, relativePath),
-      ),
-      ...fulfilledExtendRelativePaths.map((relativePath) =>
-        removeToExtendEntry(rootPath, relativePath),
-      ),
-    ]);
-
+    // Persist the links before removing the marks that produced them: if this write fails (e.g.
+    // disk full), the marks stay pending for a future reconciliation pass to retry, rather than
+    // being deleted with no matching link to show for it.
     const videoLinksFilePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
     await withMarkedImageFileLock(videoLinksFilePath, async () => {
       const currentEntries = await readMarkedImageMap(videoLinksFilePath, isVideoLink);
       Object.assign(currentEntries, newLinksByRelativePath);
       await writeMarkedImageMap(videoLinksFilePath, currentEntries);
     });
+
+    const toAnimateFilePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
+    const toExtendFilePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
+    await Promise.all([
+      ...fulfilledAnimateClaims.map(({ relativePath, entry }) =>
+        removeMarkedImageMapEntryIfUnchanged(
+          toAnimateFilePath,
+          relativePath,
+          entry,
+          isToAnimateEntry,
+        ),
+      ),
+      ...fulfilledExtendClaims.map(({ relativePath, entry }) =>
+        removeMarkedImageMapEntryIfUnchanged(
+          toExtendFilePath,
+          relativePath,
+          entry,
+          isToAnimateEntry,
+        ),
+      ),
+    ]);
   } catch {
     // Best-effort: see the comment above.
   }
