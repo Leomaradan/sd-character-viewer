@@ -94,7 +94,7 @@ describe("/api/marks GET", () => {
     vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
     vi.mocked(readToUpscaleVideoEntries).mockResolvedValue({ "a.mp4": "" });
     vi.mocked(readToExtendEntries).mockResolvedValue({
-      "a.mp4": { metadata: "", action: "Zoom In" },
+      "a.mp4": { metadata: "", action: "Zoom In", prompt: "zoom in slowly" },
     });
 
     const response = await GET(new Request("http://localhost/api/marks?path=a.mp4"));
@@ -102,7 +102,7 @@ describe("/api/marks GET", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       upscaleVideo: true,
-      extend: { action: "Zoom In" },
+      extend: { action: "Zoom In", prompt: "zoom in slowly" },
     });
   });
 
@@ -158,7 +158,7 @@ describe("/api/marks GET", () => {
     vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
     vi.mocked(readToUpscaleEntries).mockResolvedValue({ "a.png": "raw" });
     vi.mocked(readToAnimateEntries).mockResolvedValue({
-      "a.png": { metadata: "raw", action: "Zoom In" },
+      "a.png": { metadata: "raw", action: "Zoom In", prompt: "slow zoom" },
     });
 
     const response = await GET(new Request("http://localhost/api/marks?path=a.png"));
@@ -166,7 +166,7 @@ describe("/api/marks GET", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       upscale: true,
-      animate: { action: "Zoom In" },
+      animate: { action: "Zoom In", prompt: "slow zoom" },
     });
   });
 
@@ -397,7 +397,129 @@ describe("/api/marks PUT", () => {
       }),
     );
 
-    expect(setToAnimateEntry).toHaveBeenCalledWith("/tmp", "a.png", "raw", "Zoom In");
+    expect(setToAnimateEntry).toHaveBeenCalledWith("/tmp", "a.png", "raw", "Zoom In", "");
+    expect(response.status).toBe(204);
+  });
+
+  it("seeds the prompt from the resolved node's configured prompt when the client omits it", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [{ key: "Zoom In", name: "Zoom In", prompt: "zoom in slowly" }],
+    } as never);
+    vi.mocked(setToAnimateEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.png",
+        type: "animate",
+        action: "Zoom In",
+        metadata: "raw",
+      }),
+    );
+
+    expect(setToAnimateEntry).toHaveBeenCalledWith(
+      "/tmp",
+      "a.png",
+      "raw",
+      "Zoom In",
+      "zoom in slowly",
+    );
+    expect(response.status).toBe(204);
+  });
+
+  it("uses a client-supplied prompt instead of the node's configured default", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [{ key: "Zoom In", name: "Zoom In", prompt: "zoom in slowly" }],
+    } as never);
+    vi.mocked(setToAnimateEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.png",
+        type: "animate",
+        action: "Zoom In",
+        metadata: "raw",
+        prompt: "edited by user",
+      }),
+    );
+
+    expect(setToAnimateEntry).toHaveBeenCalledWith(
+      "/tmp",
+      "a.png",
+      "raw",
+      "Zoom In",
+      "edited by user",
+    );
+    expect(response.status).toBe(204);
+  });
+
+  it("preserves the mark's existing metadata when Edit Animation omits it (prompt-only edit)", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [{ key: "Zoom In", name: "Zoom In", prompt: "" }],
+    } as never);
+    vi.mocked(readToAnimateEntries).mockResolvedValue({
+      "a.png": { metadata: "Steps: 30, Seed: 1", action: "Zoom In", prompt: "old prompt" },
+    });
+    vi.mocked(setToAnimateEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.png",
+        type: "animate",
+        action: "Zoom In",
+        prompt: "edited by user",
+      }),
+    );
+
+    expect(setToAnimateEntry).toHaveBeenCalledWith(
+      "/tmp",
+      "a.png",
+      "Steps: 30, Seed: 1",
+      "Zoom In",
+      "edited by user",
+    );
+    expect(response.status).toBe(204);
+  });
+
+  it('defaults metadata to "" for a brand-new mark when the client omits it', async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [{ key: "Zoom In", name: "Zoom In", prompt: "" }],
+    } as never);
+    vi.mocked(readToAnimateEntries).mockResolvedValue({});
+    vi.mocked(setToAnimateEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.png",
+        type: "animate",
+        action: "Zoom In",
+      }),
+    );
+
+    expect(setToAnimateEntry).toHaveBeenCalledWith("/tmp", "a.png", "", "Zoom In", "");
     expect(response.status).toBe(204);
   });
 
@@ -429,7 +551,7 @@ describe("/api/marks PUT", () => {
       }),
     );
 
-    expect(setToAnimateEntry).toHaveBeenCalledWith("/tmp", "a.png", "raw", "latin-dance");
+    expect(setToAnimateEntry).toHaveBeenCalledWith("/tmp", "a.png", "raw", "latin-dance", "");
     expect(response.status).toBe(204);
   });
 
@@ -577,7 +699,7 @@ describe("/api/marks PUT", () => {
       }),
     );
 
-    expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "", "Zoom In");
+    expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "", "Zoom In", "");
     expect(response.status).toBe(204);
   });
 
@@ -612,7 +734,7 @@ describe("/api/marks PUT", () => {
       }),
     );
 
-    expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "raw", "Pan");
+    expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "raw", "Pan", "");
     expect(response.status).toBe(204);
   });
 
@@ -645,7 +767,60 @@ describe("/api/marks PUT", () => {
       }),
     );
 
-    expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "", "latin-dance");
+    expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "", "latin-dance", "");
+    expect(response.status).toBe(204);
+  });
+
+  it("seeds an extend mark's prompt from the resolved node's configured prompt when omitted", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [{ key: "Zoom In", name: "Zoom In", prompt: "zoom in slowly" }],
+    } as never);
+    vi.mocked(readVideoLinks).mockResolvedValue({});
+    vi.mocked(setToExtendEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.mp4",
+        type: "extend",
+        action: "Zoom In",
+      }),
+    );
+
+    expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "", "Zoom In", "zoom in slowly");
+    expect(response.status).toBe(204);
+  });
+
+  it("uses a client-supplied prompt for an extend mark instead of the node's configured default", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [{ key: "Zoom In", name: "Zoom In", prompt: "zoom in slowly" }],
+    } as never);
+    vi.mocked(readVideoLinks).mockResolvedValue({});
+    vi.mocked(setToExtendEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.mp4",
+        type: "extend",
+        action: "Zoom In",
+        prompt: "edited by user",
+      }),
+    );
+
+    expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "", "Zoom In", "edited by user");
     expect(response.status).toBe(204);
   });
 });

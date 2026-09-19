@@ -1549,10 +1549,20 @@ describe("readToAnimateEntries / setToAnimateEntry / removeToAnimateEntry", () =
     const tempRoot = "/tmp/sd-animate-roundtrip";
     await fs.mkdir(tempRoot, { recursive: true });
 
-    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "Steps: 30", "Zoom In");
+    await setToAnimateEntry(
+      tempRoot,
+      "characters/3d/Anna/Base.png",
+      "Steps: 30",
+      "Zoom In",
+      "zoom in slowly",
+    );
 
     expect(await readToAnimateEntries(tempRoot)).toEqual({
-      "characters/3d/Anna/Base.png": { metadata: "Steps: 30", action: "Zoom In" },
+      "characters/3d/Anna/Base.png": {
+        metadata: "Steps: 30",
+        action: "Zoom In",
+        prompt: "zoom in slowly",
+      },
     });
   });
 
@@ -1560,11 +1570,11 @@ describe("readToAnimateEntries / setToAnimateEntry / removeToAnimateEntry", () =
     const tempRoot = "/tmp/sd-animate-overwrite";
     await fs.mkdir(tempRoot, { recursive: true });
 
-    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Zoom In");
-    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Pan");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Zoom In", "");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Pan", "");
 
     expect(await readToAnimateEntries(tempRoot)).toEqual({
-      "characters/3d/Anna/Base.png": { metadata: "raw", action: "Pan" },
+      "characters/3d/Anna/Base.png": { metadata: "raw", action: "Pan", prompt: "" },
     });
   });
 
@@ -1572,16 +1582,16 @@ describe("readToAnimateEntries / setToAnimateEntry / removeToAnimateEntry", () =
     const tempRoot = "/tmp/sd-animate-remove";
     await fs.mkdir(tempRoot, { recursive: true });
 
-    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw-a", "Zoom In");
-    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Full.png", "raw-b", "Pan");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw-a", "Zoom In", "");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Full.png", "raw-b", "Pan", "");
     await removeToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png");
 
     expect(await readToAnimateEntries(tempRoot)).toEqual({
-      "characters/3d/Anna/Full.png": { metadata: "raw-b", action: "Pan" },
+      "characters/3d/Anna/Full.png": { metadata: "raw-b", action: "Pan", prompt: "" },
     });
   });
 
-  it("ignores malformed entries", async () => {
+  it('ignores malformed entries, and defaults prompt to "" when a well-formed entry omits it', async () => {
     const tempRoot = "/tmp/sd-animate-malformed";
     await fs.mkdir(tempRoot, { recursive: true });
     await fs.writeFile(
@@ -1590,11 +1600,13 @@ describe("readToAnimateEntries / setToAnimateEntry / removeToAnimateEntry", () =
         "a.png": { metadata: "raw", action: "Pan" },
         "b.png": { metadata: "raw" },
         "c.png": "not-an-object",
+        "d.png": { metadata: "raw", action: "Pan", prompt: 42 },
       }),
     );
 
     expect(await readToAnimateEntries(tempRoot)).toEqual({
-      "a.png": { metadata: "raw", action: "Pan" },
+      "a.png": { metadata: "raw", action: "Pan", prompt: "" },
+      "d.png": { metadata: "raw", action: "Pan", prompt: "" },
     });
   });
 });
@@ -1648,10 +1660,10 @@ describe("readToExtendEntries / setToExtendEntry / removeToExtendEntry", () => {
     const tempRoot = "/tmp/sd-extend-roundtrip";
     await fs.mkdir(tempRoot, { recursive: true });
 
-    await setToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "", "Zoom In");
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "", "Zoom In", "zoom in");
 
     expect(await readToExtendEntries(tempRoot)).toEqual({
-      "characters/3d/Anna/Dance.mp4": { metadata: "", action: "Zoom In" },
+      "characters/3d/Anna/Dance.mp4": { metadata: "", action: "Zoom In", prompt: "zoom in" },
     });
   });
 
@@ -1659,12 +1671,12 @@ describe("readToExtendEntries / setToExtendEntry / removeToExtendEntry", () => {
     const tempRoot = "/tmp/sd-extend-remove";
     await fs.mkdir(tempRoot, { recursive: true });
 
-    await setToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "", "Zoom In");
-    await setToExtendEntry(tempRoot, "characters/3d/Anna/Jump.mp4", "", "Pan");
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "", "Zoom In", "");
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Jump.mp4", "", "Pan", "");
     await removeToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4");
 
     expect(await readToExtendEntries(tempRoot)).toEqual({
-      "characters/3d/Anna/Jump.mp4": { metadata: "", action: "Pan" },
+      "characters/3d/Anna/Jump.mp4": { metadata: "", action: "Pan", prompt: "" },
     });
   });
 
@@ -1681,7 +1693,7 @@ describe("readToExtendEntries / setToExtendEntry / removeToExtendEntry", () => {
     );
 
     expect(await readToExtendEntries(tempRoot)).toEqual({
-      "a.mp4": { metadata: "", action: "Pan" },
+      "a.mp4": { metadata: "", action: "Pan", prompt: "" },
     });
   });
 });
@@ -1790,8 +1802,8 @@ describe("removeMarkedActionEntries", () => {
     process.env.SD_IMAGES_ROOT = tempRoot;
 
     await setToUpscaleEntry(tempRoot, "characters/3d/Anna/Base.png", "raw");
-    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Zoom In");
-    await setToExtendEntry(tempRoot, "characters/3d/Anna/Base.png", "", "Zoom In");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "Zoom In", "");
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Base.png", "", "Zoom In", "");
     await setToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Base.png", "");
 
     await removeMarkedActionEntries("characters/3d/Anna/Base.png");
