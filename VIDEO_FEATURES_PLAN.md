@@ -291,10 +291,10 @@ appears.
 Mark phases done here as they're completed, so a future session on another machine can pick
 up where this one left off:
 
-- [ ] Phase 1 — Config schema + migration
-- [ ] Phase 2 — Plain video marks, no linking yet
-- [ ] Phase 3 — Linking/reconciliation engine
-- [ ] Phase 4 — Video naming + pose-filter verification
-- [ ] Phase 5 — Edit-prompt UI
-- [ ] Phase 6 — "Came from X" display
+- [x] Phase 1 — Config schema + migration
+- [x] Phase 2 — Plain video marks, no linking yet
+- [x] Phase 3 — Linking/reconciliation engine
+- [x] Phase 4 — Video naming + pose-filter verification
+- [x] Phase 5 — Edit-prompt UI
+- [x] Phase 6 — "Came from X" display
 - [ ] Phase 7 — Redraw-on-video

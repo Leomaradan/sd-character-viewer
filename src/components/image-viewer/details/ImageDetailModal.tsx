@@ -1,20 +1,14 @@
 "use client";
 
-import AnimationIcon from "@mui/icons-material/Animation";
-import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloseIcon from "@mui/icons-material/Close";
-import DeleteIcon from "@mui/icons-material/Delete";
-import HighQualityIcon from "@mui/icons-material/HighQuality";
 import InfoIcon from "@mui/icons-material/Info";
 import PhotoIcon from "@mui/icons-material/Photo";
-import RefreshIcon from "@mui/icons-material/Refresh";
 import {
   Alert,
   Box,
   Button,
-  ButtonGroup,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -25,16 +19,18 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  TextField,
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { IImageItem } from "@/types/library";
+import type { IAnimationConfig, IImageItem, IVideoLink } from "@/types/library";
 
 import { formatStyleLabel, getImageUrl } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 
 import { CAPTION_SX, META_TITLE_SX } from "../common/constants";
+import { ImageDetailActions } from "./ImageDetailActions";
 import { ImageDetailMetadata } from "./ImageDetailMetadata";
 
 const DIALOG_SX = { "& .MuiDialog-paper": { height: "95vh", m: 1 } };
@@ -119,37 +115,17 @@ const SIDEBAR_ACTIONS_SX = {
 
 const DIVIDER_SX = { borderColor: "rgba(255,255,255,0.1)" };
 const SPINNER_SX = { color: "rgba(255,255,255,0.5)" };
-const DELETE_BUTTON_SX = {
-  borderColor: "rgba(255,255,255,0.3)",
-  color: "#f44336",
-  "&:hover": { borderColor: "#f44336", bgcolor: "rgba(244,67,54,0.08)" },
-};
-const DELETE_ERROR_SX = { fontSize: "0.75rem" };
-const REDRAW_BUTTON_SX = {
-  borderColor: "rgba(255,255,255,0.3)",
-  color: "#2196f3",
-  "&:hover": { borderColor: "#2196f3", bgcolor: "rgba(33,150,243,0.08)" },
-};
-const UPSCALE_BUTTON_SX = {
-  borderColor: "rgba(255,255,255,0.3)",
-  color: "#9c27b0",
-  "&:hover": { borderColor: "#9c27b0", bgcolor: "rgba(156,39,176,0.08)" },
-};
-const UPSCALE_BUTTON_ACTIVE_SX = {
-  ...UPSCALE_BUTTON_SX,
-  borderColor: "#9c27b0",
-  bgcolor: "rgba(156,39,176,0.24)",
-};
-const ANIMATE_BUTTON_SX = {
-  borderColor: "rgba(255,255,255,0.3)",
-  color: "#ff9800",
-  "&:hover": { borderColor: "#ff9800", bgcolor: "rgba(255,152,0,0.08)" },
-};
-const ANIMATE_BUTTON_ACTIVE_SX = {
-  ...ANIMATE_BUTTON_SX,
-  borderColor: "#ff9800",
-  bgcolor: "rgba(255,152,0,0.24)",
-};
+const EDIT_PROMPT_ERROR_SX = { mb: 2 };
+const EDIT_PROMPT_FIELD_SX = { mt: 1 };
+// Precomputed per-depth sx objects for the flattened animation menu's indentation, so the JSX
+// below references a stable object rather than creating a new one on every render.
+const MAX_PRECOMPUTED_ANIMATE_MENU_INDENT_DEPTH = 6;
+const ANIMATE_MENU_ITEM_INDENT_SX_BY_DEPTH: readonly { pl: number }[] = Array.from(
+  { length: MAX_PRECOMPUTED_ANIMATE_MENU_INDENT_DEPTH },
+  (_, depth) => ({ pl: 2 + depth * 2 }),
+);
+const getAnimateMenuItemIndentSx = (depth: number): { pl: number } =>
+  ANIMATE_MENU_ITEM_INDENT_SX_BY_DEPTH[depth] ?? { pl: 2 + depth * 2 };
 
 interface IImageDetailModalProps {
   image: IImageItem | null;
@@ -161,7 +137,13 @@ interface IImageDetailModalProps {
   onNavigatePrevious?: () => void;
   onNavigateNext?: () => void;
   styleLabel?: (style: string) => string;
-  animations?: string[];
+  animations?: IAnimationConfig[];
+}
+
+interface IFlatAnimationOption {
+  key: string;
+  name: string;
+  depth: number;
 }
 
 interface IMetadataState {
@@ -173,11 +155,19 @@ interface IMarksState {
   path: string | null;
   upscale: boolean;
   animateAction: string | null;
+  animatePrompt: string | null;
+  upscaleVideo: boolean;
+  extendAction: string | null;
+  extendPrompt: string | null;
+  videoLink: IVideoLink | null;
 }
 
 interface IMarksApiResponse {
-  upscale: boolean;
-  animate: { action: string } | null;
+  upscale?: boolean;
+  animate?: { action: string; prompt: string } | null;
+  upscaleVideo?: boolean;
+  extend?: { action: string; prompt: string } | null;
+  link?: IVideoLink | null;
 }
 
 interface IMobileViewState {
@@ -188,6 +178,11 @@ interface IMobileViewState {
 interface IVideoControlsState {
   path: string | null;
   shown: boolean;
+}
+
+interface IEditPromptState {
+  path: string | null;
+  open: boolean;
 }
 
 // Small pure helpers factored out of the component body below purely to keep its own cognitive
@@ -202,6 +197,15 @@ const resolveShowVideoControls = (
   relativePath: string | undefined,
 ): boolean => state.path === relativePath && state.shown;
 
+// Navigating to a different image (prev/next buttons, swipe, or arrow keys) must never leave a
+// stale prompt draft armed for the newly selected image - keying this open/closed state by path
+// (rather than a plain boolean) closes it for free on navigation, the same way IMobileViewState/
+// IVideoControlsState above already reset their own per-image state without an effect.
+const resolveIsEditPromptOpen = (
+  state: IEditPromptState,
+  relativePath: string | undefined,
+): boolean => state.path === relativePath && state.open;
+
 const resolveDeleteLabel = (isVideo: boolean): string =>
   isVideo ? "Delete video" : "Delete image";
 
@@ -215,13 +219,77 @@ const resolveIsLoadingMetadata = (
 const resolveMarksDerived = (
   marksState: IMarksState,
   relativePath: string | undefined,
-): { isUpscaleMarked: boolean; animateAction: string | null } => {
+): {
+  isUpscaleMarked: boolean;
+  animateAction: string | null;
+  animatePrompt: string | null;
+  isUpscaleVideoMarked: boolean;
+  extendAction: string | null;
+  extendPrompt: string | null;
+  videoLink: IVideoLink | null;
+} => {
   const isCurrentMarksState = marksState.path === relativePath;
   return {
     isUpscaleMarked: isCurrentMarksState && marksState.upscale,
     animateAction: isCurrentMarksState ? marksState.animateAction : null,
+    animatePrompt: isCurrentMarksState ? marksState.animatePrompt : null,
+    isUpscaleVideoMarked: isCurrentMarksState && marksState.upscaleVideo,
+    extendAction: isCurrentMarksState ? marksState.extendAction : null,
+    extendPrompt: isCurrentMarksState ? marksState.extendPrompt : null,
+    videoLink: isCurrentMarksState ? marksState.videoLink : null,
   };
 };
+
+// Mirrors src/lib/image-library.ts's findAnimationNodeByKey - duplicated (rather than imported)
+// because that module pulls in node:fs and can't be bundled into a client component.
+const findAnimationNodeByKey = (
+  animations: IAnimationConfig[],
+  key: string,
+): IAnimationConfig | null => {
+  for (const node of animations) {
+    if (node.key === key) {
+      return node;
+    }
+
+    const foundInSubVersions = node.subVersions
+      ? findAnimationNodeByKey(node.subVersions, key)
+      : null;
+    if (foundInSubVersions) {
+      return foundInSubVersions;
+    }
+  }
+
+  return null;
+};
+
+// "Came from X" resolves the source's filename (not a full pose-name parse - link.
+// sourceRelativePath already points at a real file, so its own basename is the pose it shows)
+// and the action's display name, e.g. "Extended from Base (Dance)". A null link (reconciliation
+// hasn't matched this video to a source yet, or never will) renders nothing - not an error state.
+const resolveCameFromLabel = (
+  videoLink: IVideoLink | null,
+  animations: IAnimationConfig[],
+): string | null => {
+  if (!videoLink) {
+    return null;
+  }
+
+  const sourceFileName =
+    videoLink.sourceRelativePath.split("/").pop() ?? videoLink.sourceRelativePath;
+  const sourceLabel = sourceFileName.replace(/\.(png|mp4)$/i, "");
+  const actionLabel =
+    findAnimationNodeByKey(animations, videoLink.action)?.name ?? videoLink.action;
+
+  return `Extended from ${sourceLabel} (${actionLabel})`;
+};
+
+// MUI has no built-in nested Menu, so a two-level animation config is flattened into a single
+// list with depth-based indentation instead.
+const flattenAnimations = (nodes: IAnimationConfig[], depth: number = 0): IFlatAnimationOption[] =>
+  nodes.flatMap((node) => [
+    { key: node.key, name: node.name, depth },
+    ...(node.subVersions ? flattenAnimations(node.subVersions, depth + 1) : []),
+  ]);
 
 export function ImageDetailModal({
   image,
@@ -245,15 +313,33 @@ export function ImageDetailModal({
     path: null,
     upscale: false,
     animateAction: null,
+    animatePrompt: null,
+    upscaleVideo: false,
+    extendAction: null,
+    extendPrompt: null,
+    videoLink: null,
   });
   const [isTogglingUpscale, setIsTogglingUpscale] = useState(false);
   const [upscaleError, setUpscaleError] = useState<string | null>(null);
   const [isTogglingAnimate, setIsTogglingAnimate] = useState(false);
   const [animateError, setAnimateError] = useState<string | null>(null);
   const [animateMenuAnchorEl, setAnimateMenuAnchorEl] = useState<HTMLElement | null>(null);
+  const [isTogglingUpscaleVideo, setIsTogglingUpscaleVideo] = useState(false);
+  const [upscaleVideoError, setUpscaleVideoError] = useState<string | null>(null);
+  const [isTogglingExtend, setIsTogglingExtend] = useState(false);
+  const [extendError, setExtendError] = useState<string | null>(null);
+  const [extendMenuAnchorEl, setExtendMenuAnchorEl] = useState<HTMLElement | null>(null);
+  const [editPromptState, setEditPromptState] = useState<IEditPromptState>({
+    path: null,
+    open: false,
+  });
+  const [editPromptDraft, setEditPromptDraft] = useState("");
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+  const [editPromptError, setEditPromptError] = useState<string | null>(null);
   const touchStartXRef = useRef(0);
 
   const relativePath = image?.relativePath;
+  const isEditPromptOpen = resolveIsEditPromptOpen(editPromptState, relativePath);
 
   const [mobileViewState, setMobileViewState] = useState<IMobileViewState>({
     path: null,
@@ -271,7 +357,7 @@ export function ImageDetailModal({
   }, [relativePath]);
 
   useEffect(() => {
-    if (!image || isConfirmOpen || isDeleting) {
+    if (!image || isConfirmOpen || isDeleting || isEditPromptOpen) {
       return () => {};
     }
 
@@ -299,6 +385,7 @@ export function ImageDetailModal({
     onNavigateNext,
     isConfirmOpen,
     isDeleting,
+    isEditPromptOpen,
   ]);
 
   const isVideo = image?.mediaType === "video";
@@ -333,11 +420,26 @@ export function ImageDetailModal({
   }, [relativePath, isVideo]);
 
   useEffect(() => {
-    if (!relativePath || !canDeleteImage || isVideo) {
+    // The upscale/animate/extend mark state this fetch also carries is only ever rendered
+    // inside imageActions, itself gated on canDeleteImage - but a video's provenance link
+    // (the "Came From" block) is plain informational display, shown to every viewer regardless
+    // of delete permission. Skipping this fetch outright for a read-only video would silently
+    // suppress that block for the vast majority of viewers (SD_ALLOW_DELETE defaults off).
+    if (!relativePath || (!canDeleteImage && !isVideo)) {
       return () => {};
     }
 
     let isMounted = true;
+    const emptyMarksState: IMarksState = {
+      path: relativePath,
+      upscale: false,
+      animateAction: null,
+      animatePrompt: null,
+      upscaleVideo: false,
+      extendAction: null,
+      extendPrompt: null,
+      videoLink: null,
+    };
 
     fetch(`/api/marks?path=${encodeURIComponent(relativePath)}`)
       .then((res) =>
@@ -350,12 +452,17 @@ export function ImageDetailModal({
             path: relativePath,
             upscale: data?.upscale ?? false,
             animateAction: data?.animate?.action ?? null,
+            animatePrompt: data?.animate?.prompt ?? null,
+            upscaleVideo: data?.upscaleVideo ?? false,
+            extendAction: data?.extend?.action ?? null,
+            extendPrompt: data?.extend?.prompt ?? null,
+            videoLink: data?.link ?? null,
           });
         }
       })
       .catch(() => {
         if (isMounted) {
-          setMarksState({ path: relativePath, upscale: false, animateAction: null });
+          setMarksState(emptyMarksState);
         }
       });
 
@@ -436,8 +543,24 @@ export function ImageDetailModal({
     }
   }, [relativePath, onDeleteSuccess]);
 
-  const { isUpscaleMarked, animateAction } = resolveMarksDerived(marksState, relativePath);
+  const {
+    isUpscaleMarked,
+    animateAction,
+    animatePrompt,
+    isUpscaleVideoMarked,
+    extendAction,
+    extendPrompt,
+    videoLink,
+  } = resolveMarksDerived(marksState, relativePath);
   const rawMetadata = pngMetadata?.parameters ?? "";
+  const flatAnimationOptions = useMemo(() => flattenAnimations(animations), [animations]);
+  const animateActionLabel = animateAction
+    ? (findAnimationNodeByKey(animations, animateAction)?.name ?? animateAction)
+    : "Animate";
+  const extendActionLabel = extendAction
+    ? (findAnimationNodeByKey(animations, extendAction)?.name ?? extendAction)
+    : "Extend";
+  const cameFromLabel = resolveCameFromLabel(videoLink, animations);
 
   const handleToggleUpscale = useCallback(async () => {
     if (!relativePath) {
@@ -521,10 +644,18 @@ export function ImageDetailModal({
 
         // See the matching comment in handleToggleUpscale: merge via functional update so a
         // concurrent upscale toggle isn't clobbered, and drop the response if the user has
-        // since navigated to a different image.
+        // since navigated to a different image. A freshly-created mark's prompt mirrors the
+        // server's own default-seed logic (the resolved node's configured prompt), so Edit
+        // Animation doesn't open on a stale empty draft before the next GET round-trip.
         setMarksState((prev) =>
           prev.path === relativePath
-            ? { ...prev, animateAction: isRemoving ? null : action }
+            ? {
+                ...prev,
+                animateAction: isRemoving ? null : action,
+                animatePrompt: isRemoving
+                  ? null
+                  : (findAnimationNodeByKey(animations, action)?.prompt ?? ""),
+              }
             : prev,
         );
       } catch {
@@ -533,7 +664,7 @@ export function ImageDetailModal({
         setIsTogglingAnimate(false);
       }
     },
-    [relativePath, animateAction, rawMetadata],
+    [relativePath, animateAction, rawMetadata, animations],
   );
 
   const handleAnimateMenuItemClick = useCallback(
@@ -545,6 +676,174 @@ export function ImageDetailModal({
     },
     [handleSelectAnimateAction],
   );
+
+  const handleToggleUpscaleVideo = useCallback(async () => {
+    if (!relativePath) {
+      return;
+    }
+
+    setIsTogglingUpscaleVideo(true);
+    setUpscaleVideoError(null);
+
+    try {
+      const nextUpscaleVideo = !isUpscaleVideoMarked;
+      const response = nextUpscaleVideo
+        ? await fetch("/api/marks", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: relativePath, type: "upscaleVideo" }),
+          })
+        : await fetch(`/api/marks?path=${encodeURIComponent(relativePath)}&type=upscaleVideo`, {
+            method: "DELETE",
+          });
+
+      if (!response.ok) {
+        setUpscaleVideoError("Could not update the upscale mark. Try again.");
+        return;
+      }
+
+      setMarksState((prev) =>
+        prev.path === relativePath ? { ...prev, upscaleVideo: nextUpscaleVideo } : prev,
+      );
+    } catch {
+      setUpscaleVideoError("Could not update the upscale mark. Try again.");
+    } finally {
+      setIsTogglingUpscaleVideo(false);
+    }
+  }, [relativePath, isUpscaleVideoMarked]);
+
+  const handleOpenExtendMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    setExtendMenuAnchorEl(event.currentTarget);
+  }, []);
+
+  const handleCloseExtendMenu = useCallback(() => {
+    setExtendMenuAnchorEl(null);
+  }, []);
+
+  const handleSelectExtendAction = useCallback(
+    async (action: string) => {
+      setExtendMenuAnchorEl(null);
+
+      if (!relativePath) {
+        return;
+      }
+
+      setIsTogglingExtend(true);
+      setExtendError(null);
+
+      try {
+        const isRemoving = extendAction === action;
+        const response = isRemoving
+          ? await fetch(`/api/marks?path=${encodeURIComponent(relativePath)}&type=extend`, {
+              method: "DELETE",
+            })
+          : await fetch("/api/marks", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: relativePath, type: "extend", action }),
+            });
+
+        if (!response.ok) {
+          setExtendError("Could not update the extend mark. Try again.");
+          return;
+        }
+
+        setMarksState((prev) =>
+          prev.path === relativePath
+            ? {
+                ...prev,
+                extendAction: isRemoving ? null : action,
+                extendPrompt: isRemoving
+                  ? null
+                  : (findAnimationNodeByKey(animations, action)?.prompt ?? ""),
+              }
+            : prev,
+        );
+      } catch {
+        setExtendError("Could not update the extend mark. Try again.");
+      } finally {
+        setIsTogglingExtend(false);
+      }
+    },
+    [relativePath, extendAction, animations],
+  );
+
+  const handleExtendMenuItemClick = useCallback(
+    (event: React.MouseEvent<HTMLLIElement>) => {
+      const action = event.currentTarget.dataset.action;
+      if (action) {
+        void handleSelectExtendAction(action);
+      }
+    },
+    [handleSelectExtendAction],
+  );
+
+  // "Edit Animation" edits whichever mark is currently active for this media type (extend for a
+  // video, animate for an image) - there's only ever one at a time per image/video.
+  const currentAnimationAction = isVideo ? extendAction : animateAction;
+  const currentAnimationPrompt = isVideo ? extendPrompt : animatePrompt;
+  // An orphaned mark (its action key removed from config since it was created) still shows its
+  // Animate/Extend button, but editing it would only fail server-side (the PUT re-validates the
+  // key), so the Edit Animation button is hidden rather than offering an edit that can't save.
+  const canEditAnimationPrompt =
+    currentAnimationAction !== null &&
+    findAnimationNodeByKey(animations, currentAnimationAction) !== null;
+
+  const handleOpenEditPrompt = useCallback(() => {
+    setEditPromptError(null);
+    setEditPromptDraft(currentAnimationPrompt ?? "");
+    setEditPromptState({ path: relativePath ?? null, open: true });
+  }, [currentAnimationPrompt, relativePath]);
+
+  const handleCloseEditPrompt = useCallback(() => {
+    setEditPromptState((prev) => ({ ...prev, open: false }));
+  }, []);
+
+  const handleSaveEditPrompt = useCallback(async () => {
+    if (!relativePath || !currentAnimationAction) {
+      return;
+    }
+
+    setIsSavingPrompt(true);
+    setEditPromptError(null);
+
+    try {
+      // Reuses the same PUT upsert as the initial mark-creation flow, now carrying an explicit
+      // prompt - the server never seeds it from config when one is sent. Edit Animation only ever
+      // edits the prompt, so metadata is deliberately omitted here (for both media types): the
+      // server preserves whatever the mark already has rather than trusting a value that may
+      // still be "" if the PNG-metadata fetch hasn't resolved yet (or failed).
+      const response = await fetch("/api/marks", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: relativePath,
+          type: isVideo ? "extend" : "animate",
+          action: currentAnimationAction,
+          prompt: editPromptDraft,
+        }),
+      });
+
+      if (!response.ok) {
+        setEditPromptError("Could not save the prompt. Try again.");
+        return;
+      }
+
+      setMarksState((prev) => {
+        if (prev.path !== relativePath) {
+          return prev;
+        }
+        return isVideo
+          ? { ...prev, extendPrompt: editPromptDraft }
+          : { ...prev, animatePrompt: editPromptDraft };
+      });
+      setEditPromptState((prev) => (prev.path === relativePath ? { ...prev, open: false } : prev));
+    } catch {
+      setEditPromptError("Could not save the prompt. Try again.");
+    } finally {
+      setIsSavingPrompt(false);
+    }
+  }, [relativePath, currentAnimationAction, isVideo, editPromptDraft]);
 
   const handleToggleMobileView = useCallback(() => {
     setMobileViewState((prev) => ({
@@ -598,67 +897,37 @@ export function ImageDetailModal({
   );
 
   const imageActions = (
-    <>
-      {deleteError && (
-        <Alert severity="error" sx={DELETE_ERROR_SX}>
-          {deleteError}
-        </Alert>
-      )}
-      {redrawError && (
-        <Alert severity="error" sx={DELETE_ERROR_SX}>
-          {redrawError}
-        </Alert>
-      )}
-      {upscaleError && (
-        <Alert severity="error" sx={DELETE_ERROR_SX}>
-          {upscaleError}
-        </Alert>
-      )}
-      {animateError && (
-        <Alert severity="error" sx={DELETE_ERROR_SX}>
-          {animateError}
-        </Alert>
-      )}
-      <ButtonGroup variant="outlined" size="small">
-        <Button
-          startIcon={<RefreshIcon />}
-          onClick={handleRedrawClick}
-          disabled={isRedrawing}
-          sx={REDRAW_BUTTON_SX}
-        >
-          {isRedrawing ? <CircularProgress size={18} /> : "Redraw"}
-        </Button>
-        {!isVideo && (
-          <Button
-            startIcon={<HighQualityIcon />}
-            onClick={handleToggleUpscale}
-            disabled={isTogglingUpscale}
-            sx={isUpscaleMarked ? UPSCALE_BUTTON_ACTIVE_SX : UPSCALE_BUTTON_SX}
-          >
-            {isTogglingUpscale ? <CircularProgress size={18} /> : "Upscale"}
-          </Button>
-        )}
-        {!isVideo && animations.length > 0 && (
-          <Button
-            startIcon={<AnimationIcon />}
-            endIcon={<ArrowDropDownIcon />}
-            onClick={handleOpenAnimateMenu}
-            disabled={isTogglingAnimate}
-            sx={animateAction ? ANIMATE_BUTTON_ACTIVE_SX : ANIMATE_BUTTON_SX}
-          >
-            {isTogglingAnimate ? <CircularProgress size={18} /> : (animateAction ?? "Animate")}
-          </Button>
-        )}
-        <Button
-          startIcon={<DeleteIcon />}
-          onClick={handleDeleteClick}
-          disabled={isDeleting}
-          sx={DELETE_BUTTON_SX}
-        >
-          {isDeleting ? <CircularProgress size={18} /> : deleteLabel}
-        </Button>
-      </ButtonGroup>
-    </>
+    <ImageDetailActions
+      deleteError={deleteError}
+      redrawError={redrawError}
+      upscaleError={upscaleError}
+      animateError={animateError}
+      upscaleVideoError={upscaleVideoError}
+      extendError={extendError}
+      isVideo={isVideo}
+      hasAnimations={animations.length > 0}
+      isRedrawing={isRedrawing}
+      onRedraw={handleRedrawClick}
+      isTogglingUpscale={isTogglingUpscale}
+      isUpscaleMarked={isUpscaleMarked}
+      onToggleUpscale={handleToggleUpscale}
+      isTogglingAnimate={isTogglingAnimate}
+      animateAction={animateAction}
+      animateActionLabel={animateActionLabel}
+      onOpenAnimateMenu={handleOpenAnimateMenu}
+      isTogglingUpscaleVideo={isTogglingUpscaleVideo}
+      isUpscaleVideoMarked={isUpscaleVideoMarked}
+      onToggleUpscaleVideo={handleToggleUpscaleVideo}
+      isTogglingExtend={isTogglingExtend}
+      extendAction={extendAction}
+      extendActionLabel={extendActionLabel}
+      onOpenExtendMenu={handleOpenExtendMenu}
+      canEditAnimationPrompt={canEditAnimationPrompt}
+      onOpenEditPrompt={handleOpenEditPrompt}
+      isDeleting={isDeleting}
+      deleteLabel={deleteLabel}
+      onDelete={handleDeleteClick}
+    />
   );
 
   if (!image) {
@@ -760,6 +1029,17 @@ export function ImageDetailModal({
                 </Typography>
               </Box>
 
+              {cameFromLabel && (
+                <Box>
+                  <Typography variant="caption" sx={CAPTION_SX}>
+                    Came From
+                  </Typography>
+                  <Typography variant="body2" sx={META_BODY_SX}>
+                    {cameFromLabel}
+                  </Typography>
+                </Box>
+              )}
+
               {(isLoadingMetadata || pngMetadata) && <Divider sx={DIVIDER_SX} />}
 
               {isLoadingMetadata && (
@@ -793,14 +1073,33 @@ export function ImageDetailModal({
         open={Boolean(animateMenuAnchorEl)}
         onClose={handleCloseAnimateMenu}
       >
-        {animations.map((animationName) => (
+        {flatAnimationOptions.map((option) => (
           <MenuItem
-            key={animationName}
-            data-action={animationName}
-            selected={animateAction === animationName}
+            key={option.key}
+            data-action={option.key}
+            selected={animateAction === option.key}
             onClick={handleAnimateMenuItemClick}
+            sx={getAnimateMenuItemIndentSx(option.depth)}
           >
-            {animationName}
+            {option.name}
+          </MenuItem>
+        ))}
+      </Menu>
+
+      <Menu
+        anchorEl={extendMenuAnchorEl}
+        open={Boolean(extendMenuAnchorEl)}
+        onClose={handleCloseExtendMenu}
+      >
+        {flatAnimationOptions.map((option) => (
+          <MenuItem
+            key={option.key}
+            data-action={option.key}
+            selected={extendAction === option.key}
+            onClick={handleExtendMenuItemClick}
+            sx={getAnimateMenuItemIndentSx(option.depth)}
+          >
+            {option.name}
           </MenuItem>
         ))}
       </Menu>
@@ -820,6 +1119,35 @@ export function ImageDetailModal({
           </Button>
           <Button onClick={handleConfirmDelete} color="error" disabled={isDeleting}>
             {isDeleting ? <CircularProgress size={18} /> : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={isEditPromptOpen} onClose={handleCloseEditPrompt} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Animation Prompt</DialogTitle>
+        <DialogContent>
+          {editPromptError && (
+            <Alert severity="error" sx={EDIT_PROMPT_ERROR_SX}>
+              {editPromptError}
+            </Alert>
+          )}
+          <TextField
+            autoFocus
+            multiline
+            fullWidth
+            minRows={3}
+            label="Prompt"
+            value={editPromptDraft}
+            onChange={(event) => setEditPromptDraft(event.target.value)}
+            sx={EDIT_PROMPT_FIELD_SX}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditPrompt} disabled={isSavingPrompt}>
+            Cancel
+          </Button>
+          <Button onClick={handleSaveEditPrompt} disabled={isSavingPrompt}>
+            {isSavingPrompt ? <CircularProgress size={18} /> : "Save"}
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,20 +1,43 @@
+import type { IAnimationConfig } from "@/types/library";
+
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
 import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 import {
+  findAnimationNodeByKey,
   getImagesRootPathFromEnv,
   isVideoFilePath,
   readImageLibrary,
   readToAnimateEntries,
+  readToExtendEntries,
   readToUpscaleEntries,
+  readToUpscaleVideoEntries,
+  readVideoLinks,
   removeToAnimateEntry,
+  removeToExtendEntry,
   removeToUpscaleEntry,
+  removeToUpscaleVideoEntry,
   resolveImageFilePath,
   setToAnimateEntry,
+  setToExtendEntry,
   setToUpscaleEntry,
+  setToUpscaleVideoEntry,
 } from "@/lib/image-library";
 
 export const dynamic = "force-dynamic";
+
+// upscale/animate mark images; extend/upscaleVideo mark videos. A mark type used against the
+// wrong media type (e.g. "animate" on a .mp4) is rejected rather than silently accepted.
+const IMAGE_ONLY_MARK_TYPES = new Set(["upscale", "animate"]);
+const VIDEO_ONLY_MARK_TYPES = new Set(["extend", "upscaleVideo"]);
+
+const isMarkTypeMediaMismatch = (type: unknown, isVideo: boolean): boolean => {
+  if (typeof type !== "string") {
+    return false;
+  }
+
+  return isVideo ? IMAGE_ONLY_MARK_TYPES.has(type) : VIDEO_ONLY_MARK_TYPES.has(type);
+};
 
 const isMarkingAllowed = (): boolean => {
   ensureLocalEnvLoaded();
@@ -40,13 +63,25 @@ export const GET = async (request: Request) => {
     return new Response("Invalid image path", { status: 400 });
   }
 
-  if (isVideoFilePath(filePath)) {
-    return new Response("Marking is not supported for this media type", { status: 400 });
-  }
-
   const rootPath = getImagesRootPathFromEnv();
   if (!rootPath) {
     return new Response("Image library is not configured", { status: 400 });
+  }
+
+  if (isVideoFilePath(filePath)) {
+    const [upscaleVideoEntries, extendEntries, videoLinks] = await Promise.all([
+      readToUpscaleVideoEntries(rootPath),
+      readToExtendEntries(rootPath),
+      readVideoLinks(rootPath),
+    ]);
+
+    const extendEntry = extendEntries[requestedPath];
+
+    return Response.json({
+      upscaleVideo: requestedPath in upscaleVideoEntries,
+      extend: extendEntry ? { action: extendEntry.action, prompt: extendEntry.prompt } : null,
+      link: videoLinks[requestedPath] ?? null,
+    });
   }
 
   const [upscaleEntries, animateEntries] = await Promise.all([
@@ -58,7 +93,7 @@ export const GET = async (request: Request) => {
 
   return Response.json({
     upscale: requestedPath in upscaleEntries,
-    animate: animateEntry ? { action: animateEntry.action } : null,
+    animate: animateEntry ? { action: animateEntry.action, prompt: animateEntry.prompt } : null,
   });
 };
 
@@ -67,25 +102,98 @@ interface IMarkRequestBody {
   type?: unknown;
   action?: unknown;
   metadata?: unknown;
+  prompt?: unknown;
 }
+
+// Shared by the animate and extend mark types: both key off a node in the (possibly nested)
+// animations config, resolved by its stable `key` rather than display name. Returns the resolved
+// node itself (not just its key) so callers can seed a mark's prompt from the node's configured
+// default when the client doesn't send one.
+const resolveAnimationAction = async (
+  rawAction: unknown,
+): Promise<{ action: string; node: IAnimationConfig } | { error: Response }> => {
+  const action = typeof rawAction === "string" ? rawAction.trim() : "";
+  if (!action) {
+    return { error: new Response("Invalid animation action", { status: 400 }) };
+  }
+
+  let library;
+  try {
+    library = await readImageLibrary();
+  } catch {
+    return { error: new Response("Could not read the image library", { status: 500 }) };
+  }
+
+  const node = findAnimationNodeByKey(library.animations, action);
+  if (!node) {
+    return { error: new Response("Unknown animation action", { status: 400 }) };
+  }
+
+  return { action, node };
+};
+
+// Edit Animation reuses this same PUT upsert with an explicit `prompt` - omitting it (as the
+// initial mark-creation flow does) seeds from the resolved node's configured prompt instead.
+const resolveMarkPrompt = (rawPrompt: unknown, node: IAnimationConfig): string =>
+  typeof rawPrompt === "string" ? rawPrompt : node.prompt;
+
+// Edit Animation sends no `metadata` at all (it only ever edits the prompt) - when omitted, the
+// mark's existing metadata is preserved rather than blanked to "", which a plain default would
+// do. A brand-new mark (no existing entry) still defaults to "".
+const resolveAnimateMarkMetadata = async (
+  rootPath: string,
+  requestedPath: string,
+  rawMetadata: unknown,
+): Promise<string> => {
+  if (typeof rawMetadata === "string") {
+    return rawMetadata;
+  }
+
+  const existingEntries = await readToAnimateEntries(rootPath);
+  return existingEntries[requestedPath]?.metadata ?? "";
+};
 
 const handleAnimateMark = async (
   rootPath: string,
   requestedPath: string,
   rawAction: unknown,
-  metadata: string,
+  rawMetadata: unknown,
+  rawPrompt: unknown,
 ): Promise<Response> => {
-  const action = typeof rawAction === "string" ? rawAction.trim() : "";
-  if (!action) {
-    return new Response("Invalid animation action", { status: 400 });
+  const resolved = await resolveAnimationAction(rawAction);
+  if ("error" in resolved) {
+    return resolved.error;
   }
 
-  const library = await readImageLibrary();
-  if (!library.animations.includes(action)) {
-    return new Response("Unknown animation action", { status: 400 });
+  const prompt = resolveMarkPrompt(rawPrompt, resolved.node);
+  const metadata = await resolveAnimateMarkMetadata(rootPath, requestedPath, rawMetadata);
+  await setToAnimateEntry(rootPath, requestedPath, metadata, resolved.action, prompt);
+  return new Response(null, { status: 204 });
+};
+
+// A video's metadata is never client-supplied (there's no PNG chunk to source it from for a
+// .mp4) - it's always resolved server-side from video-links.json, carrying forward whatever
+// metadata string the video's original source (image or video) was marked with. A video with no
+// link yet (reconciliation hasn't matched it to a source) resolves to "".
+const resolveVideoMetadata = async (rootPath: string, requestedPath: string): Promise<string> => {
+  const videoLinks = await readVideoLinks(rootPath);
+  return videoLinks[requestedPath]?.metadata ?? "";
+};
+
+const handleExtendMark = async (
+  rootPath: string,
+  requestedPath: string,
+  rawAction: unknown,
+  rawPrompt: unknown,
+): Promise<Response> => {
+  const resolved = await resolveAnimationAction(rawAction);
+  if ("error" in resolved) {
+    return resolved.error;
   }
 
-  await setToAnimateEntry(rootPath, requestedPath, metadata, action);
+  const prompt = resolveMarkPrompt(rawPrompt, resolved.node);
+  const metadata = await resolveVideoMetadata(rootPath, requestedPath);
+  await setToExtendEntry(rootPath, requestedPath, metadata, resolved.action, prompt);
   return new Response(null, { status: 204 });
 };
 
@@ -118,7 +226,8 @@ export const PUT = async (request: Request) => {
     return new Response("Invalid image path", { status: 400 });
   }
 
-  if (isVideoFilePath(filePath)) {
+  const isVideo = isVideoFilePath(filePath);
+  if (isMarkTypeMediaMismatch(body.type, isVideo)) {
     return new Response("Marking is not supported for this media type", { status: 400 });
   }
 
@@ -133,7 +242,17 @@ export const PUT = async (request: Request) => {
   }
 
   if (body.type === "animate") {
-    return handleAnimateMark(rootPath, requestedPath, body.action, metadata);
+    return handleAnimateMark(rootPath, requestedPath, body.action, body.metadata, body.prompt);
+  }
+
+  if (body.type === "upscaleVideo") {
+    const upscaleVideoMetadata = await resolveVideoMetadata(rootPath, requestedPath);
+    await setToUpscaleVideoEntry(rootPath, requestedPath, upscaleVideoMetadata);
+    return new Response(null, { status: 204 });
+  }
+
+  if (body.type === "extend") {
+    return handleExtendMark(rootPath, requestedPath, body.action, body.prompt);
   }
 
   return new Response("Invalid mark type", { status: 400 });
@@ -161,7 +280,8 @@ export const DELETE = async (request: Request) => {
     return new Response("Invalid image path", { status: 400 });
   }
 
-  if (isVideoFilePath(filePath)) {
+  const isVideo = isVideoFilePath(filePath);
+  if (isMarkTypeMediaMismatch(type, isVideo)) {
     return new Response("Marking is not supported for this media type", { status: 400 });
   }
 
@@ -177,6 +297,16 @@ export const DELETE = async (request: Request) => {
 
   if (type === "animate") {
     await removeToAnimateEntry(rootPath, requestedPath);
+    return new Response(null, { status: 204 });
+  }
+
+  if (type === "upscaleVideo") {
+    await removeToUpscaleVideoEntry(rootPath, requestedPath);
+    return new Response(null, { status: 204 });
+  }
+
+  if (type === "extend") {
+    await removeToExtendEntry(rootPath, requestedPath);
     return new Response(null, { status: 204 });
   }
 
