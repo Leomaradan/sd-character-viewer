@@ -178,6 +178,11 @@ interface IVideoControlsState {
   shown: boolean;
 }
 
+interface IEditPromptState {
+  path: string | null;
+  open: boolean;
+}
+
 // Small pure helpers factored out of the component body below purely to keep its own cognitive
 // complexity down (each one-line ternary/&& here would otherwise count against the component).
 const resolveMobileView = (
@@ -189,6 +194,15 @@ const resolveShowVideoControls = (
   state: IVideoControlsState,
   relativePath: string | undefined,
 ): boolean => state.path === relativePath && state.shown;
+
+// Navigating to a different image (prev/next buttons, swipe, or arrow keys) must never leave a
+// stale prompt draft armed for the newly selected image - keying this open/closed state by path
+// (rather than a plain boolean) closes it for free on navigation, the same way IMobileViewState/
+// IVideoControlsState above already reset their own per-image state without an effect.
+const resolveIsEditPromptOpen = (
+  state: IEditPromptState,
+  relativePath: string | undefined,
+): boolean => state.path === relativePath && state.open;
 
 const resolveDeleteLabel = (isVideo: boolean): string =>
   isVideo ? "Delete video" : "Delete image";
@@ -289,13 +303,17 @@ export function ImageDetailModal({
   const [isTogglingExtend, setIsTogglingExtend] = useState(false);
   const [extendError, setExtendError] = useState<string | null>(null);
   const [extendMenuAnchorEl, setExtendMenuAnchorEl] = useState<HTMLElement | null>(null);
-  const [isEditPromptOpen, setIsEditPromptOpen] = useState(false);
+  const [editPromptState, setEditPromptState] = useState<IEditPromptState>({
+    path: null,
+    open: false,
+  });
   const [editPromptDraft, setEditPromptDraft] = useState("");
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
   const [editPromptError, setEditPromptError] = useState<string | null>(null);
   const touchStartXRef = useRef(0);
 
   const relativePath = image?.relativePath;
+  const isEditPromptOpen = resolveIsEditPromptOpen(editPromptState, relativePath);
 
   const [mobileViewState, setMobileViewState] = useState<IMobileViewState>({
     path: null,
@@ -313,7 +331,7 @@ export function ImageDetailModal({
   }, [relativePath]);
 
   useEffect(() => {
-    if (!image || isConfirmOpen || isDeleting) {
+    if (!image || isConfirmOpen || isDeleting || isEditPromptOpen) {
       return () => {};
     }
 
@@ -341,6 +359,7 @@ export function ImageDetailModal({
     onNavigateNext,
     isConfirmOpen,
     isDeleting,
+    isEditPromptOpen,
   ]);
 
   const isVideo = image?.mediaType === "video";
@@ -728,15 +747,21 @@ export function ImageDetailModal({
   // video, animate for an image) - there's only ever one at a time per image/video.
   const currentAnimationAction = isVideo ? extendAction : animateAction;
   const currentAnimationPrompt = isVideo ? extendPrompt : animatePrompt;
+  // An orphaned mark (its action key removed from config since it was created) still shows its
+  // Animate/Extend button, but editing it would only fail server-side (the PUT re-validates the
+  // key), so the Edit Animation button is hidden rather than offering an edit that can't save.
+  const canEditAnimationPrompt =
+    currentAnimationAction !== null &&
+    findAnimationNodeByKey(animations, currentAnimationAction) !== null;
 
   const handleOpenEditPrompt = useCallback(() => {
     setEditPromptError(null);
     setEditPromptDraft(currentAnimationPrompt ?? "");
-    setIsEditPromptOpen(true);
-  }, [currentAnimationPrompt]);
+    setEditPromptState({ path: relativePath ?? null, open: true });
+  }, [currentAnimationPrompt, relativePath]);
 
   const handleCloseEditPrompt = useCallback(() => {
-    setIsEditPromptOpen(false);
+    setEditPromptState((prev) => ({ ...prev, open: false }));
   }, []);
 
   const handleSaveEditPrompt = useCallback(async () => {
@@ -749,9 +774,10 @@ export function ImageDetailModal({
 
     try {
       // Reuses the same PUT upsert as the initial mark-creation flow, now carrying an explicit
-      // prompt - the server never seeds it from config when one is sent. Video marks never send
-      // metadata (see resolveVideoMetadata server-side); image marks keep sending the PNG's raw
-      // metadata so it isn't dropped by this otherwise-unrelated save.
+      // prompt - the server never seeds it from config when one is sent. Edit Animation only ever
+      // edits the prompt, so metadata is deliberately omitted here (for both media types): the
+      // server preserves whatever the mark already has rather than trusting a value that may
+      // still be "" if the PNG-metadata fetch hasn't resolved yet (or failed).
       const response = await fetch("/api/marks", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -760,7 +786,6 @@ export function ImageDetailModal({
           type: isVideo ? "extend" : "animate",
           action: currentAnimationAction,
           prompt: editPromptDraft,
-          ...(isVideo ? {} : { metadata: rawMetadata }),
         }),
       });
 
@@ -777,13 +802,13 @@ export function ImageDetailModal({
           ? { ...prev, extendPrompt: editPromptDraft }
           : { ...prev, animatePrompt: editPromptDraft };
       });
-      setIsEditPromptOpen(false);
+      setEditPromptState((prev) => (prev.path === relativePath ? { ...prev, open: false } : prev));
     } catch {
       setEditPromptError("Could not save the prompt. Try again.");
     } finally {
       setIsSavingPrompt(false);
     }
-  }, [relativePath, currentAnimationAction, isVideo, editPromptDraft, rawMetadata]);
+  }, [relativePath, currentAnimationAction, isVideo, editPromptDraft]);
 
   const handleToggleMobileView = useCallback(() => {
     setMobileViewState((prev) => ({
@@ -862,6 +887,7 @@ export function ImageDetailModal({
       extendAction={extendAction}
       extendActionLabel={extendActionLabel}
       onOpenExtendMenu={handleOpenExtendMenu}
+      canEditAnimationPrompt={canEditAnimationPrompt}
       onOpenEditPrompt={handleOpenEditPrompt}
       isDeleting={isDeleting}
       deleteLabel={deleteLabel}

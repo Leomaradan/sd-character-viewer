@@ -413,4 +413,23 @@ describe("reconcilePendingAnimationMarks", () => {
       [video.relativePath]: { metadata: "extend-raw", action: "dance", prompt: "" },
     });
   });
+
+  it("clears a fulfilled mark written before the prompt field existed (no prompt key on disk)", async () => {
+    // Simulates a to-animate.json entry from before Phase 5 - the compare-and-delete step must
+    // normalize this the same way buildPendingAnimationClaims did when it built the claim, or the
+    // raw (unnormalized) on-disk shape never deep-equals the always-normalized expected entry and
+    // the mark is silently left behind forever.
+    await fs.writeFile(
+      path.join(TEMP_ROOT, "to-animate.json"),
+      `${JSON.stringify({ [baseImage.relativePath]: { metadata: "raw", action: "dance" } }, null, 2)}\n`,
+    );
+    const video = danceVideo();
+
+    await reconcilePendingAnimationMarks(TEMP_ROOT, [baseImage, video], DANCE_ANIMATIONS);
+
+    expect(await readVideoLinks(TEMP_ROOT)).toEqual({
+      [video.relativePath]: expect.objectContaining({ sourceRelativePath: baseImage.relativePath }),
+    });
+    expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({});
+  });
 });

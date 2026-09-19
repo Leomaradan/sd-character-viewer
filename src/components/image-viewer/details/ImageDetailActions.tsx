@@ -74,6 +74,7 @@ interface IImageDetailActionsProps {
   extendAction: string | null;
   extendActionLabel: string;
   onOpenExtendMenu: (event: React.MouseEvent<HTMLElement>) => void;
+  canEditAnimationPrompt: boolean;
   onOpenEditPrompt: () => void;
   isDeleting: boolean;
   deleteLabel: string;
@@ -105,13 +106,12 @@ export function ImageDetailActions({
   extendAction,
   extendActionLabel,
   onOpenExtendMenu,
+  canEditAnimationPrompt,
   onOpenEditPrompt,
   isDeleting,
   deleteLabel,
   onDelete,
 }: Readonly<IImageDetailActionsProps>) {
-  const canEditPrompt = isVideo ? Boolean(extendAction) : Boolean(animateAction);
-
   return (
     <>
       {deleteError && (
@@ -195,7 +195,7 @@ export function ImageDetailActions({
             {isTogglingExtend ? <CircularProgress size={18} /> : extendActionLabel}
           </Button>
         )}
-        {canEditPrompt && (
+        {canEditAnimationPrompt && (
           <Button startIcon={<EditIcon />} onClick={onOpenEditPrompt} sx={EDIT_PROMPT_BUTTON_SX}>
             Edit Animation
           </Button>

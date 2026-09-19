@@ -1113,22 +1113,24 @@ const buildUnclaimedVideoCandidates = (
   return candidatesByGroupKey;
 };
 
-// Deletes a marked-image-map entry only if it still deep-equals what reconciliation observed
-// when it built the claim being fulfilled, so a concurrent PUT that changed or replaced the mark
-// in the window between reading claims and removing them here survives instead of being silently
-// discarded.
-const removeMarkedImageMapEntryIfUnchanged = async <T>(
+// Deletes a to-animate.json/to-extends.json entry only if it still deep-equals what
+// reconciliation observed when it built the claim being fulfilled, so a concurrent PUT that
+// changed or replaced the mark in the window between reading claims and removing them here
+// survives instead of being silently discarded. Compares against the *normalized* entry (prompt
+// defaulted to "" when absent), matching what buildPendingAnimationClaims read the claim from -
+// comparing raw disk entries would never match a legacy mark file written before `prompt`
+// existed, since it lacks the key entirely.
+const removeMarkedImageMapEntryIfUnchanged = async (
   filePath: string,
   relativePath: string,
-  expectedEntry: T,
-  isValidEntry: (value: unknown) => value is T,
+  expectedEntry: IToAnimateEntry,
 ): Promise<void> => {
   await withMarkedImageFileLock(filePath, async () => {
-    const entries = await readMarkedImageMap(filePath, isValidEntry);
-    const currentEntry = entries[relativePath];
+    const rawEntries = await readMarkedImageMap(filePath, isToAnimateEntry);
+    const currentEntry = normalizeToAnimateEntries(rawEntries)[relativePath];
     if (currentEntry && JSON.stringify(currentEntry) === JSON.stringify(expectedEntry)) {
-      delete entries[relativePath];
-      await writeMarkedImageMap(filePath, entries);
+      delete rawEntries[relativePath];
+      await writeMarkedImageMap(filePath, rawEntries);
     }
   });
 };
@@ -1246,20 +1248,10 @@ export const reconcilePendingAnimationMarks = async (
     const toExtendFilePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
     await Promise.all([
       ...fulfilledAnimateClaims.map(({ relativePath, entry }) =>
-        removeMarkedImageMapEntryIfUnchanged(
-          toAnimateFilePath,
-          relativePath,
-          entry,
-          isToAnimateEntry,
-        ),
+        removeMarkedImageMapEntryIfUnchanged(toAnimateFilePath, relativePath, entry),
       ),
       ...fulfilledExtendClaims.map(({ relativePath, entry }) =>
-        removeMarkedImageMapEntryIfUnchanged(
-          toExtendFilePath,
-          relativePath,
-          entry,
-          isToAnimateEntry,
-        ),
+        removeMarkedImageMapEntryIfUnchanged(toExtendFilePath, relativePath, entry),
       ),
     ]);
   } catch {

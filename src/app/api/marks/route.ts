@@ -135,11 +135,27 @@ const resolveAnimationAction = async (
 const resolveMarkPrompt = (rawPrompt: unknown, node: IAnimationConfig): string =>
   typeof rawPrompt === "string" ? rawPrompt : node.prompt;
 
+// Edit Animation sends no `metadata` at all (it only ever edits the prompt) - when omitted, the
+// mark's existing metadata is preserved rather than blanked to "", which a plain default would
+// do. A brand-new mark (no existing entry) still defaults to "".
+const resolveAnimateMarkMetadata = async (
+  rootPath: string,
+  requestedPath: string,
+  rawMetadata: unknown,
+): Promise<string> => {
+  if (typeof rawMetadata === "string") {
+    return rawMetadata;
+  }
+
+  const existingEntries = await readToAnimateEntries(rootPath);
+  return existingEntries[requestedPath]?.metadata ?? "";
+};
+
 const handleAnimateMark = async (
   rootPath: string,
   requestedPath: string,
   rawAction: unknown,
-  metadata: string,
+  rawMetadata: unknown,
   rawPrompt: unknown,
 ): Promise<Response> => {
   const resolved = await resolveAnimationAction(rawAction);
@@ -148,6 +164,7 @@ const handleAnimateMark = async (
   }
 
   const prompt = resolveMarkPrompt(rawPrompt, resolved.node);
+  const metadata = await resolveAnimateMarkMetadata(rootPath, requestedPath, rawMetadata);
   await setToAnimateEntry(rootPath, requestedPath, metadata, resolved.action, prompt);
   return new Response(null, { status: 204 });
 };
@@ -223,7 +240,7 @@ export const PUT = async (request: Request) => {
   }
 
   if (body.type === "animate") {
-    return handleAnimateMark(rootPath, requestedPath, body.action, metadata, body.prompt);
+    return handleAnimateMark(rootPath, requestedPath, body.action, body.metadata, body.prompt);
   }
 
   if (body.type === "upscaleVideo") {
