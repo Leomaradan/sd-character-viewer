@@ -11,18 +11,24 @@ vi.mock("@/lib/env", () => ({
   readBooleanEnvFlag: vi.fn(),
 }));
 
-vi.mock("@/lib/image-library", () => ({
-  getImagesRootPathFromEnv: vi.fn(),
-  readImageLibrary: vi.fn(),
-  readToAnimateEntries: vi.fn(),
-  readToUpscaleEntries: vi.fn(),
-  removeToAnimateEntry: vi.fn(),
-  removeToUpscaleEntry: vi.fn(),
-  resolveImageFilePath: vi.fn(),
-  setToAnimateEntry: vi.fn(),
-  setToUpscaleEntry: vi.fn(),
-  isVideoFilePath: vi.fn(() => false),
-}));
+vi.mock("@/lib/image-library", async (importOriginal) => {
+  // findAnimationNodeByKey is kept as the real implementation (pure, no fs) rather than stubbed,
+  // since these tests exercise its actual key-lookup behavior via handleAnimateMark.
+  const actual = await importOriginal<typeof import("@/lib/image-library")>();
+  return {
+    findAnimationNodeByKey: actual.findAnimationNodeByKey,
+    getImagesRootPathFromEnv: vi.fn(),
+    readImageLibrary: vi.fn(),
+    readToAnimateEntries: vi.fn(),
+    readToUpscaleEntries: vi.fn(),
+    removeToAnimateEntry: vi.fn(),
+    removeToUpscaleEntry: vi.fn(),
+    resolveImageFilePath: vi.fn(),
+    setToAnimateEntry: vi.fn(),
+    setToUpscaleEntry: vi.fn(),
+    isVideoFilePath: vi.fn(() => false),
+  };
+});
 
 import * as auth from "@/lib/auth";
 import * as env from "@/lib/env";
@@ -279,7 +285,9 @@ describe("/api/marks PUT", () => {
     vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
     vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    vi.mocked(readImageLibrary).mockResolvedValue({ animations: ["Pan"] } as never);
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [{ key: "Pan", name: "Pan", prompt: "" }],
+    } as never);
 
     const response = await PUT(
       jsonRequest("http://localhost/api/marks", "PUT", {
@@ -292,6 +300,25 @@ describe("/api/marks PUT", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 500 when the image library fails to load for an animate mark", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(readImageLibrary).mockRejectedValue(new Error("ENOENT"));
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.png",
+        type: "animate",
+        action: "Zoom In",
+      }),
+    );
+
+    expect(response.status).toBe(500);
+  });
+
   it("marks an image for animate with a configured action", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
@@ -299,7 +326,12 @@ describe("/api/marks PUT", () => {
     vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
     vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    vi.mocked(readImageLibrary).mockResolvedValue({ animations: ["Zoom In", "Pan"] } as never);
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [
+        { key: "Zoom In", name: "Zoom In", prompt: "" },
+        { key: "Pan", name: "Pan", prompt: "" },
+      ],
+    } as never);
     vi.mocked(setToAnimateEntry).mockResolvedValue(undefined);
 
     const response = await PUT(
@@ -312,6 +344,38 @@ describe("/api/marks PUT", () => {
     );
 
     expect(setToAnimateEntry).toHaveBeenCalledWith("/tmp", "a.png", "raw", "Zoom In");
+    expect(response.status).toBe(204);
+  });
+
+  it("marks an image for animate with a nested sub-version action key", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [
+        {
+          key: "dance",
+          name: "Dance",
+          prompt: "",
+          subVersions: [{ key: "latin-dance", name: "Latin Dance", prompt: "" }],
+        },
+      ],
+    } as never);
+    vi.mocked(setToAnimateEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.png",
+        type: "animate",
+        action: "latin-dance",
+        metadata: "raw",
+      }),
+    );
+
+    expect(setToAnimateEntry).toHaveBeenCalledWith("/tmp", "a.png", "raw", "latin-dance");
     expect(response.status).toBe(204);
   });
 

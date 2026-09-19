@@ -68,13 +68,20 @@ export interface IDuplicateGroup {
   images: IImageItem[];
 }
 
+export interface IAnimationConfig {
+  key: string;
+  name: string;
+  prompt: string;
+  subVersions?: IAnimationConfig[];
+}
+
 export interface ILibraryData {
   rootConfigured: boolean;
   rootPath: string | null;
   defaultStyle: string;
   styles: string[];
   styleLabels?: Partial<Record<string, string>>;
-  animations: string[];
+  animations: IAnimationConfig[];
   images: IImageItem[];
   characters: ICharacterSummary[];
   poses: IPoseSummary[];

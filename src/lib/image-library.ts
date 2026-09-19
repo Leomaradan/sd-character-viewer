@@ -15,6 +15,7 @@ import {
 } from "@/lib/extra-image-roots";
 import {
   STYLES,
+  type IAnimationConfig,
   type ICharacterSummary,
   type IDuplicateGroup,
   type IImageItem,
@@ -37,7 +38,7 @@ const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
 // Bumped whenever a cached ILibraryData's shape changes, so a cache written by an older version
 // of the app (e.g. one predating the `mediaType` field) is treated as a miss and rebuilt, rather
 // than being returned as-is with the new field silently undefined.
-const LIBRARY_INDEX_CACHE_VERSION = 6;
+const LIBRARY_INDEX_CACHE_VERSION = 7;
 const PREVIEW_FILE_SUFFIX = ".preview.jpg";
 // Video previews use a distinct suffix/extension from image previews: the running app never
 // generates them itself (no ffmpeg invoked at request time), only the offline sync script
@@ -56,14 +57,16 @@ interface ILibraryConfig {
   styles?: string[];
   defaultStyle?: string;
   styleLabels?: Record<string, string>;
-  animations?: string[];
+  // Recursive shape (plain strings, or {key,name,prompt,subVersions} nodes) validated by
+  // normalizeAnimationsConfig, not Ajv - see its comment.
+  animations?: unknown[];
 }
 
 interface IStyleConfig {
   styles: string[];
   defaultStyle: string;
   styleLabels: Partial<Record<string, string>>;
-  animations: string[];
+  animations: IAnimationConfig[];
 }
 
 export interface IToAnimateEntry {
@@ -146,9 +149,11 @@ const libraryConfigValidator = ajv.compile<ILibraryConfig>({
       type: "object",
       additionalProperties: { type: "string" },
     },
+    // Items aren't constrained here: animations is a recursive shape (plain strings, or
+    // {key,name,prompt,subVersions} nodes) that normalizeAnimationsConfig validates/normalizes
+    // instead, since Ajv's `strict: false` mode doesn't support recursive schemas cleanly.
     animations: {
       type: "array",
-      items: { type: "string" },
     },
   },
   additionalProperties: true,
@@ -221,6 +226,87 @@ const normalizeStyleNames = (styles: string[] | undefined): string[] => {
   return [...new Set(normalizedStyles)];
 };
 
+// A single raw `animations` entry: either a plain string (legacy leaf, auto-migrated to
+// {key: s, name: s, prompt: ""}) or an object node with required key/name strings, an optional
+// prompt string (defaulting to ""), and optional recursively-normalized subVersions. Anything
+// else (wrong types, missing key/name) is silently skipped, matching readMarkedImageMap's
+// existing leniency toward malformed entries elsewhere in this file. `seenKeys` is shared across
+// the whole tree (not just siblings), since findAnimationNodeByKey resolves by key alone: a key
+// reused at a different nesting level would otherwise shadow the earlier node and make the
+// later one unreachable (and produce duplicate React keys in the flattened UI menu).
+const normalizeAnimationConfigEntry = (
+  entry: unknown,
+  seenKeys: Set<string>,
+): IAnimationConfig | null => {
+  if (typeof entry === "string") {
+    const trimmedName = entry.trim();
+    if (!trimmedName || seenKeys.has(trimmedName)) {
+      return null;
+    }
+    seenKeys.add(trimmedName);
+    return { key: trimmedName, name: trimmedName, prompt: "" };
+  }
+
+  if (!isPlainObjectRecord(entry)) {
+    return null;
+  }
+
+  const key = typeof entry.key === "string" ? entry.key.trim() : "";
+  const name = typeof entry.name === "string" ? entry.name.trim() : "";
+  if (!key || !name || seenKeys.has(key)) {
+    return null;
+  }
+  seenKeys.add(key);
+
+  const prompt = typeof entry.prompt === "string" ? entry.prompt : "";
+  const subVersions = Array.isArray(entry.subVersions)
+    ? normalizeAnimationEntries(entry.subVersions, seenKeys)
+    : [];
+
+  return subVersions.length > 0 ? { key, name, prompt, subVersions } : { key, name, prompt };
+};
+
+const normalizeAnimationEntries = (raw: unknown[], seenKeys: Set<string>): IAnimationConfig[] => {
+  const nodes: IAnimationConfig[] = [];
+
+  for (const rawEntry of raw) {
+    const node = normalizeAnimationConfigEntry(rawEntry, seenKeys);
+    if (node) {
+      nodes.push(node);
+    }
+  }
+
+  return nodes;
+};
+
+export const normalizeAnimationsConfig = (raw: unknown): IAnimationConfig[] => {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return normalizeAnimationEntries(raw, new Set<string>());
+};
+
+export const findAnimationNodeByKey = (
+  animations: IAnimationConfig[],
+  key: string,
+): IAnimationConfig | null => {
+  for (const node of animations) {
+    if (node.key === key) {
+      return node;
+    }
+
+    const foundInSubVersions = node.subVersions
+      ? findAnimationNodeByKey(node.subVersions, key)
+      : null;
+    if (foundInSubVersions) {
+      return foundInSubVersions;
+    }
+  }
+
+  return null;
+};
+
 const resolveDefaultStyle = (styles: string[], rawDefaultStyle: unknown): string => {
   if (typeof rawDefaultStyle === "string") {
     const normalizedDefaultStyle = rawDefaultStyle.trim();
@@ -267,7 +353,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
   const configPath = path.join(rootPath, LIBRARY_CONFIG_FILE_NAME);
   const fallbackStyles = [...STYLES];
   const fallbackStyleLabels: Partial<Record<string, string>> = {};
-  const fallbackAnimations: string[] = [];
+  const fallbackAnimations: IAnimationConfig[] = [];
 
   let fileContent = "";
   try {
@@ -309,7 +395,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         styles: fallbackStyles,
         defaultStyle: DEFAULT_STYLE,
         styleLabels: fallbackStyleLabels,
-        animations: normalizeStyleNames(parsedContent.animations),
+        animations: normalizeAnimationsConfig(parsedContent.animations),
       };
     }
 
@@ -317,7 +403,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       styles,
       defaultStyle: resolveDefaultStyle(styles, parsedContent.defaultStyle),
       styleLabels: normalizeStyleLabels(styles, parsedContent.styleLabels),
-      animations: normalizeStyleNames(parsedContent.animations),
+      animations: normalizeAnimationsConfig(parsedContent.animations),
     };
   } catch {
     // Fallback to legacy defaults when config.json is malformed.
