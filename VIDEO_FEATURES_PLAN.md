@@ -296,5 +296,5 @@ up where this one left off:
 - [x] Phase 3 — Linking/reconciliation engine
 - [x] Phase 4 — Video naming + pose-filter verification
 - [x] Phase 5 — Edit-prompt UI
-- [ ] Phase 6 — "Came from X" display
+- [x] Phase 6 — "Came from X" display
 - [ ] Phase 7 — Redraw-on-video

@@ -24,7 +24,7 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { IAnimationConfig, IImageItem } from "@/types/library";
+import type { IAnimationConfig, IImageItem, IVideoLink } from "@/types/library";
 
 import { formatStyleLabel, getImageUrl } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
@@ -159,6 +159,7 @@ interface IMarksState {
   upscaleVideo: boolean;
   extendAction: string | null;
   extendPrompt: string | null;
+  videoLink: IVideoLink | null;
 }
 
 interface IMarksApiResponse {
@@ -166,6 +167,7 @@ interface IMarksApiResponse {
   animate?: { action: string; prompt: string } | null;
   upscaleVideo?: boolean;
   extend?: { action: string; prompt: string } | null;
+  link?: IVideoLink | null;
 }
 
 interface IMobileViewState {
@@ -224,6 +226,7 @@ const resolveMarksDerived = (
   isUpscaleVideoMarked: boolean;
   extendAction: string | null;
   extendPrompt: string | null;
+  videoLink: IVideoLink | null;
 } => {
   const isCurrentMarksState = marksState.path === relativePath;
   return {
@@ -233,6 +236,7 @@ const resolveMarksDerived = (
     isUpscaleVideoMarked: isCurrentMarksState && marksState.upscaleVideo,
     extendAction: isCurrentMarksState ? marksState.extendAction : null,
     extendPrompt: isCurrentMarksState ? marksState.extendPrompt : null,
+    videoLink: isCurrentMarksState ? marksState.videoLink : null,
   };
 };
 
@@ -256,6 +260,27 @@ const findAnimationNodeByKey = (
   }
 
   return null;
+};
+
+// "Came from X" resolves the source's filename (not a full pose-name parse - link.
+// sourceRelativePath already points at a real file, so its own basename is the pose it shows)
+// and the action's display name, e.g. "Extended from Base (Dance)". A null link (reconciliation
+// hasn't matched this video to a source yet, or never will) renders nothing - not an error state.
+const resolveCameFromLabel = (
+  videoLink: IVideoLink | null,
+  animations: IAnimationConfig[],
+): string | null => {
+  if (!videoLink) {
+    return null;
+  }
+
+  const sourceFileName =
+    videoLink.sourceRelativePath.split("/").pop() ?? videoLink.sourceRelativePath;
+  const sourceLabel = sourceFileName.replace(/\.(png|mp4)$/i, "");
+  const actionLabel =
+    findAnimationNodeByKey(animations, videoLink.action)?.name ?? videoLink.action;
+
+  return `Extended from ${sourceLabel} (${actionLabel})`;
 };
 
 // MUI has no built-in nested Menu, so a two-level animation config is flattened into a single
@@ -292,6 +317,7 @@ export function ImageDetailModal({
     upscaleVideo: false,
     extendAction: null,
     extendPrompt: null,
+    videoLink: null,
   });
   const [isTogglingUpscale, setIsTogglingUpscale] = useState(false);
   const [upscaleError, setUpscaleError] = useState<string | null>(null);
@@ -394,7 +420,12 @@ export function ImageDetailModal({
   }, [relativePath, isVideo]);
 
   useEffect(() => {
-    if (!relativePath || !canDeleteImage) {
+    // The upscale/animate/extend mark state this fetch also carries is only ever rendered
+    // inside imageActions, itself gated on canDeleteImage - but a video's provenance link
+    // (the "Came From" block) is plain informational display, shown to every viewer regardless
+    // of delete permission. Skipping this fetch outright for a read-only video would silently
+    // suppress that block for the vast majority of viewers (SD_ALLOW_DELETE defaults off).
+    if (!relativePath || (!canDeleteImage && !isVideo)) {
       return () => {};
     }
 
@@ -407,6 +438,7 @@ export function ImageDetailModal({
       upscaleVideo: false,
       extendAction: null,
       extendPrompt: null,
+      videoLink: null,
     };
 
     fetch(`/api/marks?path=${encodeURIComponent(relativePath)}`)
@@ -424,6 +456,7 @@ export function ImageDetailModal({
             upscaleVideo: data?.upscaleVideo ?? false,
             extendAction: data?.extend?.action ?? null,
             extendPrompt: data?.extend?.prompt ?? null,
+            videoLink: data?.link ?? null,
           });
         }
       })
@@ -436,7 +469,7 @@ export function ImageDetailModal({
     return () => {
       isMounted = false;
     };
-  }, [relativePath, canDeleteImage]);
+  }, [relativePath, canDeleteImage, isVideo]);
 
   const isLoadingMetadata = resolveIsLoadingMetadata(image, isVideo, metadataState, relativePath);
   const pngMetadata = useMemo(
@@ -517,6 +550,7 @@ export function ImageDetailModal({
     isUpscaleVideoMarked,
     extendAction,
     extendPrompt,
+    videoLink,
   } = resolveMarksDerived(marksState, relativePath);
   const rawMetadata = pngMetadata?.parameters ?? "";
   const flatAnimationOptions = useMemo(() => flattenAnimations(animations), [animations]);
@@ -526,6 +560,7 @@ export function ImageDetailModal({
   const extendActionLabel = extendAction
     ? (findAnimationNodeByKey(animations, extendAction)?.name ?? extendAction)
     : "Extend";
+  const cameFromLabel = resolveCameFromLabel(videoLink, animations);
 
   const handleToggleUpscale = useCallback(async () => {
     if (!relativePath) {
@@ -993,6 +1028,17 @@ export function ImageDetailModal({
                   {image.poseName}
                 </Typography>
               </Box>
+
+              {cameFromLabel && (
+                <Box>
+                  <Typography variant="caption" sx={CAPTION_SX}>
+                    Came From
+                  </Typography>
+                  <Typography variant="body2" sx={META_BODY_SX}>
+                    {cameFromLabel}
+                  </Typography>
+                </Box>
+              )}
 
               {(isLoadingMetadata || pngMetadata) && <Divider sx={DIVIDER_SX} />}
 

@@ -24,6 +24,7 @@ import {
   type IPoseFilterOption,
   type IPosePatternFilter,
   type IPoseSummary,
+  type IVideoLink,
   type TMediaType,
 } from "@/types/library";
 
@@ -936,18 +937,6 @@ export const removeToExtendEntry = async (
   });
 };
 
-// Persisted once a generated video is matched back to the pending mark that requested it (see
-// reconcilePendingAnimationMarks below). Not folded into ILibraryData/the index cache - fetched
-// on-demand per-video via GET /api/marks, exactly like today's per-image upscale/animate state.
-export interface IVideoLink {
-  sourceRelativePath: string;
-  sourceMediaType: TMediaType; // "image" for an animate source, "video" for an extend source
-  action: string; // IAnimationConfig.key used
-  prompt: string; // prompt actually used at fulfillment time (post-edit, if any)
-  metadata: string; // carried-forward metadata string
-  linkedAt: number; // diagnostic only
-}
-
 const isVideoLink = (value: unknown): value is IVideoLink => {
   return (
     isPlainObjectRecord(value) &&
@@ -1012,7 +1001,11 @@ interface IPendingAnimationClaim {
 // (targetName = the resolved animation node's display name, sanitized the same way parsePoseName
 // sanitizes a video's on-disk filename - so an animation named e.g. "Dance_Party" still matches a
 // generated "Dance_Party.mp4", whose parsed poseBaseName has the underscore normalized to a
-// space). Iterates to-animate.json first, then to-extends.json, so a group's claims list is
+// space). Deliberately root-agnostic (no getRelativePathRootPrefix component): a source image in
+// the main root commonly needs to match a generated video that an external tool wrote into an
+// extra root used purely as its output folder - the two roots aren't necessarily unrelated
+// character libraries the way findDuplicateGroups' grouping (which does key by root) has to
+// assume. Iterates to-animate.json first, then to-extends.json, so a group's claims list is
 // naturally in the documented file-order tie-break. Entries whose source no longer exists, or
 // whose action key no longer resolves in the (possibly since-edited) animations config, are
 // skipped - left pending, same as any other orphaned mark.
@@ -1065,14 +1058,16 @@ const buildPendingAnimationClaims = (
   return claimsByGroupKey;
 };
 
-// Groups not-yet-linked, main-root video items by the same `${style}::${characterName}::
-// ${poseBaseName}` key a matching claim would produce (a generated video's poseBaseName is its
-// filename before the numeric variant suffix, e.g. "Dance" for both "Dance.mp4"/"Dance 2.mp4").
-// Extra-root videos are excluded: the external tool that fulfills marks only ever writes into
-// the main root. Also excluded: any video that is itself the source of a pending claim (an
-// extend mark's source is a video) - otherwise a video marked for extend could self-link (or
-// satisfy someone else's claim) as if it were a freshly generated output. Each group is sorted
-// by poseVariant (the only available proxy for generation order), tie-broken by modifiedAt.
+// Groups not-yet-linked video items by the same `${style}::${characterName}::${poseBaseName}`
+// key a matching claim would produce (a generated video's poseBaseName is its filename before
+// the numeric variant suffix, e.g. "Dance" for both "Dance.mp4"/"Dance 2.mp4"). Videos in an
+// extra root are valid candidates too, and deliberately grouped without regard to root (see
+// buildPendingAnimationClaims) - a source image in the main root commonly needs to match a video
+// an external tool wrote into an extra root used purely as its output folder. Also excluded: any
+// video that is itself the source of a pending claim (an extend mark's source is a video) -
+// otherwise a video marked for extend could self-link (or satisfy someone else's claim) as if it
+// were a freshly generated output. Each group is sorted by poseVariant (the only available proxy
+// for generation order), tie-broken by modifiedAt.
 const buildUnclaimedVideoCandidates = (
   imageItems: IImageItem[],
   videoLinks: Record<string, IVideoLink>,
@@ -1085,11 +1080,7 @@ const buildUnclaimedVideoCandidates = (
       continue;
     }
 
-    if (
-      getRelativePathRootPrefix(item.relativePath) !== "" ||
-      item.relativePath in videoLinks ||
-      claimSourceRelativePaths.has(item.relativePath)
-    ) {
+    if (item.relativePath in videoLinks || claimSourceRelativePaths.has(item.relativePath)) {
       continue;
     }
 
@@ -1654,6 +1645,13 @@ const collectConfigFileSnapshots = async (rootPath: string): Promise<ICacheFileS
     path.join(rootPath, LIBRARY_CONFIG_FILE_NAME),
     path.join(rootPath, POSE_FILTERS_FILE_NAME),
     path.join(rootPath, "characters", CHARACTERS_CONFIG_FILE_NAME),
+    // Watched so that marking an image/video (which never touches the characters/ directory
+    // tree the snapshots below watch) still invalidates the cache and gives
+    // reconcilePendingAnimationMarks a chance to run - otherwise a mark added for a video that
+    // already existed at the time of the last uncached rebuild would never be reconciled until
+    // something unrelated happened to change a watched directory's mtime.
+    path.join(rootPath, TO_ANIMATE_FILE_NAME),
+    path.join(rootPath, TO_EXTEND_FILE_NAME),
   ];
   const snapshots = await Promise.all(
     configPaths.map((configPath) => getFileSnapshot(rootPath, configPath)),

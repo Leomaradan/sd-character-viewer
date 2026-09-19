@@ -974,6 +974,49 @@ describe("readImageLibrary with characters metadata", () => {
     delete process.env.SD_CACHE_DIR;
   });
 
+  it("invalidates the library index cache when a mark is added for an already-indexed video, so reconciliation gets a chance to run", async () => {
+    const tempRoot = "/tmp/sd-library-index-cache-mark-invalidation";
+    const tempCacheDir = "/tmp/sd-cache-library-index-mark-invalidation";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await fs.writeFile(path.join(characterDir, "Dance.mp4"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "config.json"),
+      JSON.stringify({
+        styles: ["3d"],
+        defaultStyle: "3d",
+        animations: [{ key: "dance", name: "Dance", prompt: "" }],
+      }),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    // First read: the video already exists but nothing is marked yet - this is what primes the
+    // library index cache while there is still nothing for reconciliation to claim.
+    const firstRead = await readImageLibrary();
+    expect(firstRead.cacheAvailable).toBe(true);
+
+    // Marking never touches the characters/ directory tree the cache's directory snapshots
+    // watch - only collectConfigFileSnapshots watching to-animate.json/to-extends.json catches
+    // this. Without that, the next read below would incorrectly serve the stale (pre-mark)
+    // cached library and reconciliation would never run for this already-indexed video.
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "dance", "");
+
+    await readImageLibrary();
+
+    expect(await readVideoLinks(tempRoot)).toEqual({
+      "characters/3d/Anna/Dance.mp4": expect.objectContaining({
+        sourceRelativePath: "characters/3d/Anna/Base.png",
+      }),
+    });
+    expect(await readToAnimateEntries(tempRoot)).toEqual({});
+
+    delete process.env.SD_CACHE_DIR;
+  });
+
   it("ignores a library index cache with an incompatible version", async () => {
     const tempRoot = "/tmp/sd-library-index-cache-version-mismatch";
     const tempCacheDir = "/tmp/sd-cache-library-index-version-mismatch";

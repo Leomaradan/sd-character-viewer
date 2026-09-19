@@ -96,6 +96,7 @@ describe("/api/marks GET", () => {
     vi.mocked(readToExtendEntries).mockResolvedValue({
       "a.mp4": { metadata: "", action: "Zoom In", prompt: "zoom in slowly" },
     });
+    vi.mocked(readVideoLinks).mockResolvedValue({});
 
     const response = await GET(new Request("http://localhost/api/marks?path=a.mp4"));
 
@@ -103,6 +104,7 @@ describe("/api/marks GET", () => {
     await expect(response.json()).resolves.toEqual({
       upscaleVideo: true,
       extend: { action: "Zoom In", prompt: "zoom in slowly" },
+      link: null,
     });
   });
 
@@ -114,10 +116,42 @@ describe("/api/marks GET", () => {
     vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
     vi.mocked(readToUpscaleVideoEntries).mockResolvedValue({});
     vi.mocked(readToExtendEntries).mockResolvedValue({});
+    vi.mocked(readVideoLinks).mockResolvedValue({});
 
     const response = await GET(new Request("http://localhost/api/marks?path=a.mp4"));
 
-    await expect(response.json()).resolves.toEqual({ upscaleVideo: false, extend: null });
+    await expect(response.json()).resolves.toEqual({
+      upscaleVideo: false,
+      extend: null,
+      link: null,
+    });
+  });
+
+  it("returns the video's source link when reconciliation has matched it", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    vi.mocked(readToUpscaleVideoEntries).mockResolvedValue({});
+    vi.mocked(readToExtendEntries).mockResolvedValue({});
+    const link = {
+      sourceRelativePath: "characters/3d/Anna/Base.png",
+      sourceMediaType: "image" as const,
+      action: "dance",
+      prompt: "zoom in slowly",
+      metadata: "Steps: 30",
+      linkedAt: 1234,
+    };
+    vi.mocked(readVideoLinks).mockResolvedValue({ "a.mp4": link });
+
+    const response = await GET(new Request("http://localhost/api/marks?path=a.mp4"));
+
+    await expect(response.json()).resolves.toEqual({
+      upscaleVideo: false,
+      extend: null,
+      link,
+    });
   });
 
   it("returns unauthorized when auth fails", async () => {

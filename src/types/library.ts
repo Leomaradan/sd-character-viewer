@@ -75,6 +75,17 @@ export interface IAnimationConfig {
   subVersions?: IAnimationConfig[];
 }
 
+// Persisted once a generated video is matched back to the pending mark that requested it. Not
+// folded into ILibraryData/the index cache - fetched on-demand per-video via GET /api/marks.
+export interface IVideoLink {
+  sourceRelativePath: string;
+  sourceMediaType: TMediaType; // "image" for an animate source, "video" for an extend source
+  action: string; // IAnimationConfig.key used
+  prompt: string; // prompt actually used at fulfillment time (post-edit, if any)
+  metadata: string; // carried-forward metadata string
+  linkedAt: number; // diagnostic only
+}
+
 export interface ILibraryData {
   rootConfigured: boolean;
   rootPath: string | null;

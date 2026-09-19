@@ -188,7 +188,10 @@ describe("reconcilePendingAnimationMarks", () => {
     });
   });
 
-  it("excludes an extra-root video from candidates", async () => {
+  it("links a claim to a candidate video in an extra root (source stays in the main root)", async () => {
+    // The common real-world layout: source images live in the main root, but an external
+    // generation tool writes its video output into an extra root used purely as an output
+    // folder. Matching must not require the source and the resulting video to share a root.
     await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance", "");
     const extraRootVideo = danceVideo({
       relativePath: "extra-roots/0/characters/3d/Anna/Dance.mp4",
@@ -196,10 +199,39 @@ describe("reconcilePendingAnimationMarks", () => {
 
     await reconcilePendingAnimationMarks(TEMP_ROOT, [baseImage, extraRootVideo], DANCE_ANIMATIONS);
 
-    expect(await readVideoLinks(TEMP_ROOT)).toEqual({});
-    expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({
-      [baseImage.relativePath]: { metadata: "raw", action: "dance", prompt: "" },
+    expect(await readVideoLinks(TEMP_ROOT)).toEqual({
+      [extraRootVideo.relativePath]: expect.objectContaining({
+        sourceRelativePath: baseImage.relativePath,
+      }),
     });
+    expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({});
+  });
+
+  it("links a claim to a candidate video in the same extra root", async () => {
+    // Both the source image and the resulting video can also both live in the same extra root.
+    const extraRootSource = buildImage({
+      relativePath: "extra-roots/0/characters/3d/Anna/Base.png",
+      poseName: "Base",
+      poseBaseName: "Base",
+      mediaType: "image",
+    });
+    await setToAnimateEntry(TEMP_ROOT, extraRootSource.relativePath, "raw", "dance", "");
+    const extraRootVideo = danceVideo({
+      relativePath: "extra-roots/0/characters/3d/Anna/Dance.mp4",
+    });
+
+    await reconcilePendingAnimationMarks(
+      TEMP_ROOT,
+      [extraRootSource, extraRootVideo],
+      DANCE_ANIMATIONS,
+    );
+
+    expect(await readVideoLinks(TEMP_ROOT)).toEqual({
+      [extraRootVideo.relativePath]: expect.objectContaining({
+        sourceRelativePath: extraRootSource.relativePath,
+      }),
+    });
+    expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({});
   });
 
   it("leaves an already-linked video untouched and its claim still pending", async () => {

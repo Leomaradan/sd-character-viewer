@@ -69,9 +69,10 @@ export const GET = async (request: Request) => {
   }
 
   if (isVideoFilePath(filePath)) {
-    const [upscaleVideoEntries, extendEntries] = await Promise.all([
+    const [upscaleVideoEntries, extendEntries, videoLinks] = await Promise.all([
       readToUpscaleVideoEntries(rootPath),
       readToExtendEntries(rootPath),
+      readVideoLinks(rootPath),
     ]);
 
     const extendEntry = extendEntries[requestedPath];
@@ -79,6 +80,7 @@ export const GET = async (request: Request) => {
     return Response.json({
       upscaleVideo: requestedPath in upscaleVideoEntries,
       extend: extendEntry ? { action: extendEntry.action, prompt: extendEntry.prompt } : null,
+      link: videoLinks[requestedPath] ?? null,
     });
   }
 
