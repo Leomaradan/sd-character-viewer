@@ -292,7 +292,7 @@ Mark phases done here as they're completed, so a future session on another machi
 up where this one left off:
 
 - [x] Phase 1 — Config schema + migration
-- [ ] Phase 2 — Plain video marks, no linking yet
+- [x] Phase 2 — Plain video marks, no linking yet
 - [ ] Phase 3 — Linking/reconciliation engine
 - [ ] Phase 4 — Video naming + pose-filter verification
 - [ ] Phase 5 — Edit-prompt UI

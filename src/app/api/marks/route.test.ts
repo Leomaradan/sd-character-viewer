@@ -20,12 +20,18 @@ vi.mock("@/lib/image-library", async (importOriginal) => {
     getImagesRootPathFromEnv: vi.fn(),
     readImageLibrary: vi.fn(),
     readToAnimateEntries: vi.fn(),
+    readToExtendEntries: vi.fn(),
     readToUpscaleEntries: vi.fn(),
+    readToUpscaleVideoEntries: vi.fn(),
     removeToAnimateEntry: vi.fn(),
+    removeToExtendEntry: vi.fn(),
     removeToUpscaleEntry: vi.fn(),
+    removeToUpscaleVideoEntry: vi.fn(),
     resolveImageFilePath: vi.fn(),
     setToAnimateEntry: vi.fn(),
+    setToExtendEntry: vi.fn(),
     setToUpscaleEntry: vi.fn(),
+    setToUpscaleVideoEntry: vi.fn(),
     isVideoFilePath: vi.fn(() => false),
   };
 });
@@ -37,12 +43,18 @@ import {
   isVideoFilePath,
   readImageLibrary,
   readToAnimateEntries,
+  readToExtendEntries,
   readToUpscaleEntries,
+  readToUpscaleVideoEntries,
   removeToAnimateEntry,
+  removeToExtendEntry,
   removeToUpscaleEntry,
+  removeToUpscaleVideoEntry,
   resolveImageFilePath,
   setToAnimateEntry,
+  setToExtendEntry,
   setToUpscaleEntry,
+  setToUpscaleVideoEntry,
 } from "@/lib/image-library";
 
 import { DELETE, GET, PUT } from "./route";
@@ -72,15 +84,38 @@ describe("/api/marks GET", () => {
     });
   });
 
-  it("returns 400 when the target is a video", async () => {
+  it("returns the current mark state for a video", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
     vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
     vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    vi.mocked(readToUpscaleVideoEntries).mockResolvedValue({ "a.mp4": "" });
+    vi.mocked(readToExtendEntries).mockResolvedValue({
+      "a.mp4": { metadata: "", action: "Zoom In" },
+    });
 
     const response = await GET(new Request("http://localhost/api/marks?path=a.mp4"));
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      upscaleVideo: true,
+      extend: { action: "Zoom In" },
+    });
+  });
+
+  it("returns unmarked state when the video has no entries", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    vi.mocked(readToUpscaleVideoEntries).mockResolvedValue({});
+    vi.mocked(readToExtendEntries).mockResolvedValue({});
+
+    const response = await GET(new Request("http://localhost/api/marks?path=a.mp4"));
+
+    await expect(response.json()).resolves.toEqual({ upscaleVideo: false, extend: null });
   });
 
   it("returns unauthorized when auth fails", async () => {
@@ -216,7 +251,7 @@ describe("/api/marks PUT", () => {
     expect(response.status).toBe(400);
   });
 
-  it("returns 400 when the target is a video", async () => {
+  it("returns 400 for an image-only mark type (upscale) targeting a video", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
     vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
@@ -225,6 +260,23 @@ describe("/api/marks PUT", () => {
 
     const response = await PUT(
       jsonRequest("http://localhost/api/marks", "PUT", { path: "a.mp4", type: "upscale" }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 for a video-only mark type (extend) targeting an image", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.png",
+        type: "extend",
+        action: "Zoom In",
+      }),
     );
 
     expect(response.status).toBe(400);
@@ -392,6 +444,143 @@ describe("/api/marks PUT", () => {
 
     expect(response.status).toBe(400);
   });
+
+  it("marks a video for upscaleVideo, ignoring any client-supplied metadata", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    vi.mocked(setToUpscaleVideoEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.mp4",
+        type: "upscaleVideo",
+        metadata: "client-supplied, should be ignored",
+      }),
+    );
+
+    expect(setToUpscaleVideoEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "");
+    expect(response.status).toBe(204);
+  });
+
+  it("returns 400 for an extend mark with no action", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", { path: "a.mp4", type: "extend" }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 for an extend mark with an action not in config.json", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [{ key: "Pan", name: "Pan", prompt: "" }],
+    } as never);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.mp4",
+        type: "extend",
+        action: "Zoom In",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 500 when the image library fails to load for an extend mark", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    vi.mocked(readImageLibrary).mockRejectedValue(new Error("ENOENT"));
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.mp4",
+        type: "extend",
+        action: "Zoom In",
+      }),
+    );
+
+    expect(response.status).toBe(500);
+  });
+
+  it("marks a video for extend with a configured action, ignoring client-supplied metadata", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [{ key: "Zoom In", name: "Zoom In", prompt: "" }],
+    } as never);
+    vi.mocked(setToExtendEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.mp4",
+        type: "extend",
+        action: "Zoom In",
+        metadata: "client-supplied, should be ignored",
+      }),
+    );
+
+    expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "", "Zoom In");
+    expect(response.status).toBe(204);
+  });
+
+  it("marks a video for extend with a nested sub-version action key", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [
+        {
+          key: "dance",
+          name: "Dance",
+          prompt: "",
+          subVersions: [{ key: "latin-dance", name: "Latin Dance", prompt: "" }],
+        },
+      ],
+    } as never);
+    vi.mocked(setToExtendEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.mp4",
+        type: "extend",
+        action: "latin-dance",
+      }),
+    );
+
+    expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "", "latin-dance");
+    expect(response.status).toBe(204);
+  });
 });
 
 describe("/api/marks DELETE", () => {
@@ -442,7 +631,7 @@ describe("/api/marks DELETE", () => {
     expect(response.status).toBe(400);
   });
 
-  it("returns 400 when the target is a video", async () => {
+  it("returns 400 for an image-only mark type (upscale) targeting a video", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
     vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
@@ -451,6 +640,21 @@ describe("/api/marks DELETE", () => {
 
     const response = await DELETE(
       new Request("http://localhost/api/marks?path=a.mp4&type=upscale", { method: "DELETE" }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 for a video-only mark type (upscaleVideo) targeting an image", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
+
+    const response = await DELETE(
+      new Request("http://localhost/api/marks?path=a.png&type=upscaleVideo", {
+        method: "DELETE",
+      }),
     );
 
     expect(response.status).toBe(400);
@@ -499,6 +703,42 @@ describe("/api/marks DELETE", () => {
     );
 
     expect(removeToAnimateEntry).toHaveBeenCalledWith("/tmp", "a.png");
+    expect(response.status).toBe(204);
+  });
+
+  it("removes an upscaleVideo mark", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    vi.mocked(removeToUpscaleVideoEntry).mockResolvedValue(undefined);
+
+    const response = await DELETE(
+      new Request("http://localhost/api/marks?path=a.mp4&type=upscaleVideo", {
+        method: "DELETE",
+      }),
+    );
+
+    expect(removeToUpscaleVideoEntry).toHaveBeenCalledWith("/tmp", "a.mp4");
+    expect(response.status).toBe(204);
+  });
+
+  it("removes an extend mark", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    vi.mocked(removeToExtendEntry).mockResolvedValue(undefined);
+
+    const response = await DELETE(
+      new Request("http://localhost/api/marks?path=a.mp4&type=extend", { method: "DELETE" }),
+    );
+
+    expect(removeToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4");
     expect(response.status).toBe(204);
   });
 

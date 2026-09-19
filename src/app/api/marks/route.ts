@@ -7,15 +7,34 @@ import {
   isVideoFilePath,
   readImageLibrary,
   readToAnimateEntries,
+  readToExtendEntries,
   readToUpscaleEntries,
+  readToUpscaleVideoEntries,
   removeToAnimateEntry,
+  removeToExtendEntry,
   removeToUpscaleEntry,
+  removeToUpscaleVideoEntry,
   resolveImageFilePath,
   setToAnimateEntry,
+  setToExtendEntry,
   setToUpscaleEntry,
+  setToUpscaleVideoEntry,
 } from "@/lib/image-library";
 
 export const dynamic = "force-dynamic";
+
+// upscale/animate mark images; extend/upscaleVideo mark videos. A mark type used against the
+// wrong media type (e.g. "animate" on a .mp4) is rejected rather than silently accepted.
+const IMAGE_ONLY_MARK_TYPES = new Set(["upscale", "animate"]);
+const VIDEO_ONLY_MARK_TYPES = new Set(["extend", "upscaleVideo"]);
+
+const isMarkTypeMediaMismatch = (type: unknown, isVideo: boolean): boolean => {
+  if (typeof type !== "string") {
+    return false;
+  }
+
+  return isVideo ? IMAGE_ONLY_MARK_TYPES.has(type) : VIDEO_ONLY_MARK_TYPES.has(type);
+};
 
 const isMarkingAllowed = (): boolean => {
   ensureLocalEnvLoaded();
@@ -41,13 +60,23 @@ export const GET = async (request: Request) => {
     return new Response("Invalid image path", { status: 400 });
   }
 
-  if (isVideoFilePath(filePath)) {
-    return new Response("Marking is not supported for this media type", { status: 400 });
-  }
-
   const rootPath = getImagesRootPathFromEnv();
   if (!rootPath) {
     return new Response("Image library is not configured", { status: 400 });
+  }
+
+  if (isVideoFilePath(filePath)) {
+    const [upscaleVideoEntries, extendEntries] = await Promise.all([
+      readToUpscaleVideoEntries(rootPath),
+      readToExtendEntries(rootPath),
+    ]);
+
+    const extendEntry = extendEntries[requestedPath];
+
+    return Response.json({
+      upscaleVideo: requestedPath in upscaleVideoEntries,
+      extend: extendEntry ? { action: extendEntry.action } : null,
+    });
   }
 
   const [upscaleEntries, animateEntries] = await Promise.all([
@@ -70,29 +99,58 @@ interface IMarkRequestBody {
   metadata?: unknown;
 }
 
-const handleAnimateMark = async (
-  rootPath: string,
-  requestedPath: string,
+// Shared by the animate and extend mark types: both key off a node in the (possibly nested)
+// animations config, resolved by its stable `key` rather than display name.
+const resolveAnimationAction = async (
   rawAction: unknown,
-  metadata: string,
-): Promise<Response> => {
+): Promise<{ action: string } | { error: Response }> => {
   const action = typeof rawAction === "string" ? rawAction.trim() : "";
   if (!action) {
-    return new Response("Invalid animation action", { status: 400 });
+    return { error: new Response("Invalid animation action", { status: 400 }) };
   }
 
   let library;
   try {
     library = await readImageLibrary();
   } catch {
-    return new Response("Could not read the image library", { status: 500 });
+    return { error: new Response("Could not read the image library", { status: 500 }) };
   }
 
   if (!findAnimationNodeByKey(library.animations, action)) {
-    return new Response("Unknown animation action", { status: 400 });
+    return { error: new Response("Unknown animation action", { status: 400 }) };
   }
 
-  await setToAnimateEntry(rootPath, requestedPath, metadata, action);
+  return { action };
+};
+
+const handleAnimateMark = async (
+  rootPath: string,
+  requestedPath: string,
+  rawAction: unknown,
+  metadata: string,
+): Promise<Response> => {
+  const resolved = await resolveAnimationAction(rawAction);
+  if ("error" in resolved) {
+    return resolved.error;
+  }
+
+  await setToAnimateEntry(rootPath, requestedPath, metadata, resolved.action);
+  return new Response(null, { status: 204 });
+};
+
+const handleExtendMark = async (
+  rootPath: string,
+  requestedPath: string,
+  rawAction: unknown,
+): Promise<Response> => {
+  const resolved = await resolveAnimationAction(rawAction);
+  if ("error" in resolved) {
+    return resolved.error;
+  }
+
+  // A video's metadata isn't client-supplied (there's no PNG chunk to source it from for a
+  // .mp4) - it resolves to "" until video-links.json exists to trace it back to a source image.
+  await setToExtendEntry(rootPath, requestedPath, "", resolved.action);
   return new Response(null, { status: 204 });
 };
 
@@ -125,7 +183,8 @@ export const PUT = async (request: Request) => {
     return new Response("Invalid image path", { status: 400 });
   }
 
-  if (isVideoFilePath(filePath)) {
+  const isVideo = isVideoFilePath(filePath);
+  if (isMarkTypeMediaMismatch(body.type, isVideo)) {
     return new Response("Marking is not supported for this media type", { status: 400 });
   }
 
@@ -141,6 +200,15 @@ export const PUT = async (request: Request) => {
 
   if (body.type === "animate") {
     return handleAnimateMark(rootPath, requestedPath, body.action, metadata);
+  }
+
+  if (body.type === "upscaleVideo") {
+    await setToUpscaleVideoEntry(rootPath, requestedPath, "");
+    return new Response(null, { status: 204 });
+  }
+
+  if (body.type === "extend") {
+    return handleExtendMark(rootPath, requestedPath, body.action);
   }
 
   return new Response("Invalid mark type", { status: 400 });
@@ -168,7 +236,8 @@ export const DELETE = async (request: Request) => {
     return new Response("Invalid image path", { status: 400 });
   }
 
-  if (isVideoFilePath(filePath)) {
+  const isVideo = isVideoFilePath(filePath);
+  if (isMarkTypeMediaMismatch(type, isVideo)) {
     return new Response("Marking is not supported for this media type", { status: 400 });
   }
 
@@ -184,6 +253,16 @@ export const DELETE = async (request: Request) => {
 
   if (type === "animate") {
     await removeToAnimateEntry(rootPath, requestedPath);
+    return new Response(null, { status: 204 });
+  }
+
+  if (type === "upscaleVideo") {
+    await removeToUpscaleVideoEntry(rootPath, requestedPath);
+    return new Response(null, { status: 204 });
+  }
+
+  if (type === "extend") {
+    await removeToExtendEntry(rootPath, requestedPath);
     return new Response(null, { status: 204 });
   }
 
