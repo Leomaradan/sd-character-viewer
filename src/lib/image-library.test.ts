@@ -304,6 +304,66 @@ describe("readImageLibrary with video files", () => {
     expect(library.images[0].mediaType).toBe("video");
     expect(library.images[0].relativePath).toBe("characters/3d/Anna/Dance.mp4");
   });
+
+  // Pose counting/filtering never gated on mediaType to begin with - these confirm an
+  // animation-named video surfaces through the same pose-summary/character-summary/pose-filter
+  // machinery as an image, with no video-specific code path needed (see VIDEO_FEATURES_PLAN.md
+  // Phase 4).
+  it("counts an animation-named video toward pose summaries, character counts, and pose filter chips", async () => {
+    const tempRoot = "/tmp/sd-library-video-pose-counting";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await Promise.all([
+      fs.writeFile(path.join(characterDir, "Base.png"), ""),
+      fs.writeFile(path.join(characterDir, "Dance.mp4"), ""),
+    ]);
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.poses).toEqual(
+      expect.arrayContaining([
+        { name: "Base", imageCount: 1 },
+        { name: "Dance", imageCount: 1 },
+      ]),
+    );
+    expect(library.poseFilterOptions).toEqual(
+      expect.arrayContaining([
+        { value: "Base", label: "Base" },
+        { value: "Dance", label: "Dance" },
+      ]),
+    );
+
+    const anna = library.characters.find((character) => character.name === "Anna");
+    expect(anna?.imageCount).toBe(2);
+    expect(anna?.poseCount).toBe(2);
+  });
+
+  it("applies a pose-pattern filter to an animation-named video the same as it would to an image", async () => {
+    const tempRoot = "/tmp/sd-library-video-pose-pattern-filter";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Cuddle Dance.mp4"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "pose-filters.json"),
+      JSON.stringify([{ label: "Cuddle Somebody", pattern: "^Cuddle ", flags: "i" }]),
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    const video = library.images.find((image) => image.mediaType === "video");
+    expect(video?.posePatternFilterIds).toEqual([library.posePatternFilters[0].id]);
+    // A video whose pose is fully absorbed by a pattern filter is excluded from the flat pose
+    // option list, replaced by the pattern's own chip - same as an image would be.
+    expect(library.poseFilterOptions).toEqual([
+      { value: library.posePatternFilters[0].id, label: "Cuddle Somebody" },
+    ]);
+  });
 });
 
 describe("readImageLibrary with characters metadata", () => {

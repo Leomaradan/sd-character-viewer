@@ -294,7 +294,7 @@ up where this one left off:
 - [x] Phase 1 — Config schema + migration
 - [x] Phase 2 — Plain video marks, no linking yet
 - [x] Phase 3 — Linking/reconciliation engine
-- [ ] Phase 4 — Video naming + pose-filter verification
+- [x] Phase 4 — Video naming + pose-filter verification
 - [ ] Phase 5 — Edit-prompt UI
 - [ ] Phase 6 — "Came from X" display
 - [ ] Phase 7 — Redraw-on-video
