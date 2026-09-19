@@ -78,18 +78,18 @@ describe("reconcilePendingAnimationMarks", () => {
   });
 
   it("leaves a pending mark untouched when there are no candidate videos", async () => {
-    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance", "");
 
     await reconcilePendingAnimationMarks(TEMP_ROOT, [baseImage], DANCE_ANIMATIONS);
 
     expect(await readVideoLinks(TEMP_ROOT)).toEqual({});
     expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({
-      [baseImage.relativePath]: { metadata: "raw", action: "dance" },
+      [baseImage.relativePath]: { metadata: "raw", action: "dance", prompt: "" },
     });
   });
 
   it("links a single clean claim to its matching video and frees the mark", async () => {
-    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "Steps: 30, Seed: 1", "dance");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "Steps: 30, Seed: 1", "dance", "");
     const video = danceVideo();
 
     await reconcilePendingAnimationMarks(TEMP_ROOT, [baseImage, video], DANCE_ANIMATIONS);
@@ -107,10 +107,29 @@ describe("reconcilePendingAnimationMarks", () => {
     expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({});
   });
 
+  it("carries the mark's (possibly edited) prompt forward into the new video-links.json entry", async () => {
+    await setToAnimateEntry(
+      TEMP_ROOT,
+      baseImage.relativePath,
+      "raw",
+      "dance",
+      "edited by user, zoom in slowly",
+    );
+    const video = danceVideo();
+
+    await reconcilePendingAnimationMarks(TEMP_ROOT, [baseImage, video], DANCE_ANIMATIONS);
+
+    expect(await readVideoLinks(TEMP_ROOT)).toEqual({
+      [video.relativePath]: expect.objectContaining({
+        prompt: "edited by user, zoom in slowly",
+      }),
+    });
+  });
+
   it("pairs multiple claims to multiple candidates in FIFO order (by poseVariant)", async () => {
     // Insertion order matters here: the first mark set is the first claim.
-    await setToAnimateEntry(TEMP_ROOT, "characters/3d/Anna/Base.png", "first", "dance");
-    await setToAnimateEntry(TEMP_ROOT, "characters/3d/Anna/Base 2.png", "second", "dance");
+    await setToAnimateEntry(TEMP_ROOT, "characters/3d/Anna/Base.png", "first", "dance", "");
+    await setToAnimateEntry(TEMP_ROOT, "characters/3d/Anna/Base 2.png", "second", "dance", "");
 
     const firstSource = buildImage({ relativePath: "characters/3d/Anna/Base.png" });
     const secondSource = buildImage({
@@ -145,7 +164,7 @@ describe("reconcilePendingAnimationMarks", () => {
   });
 
   it("leaves a mark pending when its source image no longer exists", async () => {
-    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance", "");
     const video = danceVideo();
 
     // baseImage is deliberately omitted from imageItems, simulating a deleted source.
@@ -153,24 +172,24 @@ describe("reconcilePendingAnimationMarks", () => {
 
     expect(await readVideoLinks(TEMP_ROOT)).toEqual({});
     expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({
-      [baseImage.relativePath]: { metadata: "raw", action: "dance" },
+      [baseImage.relativePath]: { metadata: "raw", action: "dance", prompt: "" },
     });
   });
 
   it("leaves a mark pending when its action key no longer resolves in the animations config", async () => {
-    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "removed-key");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "removed-key", "");
     const video = danceVideo();
 
     await reconcilePendingAnimationMarks(TEMP_ROOT, [baseImage, video], DANCE_ANIMATIONS);
 
     expect(await readVideoLinks(TEMP_ROOT)).toEqual({});
     expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({
-      [baseImage.relativePath]: { metadata: "raw", action: "removed-key" },
+      [baseImage.relativePath]: { metadata: "raw", action: "removed-key", prompt: "" },
     });
   });
 
   it("excludes an extra-root video from candidates", async () => {
-    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance", "");
     const extraRootVideo = danceVideo({
       relativePath: "extra-roots/0/characters/3d/Anna/Dance.mp4",
     });
@@ -179,12 +198,12 @@ describe("reconcilePendingAnimationMarks", () => {
 
     expect(await readVideoLinks(TEMP_ROOT)).toEqual({});
     expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({
-      [baseImage.relativePath]: { metadata: "raw", action: "dance" },
+      [baseImage.relativePath]: { metadata: "raw", action: "dance", prompt: "" },
     });
   });
 
   it("leaves an already-linked video untouched and its claim still pending", async () => {
-    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance", "");
     const video = danceVideo();
     const existingLink = {
       sourceRelativePath: "characters/3d/Anna/Other.png",
@@ -206,7 +225,7 @@ describe("reconcilePendingAnimationMarks", () => {
     // mark stays pending since nothing could claim it.
     expect(await readVideoLinks(TEMP_ROOT)).toEqual({ [video.relativePath]: existingLink });
     expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({
-      [baseImage.relativePath]: { metadata: "raw", action: "dance" },
+      [baseImage.relativePath]: { metadata: "raw", action: "dance", prompt: "" },
     });
   });
 
@@ -215,8 +234,8 @@ describe("reconcilePendingAnimationMarks", () => {
       relativePath: "characters/3d/Anna/Dance-source.mp4",
       poseBaseName: "Dance-source",
     });
-    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "from-animate", "dance");
-    await setToExtendEntry(TEMP_ROOT, extendSource.relativePath, "from-extend", "dance");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "from-animate", "dance", "");
+    await setToExtendEntry(TEMP_ROOT, extendSource.relativePath, "from-extend", "dance", "");
 
     // Only one candidate video is available, so only the animate claim (processed first) can
     // be fulfilled; the extend claim stays pending.
@@ -237,7 +256,7 @@ describe("reconcilePendingAnimationMarks", () => {
     });
     expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({});
     expect(await readToExtendEntries(TEMP_ROOT)).toEqual({
-      [extendSource.relativePath]: { metadata: "from-extend", action: "dance" },
+      [extendSource.relativePath]: { metadata: "from-extend", action: "dance", prompt: "" },
     });
   });
 
@@ -246,8 +265,8 @@ describe("reconcilePendingAnimationMarks", () => {
       relativePath: "characters/3d/Anna/Dance-source.mp4",
       poseBaseName: "Dance-source",
     });
-    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "from-animate", "dance");
-    await setToExtendEntry(TEMP_ROOT, extendSource.relativePath, "from-extend", "dance");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "from-animate", "dance", "");
+    await setToExtendEntry(TEMP_ROOT, extendSource.relativePath, "from-extend", "dance", "");
 
     const firstVideo = danceVideo({ relativePath: "characters/3d/Anna/Dance.mp4", poseVariant: 1 });
     const secondVideo = danceVideo({
@@ -281,7 +300,7 @@ describe("reconcilePendingAnimationMarks", () => {
   });
 
   it("breaks a poseVariant tie between candidates by modifiedAt ascending", async () => {
-    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance", "");
 
     const olderVideo = danceVideo({
       relativePath: "characters/3d/Anna/Dance-old.mp4",
@@ -309,7 +328,7 @@ describe("reconcilePendingAnimationMarks", () => {
   });
 
   it("persists video-links.json through a single locked write, safe under a concurrent link write", async () => {
-    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance", "");
     const video = danceVideo();
     const otherRelativePath = "characters/3d/Anna/Other.mp4";
     const otherLink = {
@@ -344,7 +363,7 @@ describe("reconcilePendingAnimationMarks", () => {
     const animations: IAnimationConfig[] = [
       { key: "dance-party", name: "Dance_Party", prompt: "" },
     ];
-    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance-party");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance-party", "");
     // A video named "Dance_Party.mp4" is parsed (via sanitizePoseName) to poseBaseName
     // "Dance Party" (underscore -> space) - the claim's groupKey must be sanitized the same way
     // to still match it.
@@ -367,20 +386,20 @@ describe("reconcilePendingAnimationMarks", () => {
     // Dance.mp4 is itself marked for extend targeting "dance" (whose name is also "Dance") - it
     // must not be treated as an unclaimed candidate for that claim (or any other).
     const video = danceVideo();
-    await setToExtendEntry(TEMP_ROOT, video.relativePath, "raw", "dance");
+    await setToExtendEntry(TEMP_ROOT, video.relativePath, "raw", "dance", "");
 
     await reconcilePendingAnimationMarks(TEMP_ROOT, [video], DANCE_ANIMATIONS);
 
     expect(await readVideoLinks(TEMP_ROOT)).toEqual({});
     expect(await readToExtendEntries(TEMP_ROOT)).toEqual({
-      [video.relativePath]: { metadata: "raw", action: "dance" },
+      [video.relativePath]: { metadata: "raw", action: "dance", prompt: "" },
     });
   });
 
   it("does not let a video pending its own extend mark satisfy a different claim in the same group", async () => {
     const video = danceVideo();
-    await setToExtendEntry(TEMP_ROOT, video.relativePath, "extend-raw", "dance");
-    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "animate-raw", "dance");
+    await setToExtendEntry(TEMP_ROOT, video.relativePath, "extend-raw", "dance", "");
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "animate-raw", "dance", "");
 
     // video is the only video in this group, but it's excluded as a candidate (it's a pending
     // claim's own source), so the animate claim has nothing to pair with either.
@@ -388,10 +407,10 @@ describe("reconcilePendingAnimationMarks", () => {
 
     expect(await readVideoLinks(TEMP_ROOT)).toEqual({});
     expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({
-      [baseImage.relativePath]: { metadata: "animate-raw", action: "dance" },
+      [baseImage.relativePath]: { metadata: "animate-raw", action: "dance", prompt: "" },
     });
     expect(await readToExtendEntries(TEMP_ROOT)).toEqual({
-      [video.relativePath]: { metadata: "extend-raw", action: "dance" },
+      [video.relativePath]: { metadata: "extend-raw", action: "dance", prompt: "" },
     });
   });
 });

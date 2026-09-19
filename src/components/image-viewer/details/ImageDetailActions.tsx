@@ -3,6 +3,7 @@
 import AnimationIcon from "@mui/icons-material/Animation";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import HighQualityIcon from "@mui/icons-material/HighQuality";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { Alert, Button, ButtonGroup, CircularProgress } from "@mui/material";
@@ -32,6 +33,11 @@ const ANIMATE_BUTTON_ACTIVE_SX = {
   ...ANIMATE_BUTTON_SX,
   borderColor: "#ff9800",
   bgcolor: "rgba(255,152,0,0.24)",
+};
+const EDIT_PROMPT_BUTTON_SX = {
+  borderColor: "rgba(255,255,255,0.3)",
+  color: "#4caf50",
+  "&:hover": { borderColor: "#4caf50", bgcolor: "rgba(76,175,80,0.08)" },
 };
 const DELETE_BUTTON_SX = {
   borderColor: "rgba(255,255,255,0.3)",
@@ -68,6 +74,7 @@ interface IImageDetailActionsProps {
   extendAction: string | null;
   extendActionLabel: string;
   onOpenExtendMenu: (event: React.MouseEvent<HTMLElement>) => void;
+  onOpenEditPrompt: () => void;
   isDeleting: boolean;
   deleteLabel: string;
   onDelete: () => void;
@@ -98,10 +105,13 @@ export function ImageDetailActions({
   extendAction,
   extendActionLabel,
   onOpenExtendMenu,
+  onOpenEditPrompt,
   isDeleting,
   deleteLabel,
   onDelete,
 }: Readonly<IImageDetailActionsProps>) {
+  const canEditPrompt = isVideo ? Boolean(extendAction) : Boolean(animateAction);
+
   return (
     <>
       {deleteError && (
@@ -183,6 +193,11 @@ export function ImageDetailActions({
             sx={extendAction ? ANIMATE_BUTTON_ACTIVE_SX : ANIMATE_BUTTON_SX}
           >
             {isTogglingExtend ? <CircularProgress size={18} /> : extendActionLabel}
+          </Button>
+        )}
+        {canEditPrompt && (
+          <Button startIcon={<EditIcon />} onClick={onOpenEditPrompt} sx={EDIT_PROMPT_BUTTON_SX}>
+            Edit Animation
           </Button>
         )}
         <Button

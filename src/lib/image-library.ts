@@ -75,6 +75,9 @@ interface IStyleConfig {
 export interface IToAnimateEntry {
   metadata: string;
   action: string;
+  // Required in the type, but tolerated as missing on read (defaults to "") so pre-existing
+  // to-animate.json/to-extends.json entries written before Edit Animation existed still parse.
+  prompt: string;
 }
 
 // Same shape as IToAnimateEntry (a video-source mirror of it, for the Extend mark) - kept as a
@@ -703,12 +706,36 @@ const isPlainObjectRecord = (value: unknown): value is Record<string, unknown> =
   return typeof value === "object" && value !== null && !Array.isArray(value);
 };
 
-const isToAnimateEntry = (value: unknown): value is IToAnimateEntry => {
+// Accepts entries with no prompt field (or a malformed one) at parse time - normalizeToAnimateEntry
+// below is what actually guarantees the IToAnimateEntry contract's prompt: string.
+const isToAnimateEntry = (
+  value: unknown,
+): value is { metadata: string; action: string; prompt?: unknown } => {
   return (
     isPlainObjectRecord(value) &&
     typeof value.metadata === "string" &&
     typeof value.action === "string"
   );
+};
+
+const normalizeToAnimateEntry = (entry: {
+  metadata: string;
+  action: string;
+  prompt?: unknown;
+}): IToAnimateEntry => ({
+  metadata: entry.metadata,
+  action: entry.action,
+  prompt: typeof entry.prompt === "string" ? entry.prompt : "",
+});
+
+const normalizeToAnimateEntries = (
+  entries: Record<string, { metadata: string; action: string; prompt?: unknown }>,
+): Record<string, IToAnimateEntry> => {
+  const normalizedEntries: Record<string, IToAnimateEntry> = {};
+  for (const [relativePath, entry] of Object.entries(entries)) {
+    normalizedEntries[relativePath] = normalizeToAnimateEntry(entry);
+  }
+  return normalizedEntries;
 };
 
 const isRawMetadataEntry = (value: unknown): value is string => typeof value === "string";
@@ -801,7 +828,11 @@ export const removeToUpscaleEntry = async (
 export const readToAnimateEntries = async (
   rootPath: string,
 ): Promise<Record<string, IToAnimateEntry>> => {
-  return readMarkedImageMap(path.join(rootPath, TO_ANIMATE_FILE_NAME), isToAnimateEntry);
+  const entries = await readMarkedImageMap(
+    path.join(rootPath, TO_ANIMATE_FILE_NAME),
+    isToAnimateEntry,
+  );
+  return normalizeToAnimateEntries(entries);
 };
 
 export const setToAnimateEntry = async (
@@ -809,11 +840,12 @@ export const setToAnimateEntry = async (
   relativePath: string,
   metadata: string,
   action: string,
+  prompt: string,
 ): Promise<void> => {
   const filePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
   await withMarkedImageFileLock(filePath, async () => {
     const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
-    entries[relativePath] = { metadata, action };
+    entries[relativePath] = { metadata, action, prompt };
     await writeMarkedImageMap(filePath, entries);
   });
 };
@@ -868,7 +900,11 @@ export const removeToUpscaleVideoEntry = async (
 export const readToExtendEntries = async (
   rootPath: string,
 ): Promise<Record<string, IToExtendEntry>> => {
-  return readMarkedImageMap(path.join(rootPath, TO_EXTEND_FILE_NAME), isToAnimateEntry);
+  const entries = await readMarkedImageMap(
+    path.join(rootPath, TO_EXTEND_FILE_NAME),
+    isToAnimateEntry,
+  );
+  return normalizeToAnimateEntries(entries);
 };
 
 export const setToExtendEntry = async (
@@ -876,11 +912,12 @@ export const setToExtendEntry = async (
   relativePath: string,
   metadata: string,
   action: string,
+  prompt: string,
 ): Promise<void> => {
   const filePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
   await withMarkedImageFileLock(filePath, async () => {
     const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
-    entries[relativePath] = { metadata, action };
+    entries[relativePath] = { metadata, action, prompt };
     await writeMarkedImageMap(filePath, entries);
   });
 };
@@ -967,6 +1004,7 @@ interface IPendingAnimationClaim {
   sourceMediaType: TMediaType;
   action: string;
   metadata: string;
+  prompt: string;
   markFile: "animate" | "extend";
 }
 
@@ -1008,6 +1046,7 @@ const buildPendingAnimationClaims = (
         sourceMediaType,
         action: entry.action,
         metadata: entry.metadata,
+        prompt: entry.prompt,
         markFile,
       };
 
@@ -1163,14 +1202,18 @@ export const reconcilePendingAnimationMarks = async (
           sourceRelativePath: claim.sourceRelativePath,
           sourceMediaType: claim.sourceMediaType,
           action: claim.action,
-          prompt: "",
+          prompt: claim.prompt,
           metadata: claim.metadata,
           linkedAt,
         };
 
         // The entry reconciliation actually observed when it built this claim, used below to
         // compare-and-delete rather than blindly deleting by key.
-        const fulfilledEntry = { metadata: claim.metadata, action: claim.action };
+        const fulfilledEntry = {
+          metadata: claim.metadata,
+          action: claim.action,
+          prompt: claim.prompt,
+        };
         if (claim.markFile === "animate") {
           fulfilledAnimateClaims.push({
             relativePath: claim.sourceRelativePath,

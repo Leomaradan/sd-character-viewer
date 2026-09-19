@@ -1,3 +1,5 @@
+import type { IAnimationConfig } from "@/types/library";
+
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
 import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
@@ -76,7 +78,7 @@ export const GET = async (request: Request) => {
 
     return Response.json({
       upscaleVideo: requestedPath in upscaleVideoEntries,
-      extend: extendEntry ? { action: extendEntry.action } : null,
+      extend: extendEntry ? { action: extendEntry.action, prompt: extendEntry.prompt } : null,
     });
   }
 
@@ -89,7 +91,7 @@ export const GET = async (request: Request) => {
 
   return Response.json({
     upscale: requestedPath in upscaleEntries,
-    animate: animateEntry ? { action: animateEntry.action } : null,
+    animate: animateEntry ? { action: animateEntry.action, prompt: animateEntry.prompt } : null,
   });
 };
 
@@ -98,13 +100,16 @@ interface IMarkRequestBody {
   type?: unknown;
   action?: unknown;
   metadata?: unknown;
+  prompt?: unknown;
 }
 
 // Shared by the animate and extend mark types: both key off a node in the (possibly nested)
-// animations config, resolved by its stable `key` rather than display name.
+// animations config, resolved by its stable `key` rather than display name. Returns the resolved
+// node itself (not just its key) so callers can seed a mark's prompt from the node's configured
+// default when the client doesn't send one.
 const resolveAnimationAction = async (
   rawAction: unknown,
-): Promise<{ action: string } | { error: Response }> => {
+): Promise<{ action: string; node: IAnimationConfig } | { error: Response }> => {
   const action = typeof rawAction === "string" ? rawAction.trim() : "";
   if (!action) {
     return { error: new Response("Invalid animation action", { status: 400 }) };
@@ -117,25 +122,33 @@ const resolveAnimationAction = async (
     return { error: new Response("Could not read the image library", { status: 500 }) };
   }
 
-  if (!findAnimationNodeByKey(library.animations, action)) {
+  const node = findAnimationNodeByKey(library.animations, action);
+  if (!node) {
     return { error: new Response("Unknown animation action", { status: 400 }) };
   }
 
-  return { action };
+  return { action, node };
 };
+
+// Edit Animation reuses this same PUT upsert with an explicit `prompt` - omitting it (as the
+// initial mark-creation flow does) seeds from the resolved node's configured prompt instead.
+const resolveMarkPrompt = (rawPrompt: unknown, node: IAnimationConfig): string =>
+  typeof rawPrompt === "string" ? rawPrompt : node.prompt;
 
 const handleAnimateMark = async (
   rootPath: string,
   requestedPath: string,
   rawAction: unknown,
   metadata: string,
+  rawPrompt: unknown,
 ): Promise<Response> => {
   const resolved = await resolveAnimationAction(rawAction);
   if ("error" in resolved) {
     return resolved.error;
   }
 
-  await setToAnimateEntry(rootPath, requestedPath, metadata, resolved.action);
+  const prompt = resolveMarkPrompt(rawPrompt, resolved.node);
+  await setToAnimateEntry(rootPath, requestedPath, metadata, resolved.action, prompt);
   return new Response(null, { status: 204 });
 };
 
@@ -152,14 +165,16 @@ const handleExtendMark = async (
   rootPath: string,
   requestedPath: string,
   rawAction: unknown,
+  rawPrompt: unknown,
 ): Promise<Response> => {
   const resolved = await resolveAnimationAction(rawAction);
   if ("error" in resolved) {
     return resolved.error;
   }
 
+  const prompt = resolveMarkPrompt(rawPrompt, resolved.node);
   const metadata = await resolveVideoMetadata(rootPath, requestedPath);
-  await setToExtendEntry(rootPath, requestedPath, metadata, resolved.action);
+  await setToExtendEntry(rootPath, requestedPath, metadata, resolved.action, prompt);
   return new Response(null, { status: 204 });
 };
 
@@ -208,7 +223,7 @@ export const PUT = async (request: Request) => {
   }
 
   if (body.type === "animate") {
-    return handleAnimateMark(rootPath, requestedPath, body.action, metadata);
+    return handleAnimateMark(rootPath, requestedPath, body.action, metadata, body.prompt);
   }
 
   if (body.type === "upscaleVideo") {
@@ -218,7 +233,7 @@ export const PUT = async (request: Request) => {
   }
 
   if (body.type === "extend") {
-    return handleExtendMark(rootPath, requestedPath, body.action);
+    return handleExtendMark(rootPath, requestedPath, body.action, body.prompt);
   }
 
   return new Response("Invalid mark type", { status: 400 });
