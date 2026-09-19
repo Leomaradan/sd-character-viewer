@@ -1147,44 +1147,46 @@ export const reconcilePendingAnimationMarks = async (
   animations: IAnimationConfig[],
 ): Promise<void> => {
   try {
-    const [animateEntries, extendEntries] = await Promise.all([
-      readToAnimateEntries(rootPath),
-      readToExtendEntries(rootPath),
-    ]);
-
-    const itemsByRelativePath = new Map(imageItems.map((item) => [item.relativePath, item]));
-    const claimsByGroupKey = buildPendingAnimationClaims(
-      animateEntries,
-      extendEntries,
-      itemsByRelativePath,
-      animations,
-    );
-
-    if (claimsByGroupKey.size === 0) {
-      return;
-    }
-
-    // A video that is itself the source of one of these claims (an extend mark's source is a
-    // video) must never also be treated as an unclaimed candidate output - see
-    // buildUnclaimedVideoCandidates.
-    const claimSourceRelativePaths = new Set<string>();
-    for (const claims of claimsByGroupKey.values()) {
-      for (const claim of claims) {
-        claimSourceRelativePaths.add(claim.sourceRelativePath);
-      }
-    }
-
     const toAnimateFilePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
     const toExtendFilePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
     const videoLinksFilePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
 
-    // Reading which videos are still unclaimed, matching them to claims, and persisting the
-    // result all happen under one lock on video-links.json: otherwise two concurrent
-    // reconciliation passes (two uncached readImageLibrary() calls racing each other) could both
-    // read the same video as unclaimed before either writes, each link it to a different claim,
-    // and both free their respective mark - only the last write actually survives, so one of the
-    // two source associations is lost even though its mark is gone.
+    // Reading pending marks, reading which videos are still unclaimed, matching them, and
+    // persisting the result all happen under one lock on video-links.json: otherwise two
+    // concurrent reconciliation passes (two uncached readImageLibrary() calls racing each other)
+    // could interleave in two ways - both read the same video as unclaimed before either writes
+    // and each link it to a different claim, or a second pass builds its claims from a stale
+    // mark snapshot taken before a first pass already fulfilled and removed that mark, then
+    // re-matches the same (already-fulfilled) claim to a different video. Either way one of the
+    // resulting associations is spurious or lost even though its mark is gone.
     await withMarkedImageFileLock(videoLinksFilePath, async () => {
+      const [animateEntries, extendEntries] = await Promise.all([
+        readToAnimateEntries(rootPath),
+        readToExtendEntries(rootPath),
+      ]);
+
+      const itemsByRelativePath = new Map(imageItems.map((item) => [item.relativePath, item]));
+      const claimsByGroupKey = buildPendingAnimationClaims(
+        animateEntries,
+        extendEntries,
+        itemsByRelativePath,
+        animations,
+      );
+
+      if (claimsByGroupKey.size === 0) {
+        return;
+      }
+
+      // A video that is itself the source of one of these claims (an extend mark's source is a
+      // video) must never also be treated as an unclaimed candidate output - see
+      // buildUnclaimedVideoCandidates.
+      const claimSourceRelativePaths = new Set<string>();
+      for (const claims of claimsByGroupKey.values()) {
+        for (const claim of claims) {
+          claimSourceRelativePaths.add(claim.sourceRelativePath);
+        }
+      }
+
       const currentLinkEntries = await readMarkedImageMap(videoLinksFilePath, isVideoLink);
       const candidatesByGroupKey = buildUnclaimedVideoCandidates(
         imageItems,
@@ -2237,13 +2239,20 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
     indexState.imageItems,
     effectiveStyleConfig.animations,
   );
-  const { cache: firstSeenCache, available: cacheReadable } = await loadFirstSeenCache(rootPath);
-  const hasCacheChanges = markNewImages(indexState.imageItems, Date.now(), firstSeenCache);
-
+  // Locked read-modify-write, same as removeFirstSeenCacheEntry/markImageAsSeen: this file can
+  // also be written concurrently by a "mark as seen" request or another in-flight rebuild, and
+  // without a lock the last writer's snapshot silently discards the others' changes.
+  let cacheReadable = true;
   let cacheWritable = true;
-  if (hasCacheChanges) {
-    cacheWritable = await persistFirstSeenCache(rootPath, firstSeenCache);
-  }
+  await withMarkedImageFileLock(getFirstSeenCachePath(rootPath), async () => {
+    const loadedCache = await loadFirstSeenCache(rootPath);
+    cacheReadable = loadedCache.available;
+
+    const hasCacheChanges = markNewImages(indexState.imageItems, Date.now(), loadedCache.cache);
+    if (hasCacheChanges) {
+      cacheWritable = await persistFirstSeenCache(rootPath, loadedCache.cache);
+    }
+  });
 
   const cacheAvailable = cacheReadable && cacheWritable;
 
@@ -2334,12 +2343,19 @@ export const removeFirstSeenCacheEntry = async (relativePath: string): Promise<v
   }
 
   const normalizedPath = normalizeRelativePath(relativePath);
-  const { cache: firstSeenCache } = await loadFirstSeenCache(rootPath);
 
-  if (firstSeenCache.has(normalizedPath)) {
-    firstSeenCache.delete(normalizedPath);
-    await persistFirstSeenCache(rootPath, firstSeenCache);
-  }
+  // Locked read-modify-write: this file is also touched by readImageLibrary()'s rebuild path and
+  // by markImageAsSeen, and without a lock two concurrent writers (e.g. a rebuild in flight while
+  // an image is deleted) can each read the same snapshot and the second write silently discards
+  // the first one's change.
+  await withMarkedImageFileLock(getFirstSeenCachePath(rootPath), async () => {
+    const { cache: firstSeenCache } = await loadFirstSeenCache(rootPath);
+
+    if (firstSeenCache.has(normalizedPath)) {
+      firstSeenCache.delete(normalizedPath);
+      await persistFirstSeenCache(rootPath, firstSeenCache);
+    }
+  });
 };
 
 // Called when an image/video's Details view is opened, so it drops out of `isNew` (and the "show
@@ -2358,11 +2374,23 @@ export const markImageAsSeen = async (relativePath: string): Promise<void> => {
   }
 
   const normalizedPath = normalizeRelativePath(relativePath);
-  const { cache: firstSeenCache } = await loadFirstSeenCache(rootPath);
 
-  if (firstSeenCache.get(normalizedPath) !== 0) {
+  // Locked read-modify-write, same as removeFirstSeenCacheEntry above: without it, concurrent
+  // "seen" requests (or one racing readImageLibrary()'s own rebuild) can each read the same
+  // snapshot and the last write wins, silently erasing another image's just-persisted change.
+  const didChange = await withMarkedImageFileLock(getFirstSeenCachePath(rootPath), async () => {
+    const { cache: firstSeenCache } = await loadFirstSeenCache(rootPath);
+
+    if (firstSeenCache.get(normalizedPath) === 0) {
+      return false;
+    }
+
     firstSeenCache.set(normalizedPath, 0);
     await persistFirstSeenCache(rootPath, firstSeenCache);
+    return true;
+  });
+
+  if (didChange) {
     await removeLibraryIndexCache();
   }
 };

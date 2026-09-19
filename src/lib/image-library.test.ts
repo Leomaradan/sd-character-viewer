@@ -1925,4 +1925,30 @@ describe("markImageAsSeen", () => {
     expect(writeFileSpy).not.toHaveBeenCalled();
     writeFileSpy.mockRestore();
   });
+
+  it("persists both entries when two different images are marked seen concurrently", async () => {
+    const tempRoot = "/tmp/sd-mark-seen-concurrent";
+    await fs.mkdir(tempRoot, { recursive: true });
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const cacheDirPath = "/tmp/sd-mark-seen-concurrent-cache";
+    process.env.SD_CACHE_DIR = cacheDirPath;
+    await fs.mkdir(cacheDirPath, { recursive: true });
+
+    // Both calls lock on the same first-seen-cache file; without that lock, one read-modify-write
+    // cycle would clobber the other's change, losing one image's seen state.
+    await Promise.all([
+      markImageAsSeen("characters/3d/Anna/Base.png"),
+      markImageAsSeen("characters/3d/Anna/Full.png"),
+    ]);
+
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const firstSeenCachePath = path.join(cacheDirPath, `${rootHash}.first-seen.json`);
+    const persisted = JSON.parse(await fs.readFile(firstSeenCachePath, "utf8")) as Record<
+      string,
+      number
+    >;
+    expect(persisted["characters/3d/Anna/Base.png"]).toBe(0);
+    expect(persisted["characters/3d/Anna/Full.png"]).toBe(0);
+  });
 });
