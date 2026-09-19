@@ -132,6 +132,7 @@ interface IImageDetailModalProps {
   canDeleteImage?: boolean;
   onClose: () => void;
   onDeleteSuccess?: () => void;
+  onImageSeen?: (relativePath: string) => void;
   canNavigatePrevious?: boolean;
   canNavigateNext?: boolean;
   onNavigatePrevious?: () => void;
@@ -296,6 +297,7 @@ export function ImageDetailModal({
   canDeleteImage = false,
   onClose,
   onDeleteSuccess,
+  onImageSeen,
   canNavigatePrevious = false,
   canNavigateNext = false,
   onNavigatePrevious,
@@ -355,6 +357,22 @@ export function ImageDetailModal({
   const handleVideoClick = useCallback(() => {
     setVideoControlsState({ path: relativePath ?? null, shown: true });
   }, [relativePath]);
+
+  // Opening Details on a new image/video dismisses its "new" badge and drops it from the "show
+  // new only" filter right away, rather than waiting out the server-side new-image time window -
+  // mirrors the optimistic-then-persisted pattern the mark toggles below use.
+  useEffect(() => {
+    if (!relativePath || !image?.isNew) {
+      return () => {};
+    }
+
+    onImageSeen?.(relativePath);
+    fetch(`/api/image/seen?path=${encodeURIComponent(relativePath)}`, { method: "POST" }).catch(
+      () => {},
+    );
+
+    return () => {};
+  }, [relativePath, image?.isNew, onImageSeen]);
 
   useEffect(() => {
     if (!image || isConfirmOpen || isDeleting || isEditPromptOpen) {

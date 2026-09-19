@@ -223,6 +223,22 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     setLibraryRefreshToken((currentToken) => currentToken + 1);
   }, []);
 
+  const handleImageSeen = useCallback((relativePath: string) => {
+    const markSeen = (item: IImageItem): IImageItem =>
+      item.relativePath === relativePath && item.isNew ? { ...item, isNew: false } : item;
+
+    setLibrary((currentLibrary) => ({
+      ...currentLibrary,
+      images: currentLibrary.images.map(markSeen),
+    }));
+    setModalFilteredImages((currentImages) => currentImages.map(markSeen));
+    setSelectedImageForModal((currentImage) =>
+      currentImage && currentImage.relativePath === relativePath
+        ? { ...currentImage, isNew: false }
+        : currentImage,
+    );
+  }, []);
+
   const handleImageDeleted = useCallback(() => {
     setSelectedImageForModal(null);
     setModalFilteredImages([]);
@@ -649,6 +665,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         canDeleteImage={canDeleteImage}
         onClose={handleCloseImageModal}
         onDeleteSuccess={handleImageDeleted}
+        onImageSeen={handleImageSeen}
         canNavigatePrevious={canNavigateModalPrevious}
         canNavigateNext={canNavigateModalNext}
         onNavigatePrevious={handleModalPrevious}

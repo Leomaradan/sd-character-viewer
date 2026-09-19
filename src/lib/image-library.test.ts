@@ -22,6 +22,7 @@ import {
   getExtraImagesRootPathsFromEnv,
   isDuplicateGroupReviewed,
   isVideoFilePath,
+  markImageAsSeen,
   migrateVideoLink,
   normalizeAnimationsConfig,
   parsePoseName,
@@ -1652,6 +1653,29 @@ describe("readToAnimateEntries / setToAnimateEntry / removeToAnimateEntry", () =
       "d.png": { metadata: "raw", action: "Pan", prompt: "" },
     });
   });
+
+  it("preserves the existing entry's metadata when called with metadata undefined", async () => {
+    const tempRoot = "/tmp/sd-animate-metadata-undefined-preserve";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToAnimateEntry(tempRoot, "a.png", "Steps: 30, Seed: 1", "Zoom In", "old prompt");
+    await setToAnimateEntry(tempRoot, "a.png", undefined, "Zoom In", "edited by user");
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "a.png": { metadata: "Steps: 30, Seed: 1", action: "Zoom In", prompt: "edited by user" },
+    });
+  });
+
+  it('defaults metadata to "" when called with metadata undefined and no entry exists yet', async () => {
+    const tempRoot = "/tmp/sd-animate-metadata-undefined-new";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToAnimateEntry(tempRoot, "a.png", undefined, "Zoom In", "");
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "a.png": { metadata: "", action: "Zoom In", prompt: "" },
+    });
+  });
 });
 
 describe("readToUpscaleVideoEntries / setToUpscaleVideoEntry / removeToUpscaleVideoEntry", () => {
@@ -1855,5 +1879,50 @@ describe("removeMarkedActionEntries", () => {
     expect(await readToAnimateEntries(tempRoot)).toEqual({});
     expect(await readToExtendEntries(tempRoot)).toEqual({});
     expect(await readToUpscaleVideoEntries(tempRoot)).toEqual({});
+  });
+});
+
+describe("markImageAsSeen", () => {
+  it("is a no-op when no images root is configured", async () => {
+    delete process.env.SD_IMAGES_ROOT;
+
+    await expect(markImageAsSeen("characters/3d/Anna/Base.png")).resolves.toBeUndefined();
+  });
+
+  it("sets firstSeenAt to 0 so the image no longer reads as new, and invalidates the library index cache", async () => {
+    const tempRoot = "/tmp/sd-mark-seen";
+    await fs.mkdir(tempRoot, { recursive: true });
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const cacheDirPath = "/tmp/sd-mark-seen-cache";
+    process.env.SD_CACHE_DIR = cacheDirPath;
+    await fs.mkdir(cacheDirPath, { recursive: true });
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const libraryIndexCachePath = path.join(cacheDirPath, `${rootHash}.library-index.json`);
+    await fs.writeFile(libraryIndexCachePath, "{}", "utf8");
+
+    await markImageAsSeen("characters/3d/Anna/Base.png");
+
+    const firstSeenCachePath = path.join(cacheDirPath, `${rootHash}.first-seen.json`);
+    const persisted = JSON.parse(await fs.readFile(firstSeenCachePath, "utf8")) as Record<
+      string,
+      number
+    >;
+    expect(persisted["characters/3d/Anna/Base.png"]).toBe(0);
+    await expect(fs.access(libraryIndexCachePath)).rejects.toThrow();
+  });
+
+  it("is idempotent - a second call for an already-seen path makes no further writes", async () => {
+    const tempRoot = "/tmp/sd-mark-seen-idempotent";
+    await fs.mkdir(tempRoot, { recursive: true });
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    await markImageAsSeen("characters/3d/Anna/Base.png");
+    const writeFileSpy = vi.spyOn(fs, "writeFile");
+
+    await markImageAsSeen("characters/3d/Anna/Base.png");
+
+    expect(writeFileSpy).not.toHaveBeenCalled();
+    writeFileSpy.mockRestore();
   });
 });

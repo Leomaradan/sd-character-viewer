@@ -836,17 +836,23 @@ export const readToAnimateEntries = async (
   return normalizeToAnimateEntries(entries);
 };
 
+// `metadata` omitted (undefined) means "preserve whatever this mark already has" - used by Edit
+// Animation, which only ever edits the prompt. Resolving that fallback here, inside the same
+// lock as the read-modify-write, keeps it atomic: resolving it in the caller beforehand (reading
+// the entry, then calling this with the resolved string) would race a concurrent mark update
+// landing in between, silently reverting it once this write lands.
 export const setToAnimateEntry = async (
   rootPath: string,
   relativePath: string,
-  metadata: string,
+  metadata: string | undefined,
   action: string,
   prompt: string,
 ): Promise<void> => {
   const filePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
   await withMarkedImageFileLock(filePath, async () => {
     const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
-    entries[relativePath] = { metadata, action, prompt };
+    const resolvedMetadata = metadata ?? entries[relativePath]?.metadata ?? "";
+    entries[relativePath] = { metadata: resolvedMetadata, action, prompt };
     await writeMarkedImageMap(filePath, entries);
   });
 };
@@ -1141,10 +1147,9 @@ export const reconcilePendingAnimationMarks = async (
   animations: IAnimationConfig[],
 ): Promise<void> => {
   try {
-    const [animateEntries, extendEntries, videoLinks] = await Promise.all([
+    const [animateEntries, extendEntries] = await Promise.all([
       readToAnimateEntries(rootPath),
       readToExtendEntries(rootPath),
-      readVideoLinks(rootPath),
     ]);
 
     const itemsByRelativePath = new Map(imageItems.map((item) => [item.relativePath, item]));
@@ -1169,82 +1174,89 @@ export const reconcilePendingAnimationMarks = async (
       }
     }
 
-    const candidatesByGroupKey = buildUnclaimedVideoCandidates(
-      imageItems,
-      videoLinks,
-      claimSourceRelativePaths,
-    );
-
-    const newLinksByRelativePath: Record<string, IVideoLink> = {};
-    const fulfilledAnimateClaims: { relativePath: string; entry: IToAnimateEntry }[] = [];
-    const fulfilledExtendClaims: { relativePath: string; entry: IToExtendEntry }[] = [];
-    const linkedAt = Date.now();
-
-    for (const [groupKey, claims] of claimsByGroupKey.entries()) {
-      const candidates = candidatesByGroupKey.get(groupKey);
-      if (!candidates) {
-        continue;
-      }
-
-      const pairCount = Math.min(claims.length, candidates.length);
-      for (let index = 0; index < pairCount; index += 1) {
-        const claim = claims[index];
-        const candidate = candidates[index];
-
-        newLinksByRelativePath[candidate.relativePath] = {
-          sourceRelativePath: claim.sourceRelativePath,
-          sourceMediaType: claim.sourceMediaType,
-          action: claim.action,
-          prompt: claim.prompt,
-          metadata: claim.metadata,
-          linkedAt,
-        };
-
-        // The entry reconciliation actually observed when it built this claim, used below to
-        // compare-and-delete rather than blindly deleting by key.
-        const fulfilledEntry = {
-          metadata: claim.metadata,
-          action: claim.action,
-          prompt: claim.prompt,
-        };
-        if (claim.markFile === "animate") {
-          fulfilledAnimateClaims.push({
-            relativePath: claim.sourceRelativePath,
-            entry: fulfilledEntry,
-          });
-        } else {
-          fulfilledExtendClaims.push({
-            relativePath: claim.sourceRelativePath,
-            entry: fulfilledEntry,
-          });
-        }
-      }
-    }
-
-    if (Object.keys(newLinksByRelativePath).length === 0) {
-      return;
-    }
-
-    // Persist the links before removing the marks that produced them: if this write fails (e.g.
-    // disk full), the marks stay pending for a future reconciliation pass to retry, rather than
-    // being deleted with no matching link to show for it.
-    const videoLinksFilePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
-    await withMarkedImageFileLock(videoLinksFilePath, async () => {
-      const currentEntries = await readMarkedImageMap(videoLinksFilePath, isVideoLink);
-      Object.assign(currentEntries, newLinksByRelativePath);
-      await writeMarkedImageMap(videoLinksFilePath, currentEntries);
-    });
-
     const toAnimateFilePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
     const toExtendFilePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
-    await Promise.all([
-      ...fulfilledAnimateClaims.map(({ relativePath, entry }) =>
-        removeMarkedImageMapEntryIfUnchanged(toAnimateFilePath, relativePath, entry),
-      ),
-      ...fulfilledExtendClaims.map(({ relativePath, entry }) =>
-        removeMarkedImageMapEntryIfUnchanged(toExtendFilePath, relativePath, entry),
-      ),
-    ]);
+    const videoLinksFilePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
+
+    // Reading which videos are still unclaimed, matching them to claims, and persisting the
+    // result all happen under one lock on video-links.json: otherwise two concurrent
+    // reconciliation passes (two uncached readImageLibrary() calls racing each other) could both
+    // read the same video as unclaimed before either writes, each link it to a different claim,
+    // and both free their respective mark - only the last write actually survives, so one of the
+    // two source associations is lost even though its mark is gone.
+    await withMarkedImageFileLock(videoLinksFilePath, async () => {
+      const currentLinkEntries = await readMarkedImageMap(videoLinksFilePath, isVideoLink);
+      const candidatesByGroupKey = buildUnclaimedVideoCandidates(
+        imageItems,
+        currentLinkEntries,
+        claimSourceRelativePaths,
+      );
+
+      const newLinksByRelativePath: Record<string, IVideoLink> = {};
+      const fulfilledAnimateClaims: { relativePath: string; entry: IToAnimateEntry }[] = [];
+      const fulfilledExtendClaims: { relativePath: string; entry: IToExtendEntry }[] = [];
+      const linkedAt = Date.now();
+
+      for (const [groupKey, claims] of claimsByGroupKey.entries()) {
+        const candidates = candidatesByGroupKey.get(groupKey);
+        if (!candidates) {
+          continue;
+        }
+
+        const pairCount = Math.min(claims.length, candidates.length);
+        for (let index = 0; index < pairCount; index += 1) {
+          const claim = claims[index];
+          const candidate = candidates[index];
+
+          newLinksByRelativePath[candidate.relativePath] = {
+            sourceRelativePath: claim.sourceRelativePath,
+            sourceMediaType: claim.sourceMediaType,
+            action: claim.action,
+            prompt: claim.prompt,
+            metadata: claim.metadata,
+            linkedAt,
+          };
+
+          // The entry reconciliation actually observed when it built this claim, used below to
+          // compare-and-delete rather than blindly deleting by key.
+          const fulfilledEntry = {
+            metadata: claim.metadata,
+            action: claim.action,
+            prompt: claim.prompt,
+          };
+          if (claim.markFile === "animate") {
+            fulfilledAnimateClaims.push({
+              relativePath: claim.sourceRelativePath,
+              entry: fulfilledEntry,
+            });
+          } else {
+            fulfilledExtendClaims.push({
+              relativePath: claim.sourceRelativePath,
+              entry: fulfilledEntry,
+            });
+          }
+        }
+      }
+
+      if (Object.keys(newLinksByRelativePath).length === 0) {
+        return;
+      }
+
+      // Persist the links before removing the marks that produced them: if this write fails
+      // (e.g. disk full), the marks stay pending for a future reconciliation pass to retry,
+      // rather than being deleted with no matching link to show for it.
+      Object.assign(currentLinkEntries, newLinksByRelativePath);
+      await writeMarkedImageMap(videoLinksFilePath, currentLinkEntries);
+
+      await Promise.all([
+        ...fulfilledAnimateClaims.map(({ relativePath, entry }) =>
+          removeMarkedImageMapEntryIfUnchanged(toAnimateFilePath, relativePath, entry),
+        ),
+        ...fulfilledExtendClaims.map(({ relativePath, entry }) =>
+          removeMarkedImageMapEntryIfUnchanged(toExtendFilePath, relativePath, entry),
+        ),
+      ]);
+    });
   } catch {
     // Best-effort: see the comment above.
   }
@@ -2327,6 +2339,31 @@ export const removeFirstSeenCacheEntry = async (relativePath: string): Promise<v
   if (firstSeenCache.has(normalizedPath)) {
     firstSeenCache.delete(normalizedPath);
     await persistFirstSeenCache(rootPath, firstSeenCache);
+  }
+};
+
+// Called when an image/video's Details view is opened, so it drops out of `isNew` (and the "show
+// new only" filter) immediately rather than waiting out NEW_IMAGE_WINDOW_MS. Sets firstSeenAt to
+// 0 rather than deleting the cache entry - a delete would re-seed it at "now" on the next
+// uncached rebuild (markNewImages treats a missing entry as freshly discovered), making the image
+// look new again instead of seen. Also drops the library index cache: a cache hit recomputes
+// `isNew` from the *cached* image's firstSeenAt (see refreshCachedLibrary) rather than re-reading
+// this file, so without invalidating it the change wouldn't be visible until something else
+// happened to trigger a rebuild.
+export const markImageAsSeen = async (relativePath: string): Promise<void> => {
+  const rootPath = getImagesRootPathFromEnv();
+
+  if (!rootPath) {
+    return;
+  }
+
+  const normalizedPath = normalizeRelativePath(relativePath);
+  const { cache: firstSeenCache } = await loadFirstSeenCache(rootPath);
+
+  if (firstSeenCache.get(normalizedPath) !== 0) {
+    firstSeenCache.set(normalizedPath, 0);
+    await persistFirstSeenCache(rootPath, firstSeenCache);
+    await removeLibraryIndexCache();
   }
 };
 

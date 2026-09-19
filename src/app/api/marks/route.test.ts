@@ -498,7 +498,7 @@ describe("/api/marks PUT", () => {
     expect(response.status).toBe(204);
   });
 
-  it("preserves the mark's existing metadata when Edit Animation omits it (prompt-only edit)", async () => {
+  it("passes metadata through as undefined when Edit Animation omits it (prompt-only edit), letting setToAnimateEntry resolve it atomically", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
     vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
@@ -508,9 +508,6 @@ describe("/api/marks PUT", () => {
     vi.mocked(readImageLibrary).mockResolvedValue({
       animations: [{ key: "Zoom In", name: "Zoom In", prompt: "" }],
     } as never);
-    vi.mocked(readToAnimateEntries).mockResolvedValue({
-      "a.png": { metadata: "Steps: 30, Seed: 1", action: "Zoom In", prompt: "old prompt" },
-    });
     vi.mocked(setToAnimateEntry).mockResolvedValue(undefined);
 
     const response = await PUT(
@@ -525,35 +522,10 @@ describe("/api/marks PUT", () => {
     expect(setToAnimateEntry).toHaveBeenCalledWith(
       "/tmp",
       "a.png",
-      "Steps: 30, Seed: 1",
+      undefined,
       "Zoom In",
       "edited by user",
     );
-    expect(response.status).toBe(204);
-  });
-
-  it('defaults metadata to "" for a brand-new mark when the client omits it', async () => {
-    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
-    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
-    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
-    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
-    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    vi.mocked(readImageLibrary).mockResolvedValue({
-      animations: [{ key: "Zoom In", name: "Zoom In", prompt: "" }],
-    } as never);
-    vi.mocked(readToAnimateEntries).mockResolvedValue({});
-    vi.mocked(setToAnimateEntry).mockResolvedValue(undefined);
-
-    const response = await PUT(
-      jsonRequest("http://localhost/api/marks", "PUT", {
-        path: "a.png",
-        type: "animate",
-        action: "Zoom In",
-      }),
-    );
-
-    expect(setToAnimateEntry).toHaveBeenCalledWith("/tmp", "a.png", "", "Zoom In", "");
     expect(response.status).toBe(204);
   });
 
