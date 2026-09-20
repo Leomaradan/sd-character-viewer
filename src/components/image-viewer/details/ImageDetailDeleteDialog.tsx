@@ -9,6 +9,7 @@ import {
   DialogContentText,
   DialogTitle,
 } from "@mui/material";
+import { useCallback } from "react";
 
 interface IImageDetailDeleteDialogProps {
   open: boolean;
@@ -29,8 +30,18 @@ export function ImageDetailDeleteDialog({
   onClose,
   onConfirm,
 }: Readonly<IImageDetailDeleteDialogProps>) {
+  const handleClose = useCallback(() => {
+    // Ignore backdrop-click/Escape while a delete is in flight - it isn't cancelable (the
+    // fetch keeps running), so closing here would just hide the dialog and let the user
+    // believe the delete didn't happen.
+    if (isDeleting) {
+      return;
+    }
+    onClose();
+  }, [isDeleting, onClose]);
+
   return (
-    <Dialog open={open} onClose={onClose}>
+    <Dialog open={open} onClose={handleClose}>
       <DialogTitle>{isVideo ? "Delete video?" : "Delete image?"}</DialogTitle>
       <DialogContent>
         <DialogContentText>

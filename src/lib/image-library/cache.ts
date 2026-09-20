@@ -184,7 +184,6 @@ const refreshCachedLibrary = (library: ILibraryData): ILibraryData => {
       ...image,
       isNew: now - image.firstSeenAt <= NEW_IMAGE_WINDOW_MS,
     })),
-    cacheAvailable: true,
   };
 };
 
@@ -251,7 +250,10 @@ export const writeLibraryIndexCache = async (
       directories,
       extraRootPaths,
       extraDirectories,
-      library: { ...library, cacheAvailable: true },
+      // Persist the caller's actual cacheAvailable (it already reflects whether the first-seen
+      // sync succeeded) rather than forcing true - otherwise a future cache hit would report the
+      // cache as available even though first-seen persistence is still broken.
+      library,
     };
 
     await fs.mkdir(path.dirname(cachePath), { recursive: true });

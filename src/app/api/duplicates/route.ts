@@ -19,6 +19,7 @@ import {
   removeFirstSeenCacheEntry,
   resolveImageFilePath,
   resolvePreviewFilePath,
+  TEMPORARY_RENAME_FILE_PREFIX,
   writeReviewedDuplicateGroups,
   type IReviewedDuplicateGroup,
 } from "@/lib/image-library";
@@ -101,7 +102,7 @@ const finalizeKeptFiles = async (params: {
   // concurrently can't race.
   const tempRenames = await Promise.all(
     pendingRenames.map(async (entry) => {
-      const tempFileName = `.duplicate-finder-tmp-${randomUUID()}.png`;
+      const tempFileName = `${TEMPORARY_RENAME_FILE_PREFIX}${randomUUID()}.png`;
       const currentFilePath = path.join(directory, entry.currentFileName);
       const tempFilePath = path.join(directory, tempFileName);
 

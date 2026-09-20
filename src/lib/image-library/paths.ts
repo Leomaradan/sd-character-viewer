@@ -67,6 +67,14 @@ export const isPreviewSidecarFileName = (fileName: string): boolean => {
   return lower.endsWith(PREVIEW_FILE_SUFFIX) || lower.endsWith(VIDEO_PREVIEW_FILE_SUFFIX);
 };
 
+// The duplicate-finder's two-phase rename (see /api/duplicates) briefly leaves a file under this
+// prefix while renumbering survivors. It must never be indexed as a real image - a concurrent
+// library read racing that rename would otherwise pick it up mid-move.
+export const TEMPORARY_RENAME_FILE_PREFIX = ".duplicate-finder-tmp-";
+
+export const isTemporaryRenameFileName = (fileName: string): boolean =>
+  fileName.startsWith(TEMPORARY_RENAME_FILE_PREFIX);
+
 const resolveFilePathUnderRoot = (rootPath: string, relativePath: string): string | null => {
   if (!relativePath || path.isAbsolute(relativePath)) {
     return null;

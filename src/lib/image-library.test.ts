@@ -336,6 +336,53 @@ describe("readImageLibrary with video files", () => {
     expect(library.images[0].relativePath).toBe("characters/3d/Anna/Dance.mp4");
   });
 
+  it("does not index the duplicate-finder's temporary rename file as a standalone image", async () => {
+    const tempRoot = "/tmp/sd-library-temp-rename-file";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await fs.writeFile(
+      path.join(characterDir, ".duplicate-finder-tmp-11111111-1111-1111-1111-111111111111.png"),
+      "",
+    );
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.images).toHaveLength(1);
+    expect(library.images[0].relativePath).toBe("characters/3d/Anna/Base.png");
+  });
+
+  it("skips a media file that disappears between listing and stat, without failing the whole rebuild", async () => {
+    const tempRoot = "/tmp/sd-library-stat-race";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await fs.writeFile(path.join(characterDir, "Full.png"), "");
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const missingFilePath = path.join(characterDir, "Full.png");
+    const originalStat = fs.stat;
+    const statSpy = vi
+      .spyOn(fs, "stat")
+      .mockImplementation(async (targetPath: Parameters<typeof fs.stat>[0]) => {
+        if (targetPath === missingFilePath) {
+          return Promise.reject(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
+        }
+        return originalStat(targetPath);
+      });
+
+    const library = await readImageLibrary();
+
+    expect(library.images).toHaveLength(1);
+    expect(library.images[0].relativePath).toBe("characters/3d/Anna/Base.png");
+
+    statSpy.mockRestore();
+  });
+
   // Pose counting/filtering never gated on mediaType to begin with - these confirm an
   // animation-named video surfaces through the same pose-summary/character-summary/pose-filter
   // machinery as an image, with no video-specific code path needed (see VIDEO_FEATURES_PLAN.md
@@ -806,6 +853,32 @@ describe("readImageLibrary with characters metadata", () => {
     expect(library.images).toHaveLength(1);
 
     writeFileSpy.mockRestore();
+
+    delete process.env.SD_CACHE_DIR;
+  });
+
+  it("keeps reporting cacheAvailable false on a later cache hit after first-seen persistence failed", async () => {
+    const tempRoot = "/tmp/sd-library-cache-write-fail-persists";
+    const tempCacheDir = "/tmp/sd-cache-write-fail-persists";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = tempCacheDir;
+
+    // Only the first writeFile call (the first-seen cache) fails; the library-index cache write
+    // that follows in the same read succeeds, so it persists to disk with cacheAvailable: false.
+    const writeFileSpy = vi.spyOn(fs, "writeFile").mockRejectedValueOnce(new Error("disk full"));
+    const firstRead = await readImageLibrary();
+    expect(firstRead.cacheAvailable).toBe(false);
+    writeFileSpy.mockRestore();
+
+    // Nothing on disk changed, so this second read is a library-index cache hit - it must not
+    // report the cache as available again just because the read itself succeeded.
+    const secondRead = await readImageLibrary();
+    expect(secondRead.cacheAvailable).toBe(false);
 
     delete process.env.SD_CACHE_DIR;
   });

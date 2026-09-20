@@ -48,6 +48,7 @@ import {
   getMediaTypeForFileName,
   getRelativePathRootPrefix,
   isPreviewSidecarFileName,
+  isTemporaryRenameFileName,
   MEDIA_EXTENSIONS,
 } from "./paths";
 import { compareNatural, normalizeRelativePath } from "./shared";
@@ -954,6 +955,7 @@ const listMediaFiles = async (characterFolderPath: string): Promise<string[]> =>
     .filter((entry) => entry.isFile())
     .map((entry) => entry.name)
     .filter((fileName) => !isPreviewSidecarFileName(fileName))
+    .filter((fileName) => !isTemporaryRenameFileName(fileName))
     .filter((fileName) => MEDIA_EXTENSIONS.has(path.extname(fileName).toLowerCase()));
 };
 
@@ -1201,16 +1203,25 @@ const indexCharacterFolder = async (
   rootContext: IImageRootContext,
 ): Promise<void> => {
   const mediaFiles = await listMediaFiles(characterFolderPath);
+  // A file can be deleted between listMediaFiles() and this stat (e.g. a concurrent delete
+  // request while a cache rebuild is in flight) - skip it rather than failing the whole folder.
   const stats = await Promise.all(
-    mediaFiles.map((mediaFile) => fs.stat(path.join(characterFolderPath, mediaFile))),
+    mediaFiles.map((mediaFile) =>
+      fs.stat(path.join(characterFolderPath, mediaFile)).catch(() => null),
+    ),
   );
 
   for (const [index, mediaFile] of mediaFiles.entries()) {
+    const stat = stats[index];
+    if (!stat) {
+      continue;
+    }
+
     const imageItem = buildImageItem(
       style,
       characterName,
       mediaFile,
-      Math.trunc(stats[index].mtimeMs),
+      Math.trunc(stat.mtimeMs),
       rootContext.rootKey,
       rootContext.relativePathPrefix,
     );
