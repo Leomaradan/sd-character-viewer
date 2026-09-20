@@ -2,17 +2,8 @@ import Ajv from "ajv";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import { ensureLocalEnvLoaded } from "@/lib/env";
-import {
-  SD_CACHE_DIR_ENV_KEY,
-  SD_EXTRA_IMAGES_ROOT_ENV_KEY,
-  SD_IMAGES_ROOT_ENV_KEY,
-} from "@/lib/env-keys";
-import {
-  buildExtraRootRelativePrefix,
-  EXTRA_ROOT_PATH_SEGMENT,
-  resolveExtraImageRoots,
-} from "@/lib/extra-image-roots";
+import { SD_IMAGES_ROOT_ENV_KEY } from "@/lib/env-keys";
+import { buildExtraRootRelativePrefix } from "@/lib/extra-image-roots";
 import {
   STYLES,
   type IAnimationConfig,
@@ -28,32 +19,47 @@ import {
   type TMediaType,
 } from "@/types/library";
 
+import { findAnimationNodeByKey, normalizeAnimationsConfig } from "./animations";
+import {
+  CHARACTERS_CONFIG_FILE_NAME,
+  LIBRARY_CONFIG_FILE_NAME,
+  POSE_FILTERS_FILE_NAME,
+  readLibraryIndexCache,
+  syncFirstSeenCache,
+  writeLibraryIndexCache,
+} from "./cache";
+import {
+  readToAnimateEntries,
+  readToExtendEntries,
+  readMarkedImageMap,
+  removeMarkedImageMapEntryIfUnchanged,
+  TO_ANIMATE_FILE_NAME,
+  TO_EXTEND_FILE_NAME,
+  VIDEO_LINKS_FILE_NAME,
+  withMarkedImageFileLock,
+  writeMarkedImageMap,
+  isVideoLink,
+  type IToAnimateEntry,
+  type IToExtendEntry,
+} from "./marks";
+import {
+  getExtraImagesRootPathsFromEnv,
+  getImagesRootPathFromEnv,
+  getMediaTypeForFileName,
+  getRelativePathRootPrefix,
+  isPreviewSidecarFileName,
+  isTemporaryRenameFileName,
+  MEDIA_EXTENSIONS,
+} from "./paths";
+import { compareNatural, normalizeRelativePath } from "./shared";
+
+export * from "./animations";
+export * from "./cache";
+export * from "./marks";
+export * from "./paths";
+
 const DEFAULT_STYLE: string = "3d";
-const PNG_EXTENSION = ".png";
-const VIDEO_EXTENSION = ".mp4";
-const MEDIA_EXTENSIONS: ReadonlySet<string> = new Set([PNG_EXTENSION, VIDEO_EXTENSION]);
-const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
-const DEFAULT_CACHE_DIR_RELATIVE_PATH = path.join(".cache", "sd-character-viewer");
-const FIRST_SEEN_CACHE_FILE_SUFFIX = ".first-seen.json";
-const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
-// Bumped whenever a cached ILibraryData's shape changes, so a cache written by an older version
-// of the app (e.g. one predating the `mediaType` field) is treated as a miss and rebuilt, rather
-// than being returned as-is with the new field silently undefined.
-const LIBRARY_INDEX_CACHE_VERSION = 7;
-const PREVIEW_FILE_SUFFIX = ".preview.jpg";
-// Video previews use a distinct suffix/extension from image previews: the running app never
-// generates them itself (no ffmpeg invoked at request time), only the offline sync script
-// (via ffmpeg) or an operator can provide one.
-const VIDEO_PREVIEW_FILE_SUFFIX = ".preview.png";
-const LIBRARY_CONFIG_FILE_NAME = "config.json";
-const CHARACTERS_CONFIG_FILE_NAME = "characters.json";
-const POSE_FILTERS_FILE_NAME = "pose-filters.json";
 const DUPLICATE_REVIEW_CONFIG_FILE_NAME = "duplicate-reviews.json";
-const TO_UPSCALE_FILE_NAME = "to-upscale.json";
-const TO_ANIMATE_FILE_NAME = "to-animate.json";
-const TO_EXTEND_FILE_NAME = "to-extends.json";
-const TO_UPSCALE_VIDEO_FILE_NAME = "to-upscale-video.json";
-const VIDEO_LINKS_FILE_NAME = "video-links.json";
 const DEFAULT_POSE_PATTERN_FILTER_CONFIGS = [{ label: "With Somebody", pattern: "^With " }];
 const MAIN_ROOT_KEY = "main";
 
@@ -72,19 +78,6 @@ interface IStyleConfig {
   styleLabels: Partial<Record<string, string>>;
   animations: IAnimationConfig[];
 }
-
-export interface IToAnimateEntry {
-  metadata: string;
-  action: string;
-  // Required in the type, but tolerated as missing on read (defaults to "") so pre-existing
-  // to-animate.json/to-extends.json entries written before Edit Animation existed still parse.
-  prompt: string;
-}
-
-// Same shape as IToAnimateEntry (a video-source mirror of it, for the Extend mark) - kept as a
-// distinct name since the two are conceptually different marks even though the entry shape
-// happens to match today.
-export type IToExtendEntry = IToAnimateEntry;
 
 interface ICharacterAccumulator {
   name: string;
@@ -118,22 +111,6 @@ interface IPosePatternFilterConfig {
   label: string;
   pattern: string;
   flags?: string;
-}
-
-interface ICacheFileSnapshot {
-  relativePath: string;
-  modifiedAt: number;
-}
-
-interface ILibraryIndexCacheFile {
-  version: number;
-  rootPath: string;
-  generatedAt: number;
-  configFiles: ICacheFileSnapshot[];
-  directories: ICacheFileSnapshot[];
-  extraRootPaths: string[];
-  extraDirectories: ICacheFileSnapshot[];
-  library: ILibraryData;
 }
 
 export interface IReviewedDuplicateGroup {
@@ -236,87 +213,6 @@ const normalizeStyleNames = (styles: string[] | undefined): string[] => {
   const normalizedStyles = styles.map((style) => style.trim()).filter((style) => style !== "");
 
   return [...new Set(normalizedStyles)];
-};
-
-// A single raw `animations` entry: either a plain string (legacy leaf, auto-migrated to
-// {key: s, name: s, prompt: ""}) or an object node with required key/name strings, an optional
-// prompt string (defaulting to ""), and optional recursively-normalized subVersions. Anything
-// else (wrong types, missing key/name) is silently skipped, matching readMarkedImageMap's
-// existing leniency toward malformed entries elsewhere in this file. `seenKeys` is shared across
-// the whole tree (not just siblings), since findAnimationNodeByKey resolves by key alone: a key
-// reused at a different nesting level would otherwise shadow the earlier node and make the
-// later one unreachable (and produce duplicate React keys in the flattened UI menu).
-const normalizeAnimationConfigEntry = (
-  entry: unknown,
-  seenKeys: Set<string>,
-): IAnimationConfig | null => {
-  if (typeof entry === "string") {
-    const trimmedName = entry.trim();
-    if (!trimmedName || seenKeys.has(trimmedName)) {
-      return null;
-    }
-    seenKeys.add(trimmedName);
-    return { key: trimmedName, name: trimmedName, prompt: "" };
-  }
-
-  if (!isPlainObjectRecord(entry)) {
-    return null;
-  }
-
-  const key = typeof entry.key === "string" ? entry.key.trim() : "";
-  const name = typeof entry.name === "string" ? entry.name.trim() : "";
-  if (!key || !name || seenKeys.has(key)) {
-    return null;
-  }
-  seenKeys.add(key);
-
-  const prompt = typeof entry.prompt === "string" ? entry.prompt : "";
-  const subVersions = Array.isArray(entry.subVersions)
-    ? normalizeAnimationEntries(entry.subVersions, seenKeys)
-    : [];
-
-  return subVersions.length > 0 ? { key, name, prompt, subVersions } : { key, name, prompt };
-};
-
-const normalizeAnimationEntries = (raw: unknown[], seenKeys: Set<string>): IAnimationConfig[] => {
-  const nodes: IAnimationConfig[] = [];
-
-  for (const rawEntry of raw) {
-    const node = normalizeAnimationConfigEntry(rawEntry, seenKeys);
-    if (node) {
-      nodes.push(node);
-    }
-  }
-
-  return nodes;
-};
-
-export const normalizeAnimationsConfig = (raw: unknown): IAnimationConfig[] => {
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-
-  return normalizeAnimationEntries(raw, new Set<string>());
-};
-
-export const findAnimationNodeByKey = (
-  animations: IAnimationConfig[],
-  key: string,
-): IAnimationConfig | null => {
-  for (const node of animations) {
-    if (node.key === key) {
-      return node;
-    }
-
-    const foundInSubVersions = node.subVersions
-      ? findAnimationNodeByKey(node.subVersions, key)
-      : null;
-    if (foundInSubVersions) {
-      return foundInSubVersions;
-    }
-  }
-
-  return null;
 };
 
 const resolveDefaultStyle = (styles: string[], rawDefaultStyle: unknown): string => {
@@ -426,41 +322,6 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       animations: fallbackAnimations,
     };
   }
-};
-
-const normalizeRelativePath = (filePath: string): string => {
-  return filePath.split(path.sep).join(path.posix.sep);
-};
-
-const compareNatural = (a: string, b: string): number => {
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
-};
-
-const parseExtraRootRelativePath = (
-  relativePath: string,
-): { extraRootIndex: number; remainder: string } | null => {
-  const match = new RegExp(String.raw`^${EXTRA_ROOT_PATH_SEGMENT}/(\d+)/(.+)$`).exec(relativePath);
-
-  if (!match) {
-    return null;
-  }
-
-  return {
-    extraRootIndex: Number.parseInt(match[1], 10),
-    remainder: match[2],
-  };
-};
-
-// Returns "" for a main-root relativePath, or the "extra-roots/<index>" prefix to reconstruct
-// a relativePath under the same extra root as the one passed in.
-export const getRelativePathRootPrefix = (relativePath: string): string => {
-  const extraRootMatch = parseExtraRootRelativePath(relativePath);
-  return extraRootMatch ? buildExtraRootRelativePrefix(extraRootMatch.extraRootIndex) : "";
-};
-
-export const getExtraImagesRootPathsFromEnv = (): string[] => {
-  ensureLocalEnvLoaded();
-  return resolveExtraImageRoots(process.env[SD_EXTRA_IMAGES_ROOT_ENV_KEY]);
 };
 
 const ucFirst = (value: string): string => {
@@ -703,295 +564,6 @@ export const writeReviewedDuplicateGroups = async (
   await fs.writeFile(configPath, `${JSON.stringify(reviewedGroups, null, 2)}\n`, "utf8");
 };
 
-const isPlainObjectRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-};
-
-// Accepts entries with no prompt field (or a malformed one) at parse time - normalizeToAnimateEntry
-// below is what actually guarantees the IToAnimateEntry contract's prompt: string.
-const isToAnimateEntry = (
-  value: unknown,
-): value is { metadata: string; action: string; prompt?: unknown } => {
-  return (
-    isPlainObjectRecord(value) &&
-    typeof value.metadata === "string" &&
-    typeof value.action === "string"
-  );
-};
-
-const normalizeToAnimateEntry = (entry: {
-  metadata: string;
-  action: string;
-  prompt?: unknown;
-}): IToAnimateEntry => ({
-  metadata: entry.metadata,
-  action: entry.action,
-  prompt: typeof entry.prompt === "string" ? entry.prompt : "",
-});
-
-const normalizeToAnimateEntries = (
-  entries: Record<string, { metadata: string; action: string; prompt?: unknown }>,
-): Record<string, IToAnimateEntry> => {
-  const normalizedEntries: Record<string, IToAnimateEntry> = {};
-  for (const [relativePath, entry] of Object.entries(entries)) {
-    normalizedEntries[relativePath] = normalizeToAnimateEntry(entry);
-  }
-  return normalizedEntries;
-};
-
-const isRawMetadataEntry = (value: unknown): value is string => typeof value === "string";
-
-const readMarkedImageMap = async <T>(
-  filePath: string,
-  isValidEntry: (value: unknown) => value is T,
-): Promise<Record<string, T>> => {
-  let fileContent = "";
-  try {
-    fileContent = await fs.readFile(filePath, "utf8");
-  } catch {
-    return {};
-  }
-
-  try {
-    const parsedContent: unknown = JSON.parse(fileContent);
-    if (!isPlainObjectRecord(parsedContent)) {
-      return {};
-    }
-
-    const entries: Record<string, T> = {};
-    for (const [relativePath, entry] of Object.entries(parsedContent)) {
-      if (isValidEntry(entry)) {
-        entries[relativePath] = entry;
-      }
-    }
-
-    return entries;
-  } catch {
-    // Fallback to no entries when the file is malformed.
-    return {};
-  }
-};
-
-const writeMarkedImageMap = async (
-  filePath: string,
-  entries: Record<string, unknown>,
-): Promise<void> => {
-  await fs.writeFile(filePath, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
-};
-
-// Serializes read-modify-write cycles against a single marker file (to-upscale.json /
-// to-animate.json), keyed by its absolute path. Without this, two concurrent marks (or a mark
-// and an unmark) can both read the file before either writes it back, and the second write
-// silently clobbers the first one's change.
-const markedImageFileQueues = new Map<string, Promise<unknown>>();
-
-const withMarkedImageFileLock = <T>(filePath: string, task: () => Promise<T>): Promise<T> => {
-  const previousTask = markedImageFileQueues.get(filePath) ?? Promise.resolve();
-  const nextTask = previousTask.then(task, task);
-  markedImageFileQueues.set(
-    filePath,
-    nextTask.catch(() => {}),
-  );
-  return nextTask;
-};
-
-export const readToUpscaleEntries = async (rootPath: string): Promise<Record<string, string>> => {
-  return readMarkedImageMap(path.join(rootPath, TO_UPSCALE_FILE_NAME), isRawMetadataEntry);
-};
-
-export const setToUpscaleEntry = async (
-  rootPath: string,
-  relativePath: string,
-  metadata: string,
-): Promise<void> => {
-  const filePath = path.join(rootPath, TO_UPSCALE_FILE_NAME);
-  await withMarkedImageFileLock(filePath, async () => {
-    const entries = await readMarkedImageMap(filePath, isRawMetadataEntry);
-    entries[relativePath] = metadata;
-    await writeMarkedImageMap(filePath, entries);
-  });
-};
-
-export const removeToUpscaleEntry = async (
-  rootPath: string,
-  relativePath: string,
-): Promise<void> => {
-  const filePath = path.join(rootPath, TO_UPSCALE_FILE_NAME);
-  await withMarkedImageFileLock(filePath, async () => {
-    const entries = await readMarkedImageMap(filePath, isRawMetadataEntry);
-    if (relativePath in entries) {
-      delete entries[relativePath];
-      await writeMarkedImageMap(filePath, entries);
-    }
-  });
-};
-
-export const readToAnimateEntries = async (
-  rootPath: string,
-): Promise<Record<string, IToAnimateEntry>> => {
-  const entries = await readMarkedImageMap(
-    path.join(rootPath, TO_ANIMATE_FILE_NAME),
-    isToAnimateEntry,
-  );
-  return normalizeToAnimateEntries(entries);
-};
-
-// `metadata` omitted (undefined) means "preserve whatever this mark already has" - used by Edit
-// Animation, which only ever edits the prompt. Resolving that fallback here, inside the same
-// lock as the read-modify-write, keeps it atomic: resolving it in the caller beforehand (reading
-// the entry, then calling this with the resolved string) would race a concurrent mark update
-// landing in between, silently reverting it once this write lands.
-export const setToAnimateEntry = async (
-  rootPath: string,
-  relativePath: string,
-  metadata: string | undefined,
-  action: string,
-  prompt: string,
-): Promise<void> => {
-  const filePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
-  await withMarkedImageFileLock(filePath, async () => {
-    const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
-    const resolvedMetadata = metadata ?? entries[relativePath]?.metadata ?? "";
-    entries[relativePath] = { metadata: resolvedMetadata, action, prompt };
-    await writeMarkedImageMap(filePath, entries);
-  });
-};
-
-export const removeToAnimateEntry = async (
-  rootPath: string,
-  relativePath: string,
-): Promise<void> => {
-  const filePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
-  await withMarkedImageFileLock(filePath, async () => {
-    const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
-    if (relativePath in entries) {
-      delete entries[relativePath];
-      await writeMarkedImageMap(filePath, entries);
-    }
-  });
-};
-
-export const readToUpscaleVideoEntries = async (
-  rootPath: string,
-): Promise<Record<string, string>> => {
-  return readMarkedImageMap(path.join(rootPath, TO_UPSCALE_VIDEO_FILE_NAME), isRawMetadataEntry);
-};
-
-export const setToUpscaleVideoEntry = async (
-  rootPath: string,
-  relativePath: string,
-  metadata: string,
-): Promise<void> => {
-  const filePath = path.join(rootPath, TO_UPSCALE_VIDEO_FILE_NAME);
-  await withMarkedImageFileLock(filePath, async () => {
-    const entries = await readMarkedImageMap(filePath, isRawMetadataEntry);
-    entries[relativePath] = metadata;
-    await writeMarkedImageMap(filePath, entries);
-  });
-};
-
-export const removeToUpscaleVideoEntry = async (
-  rootPath: string,
-  relativePath: string,
-): Promise<void> => {
-  const filePath = path.join(rootPath, TO_UPSCALE_VIDEO_FILE_NAME);
-  await withMarkedImageFileLock(filePath, async () => {
-    const entries = await readMarkedImageMap(filePath, isRawMetadataEntry);
-    if (relativePath in entries) {
-      delete entries[relativePath];
-      await writeMarkedImageMap(filePath, entries);
-    }
-  });
-};
-
-export const readToExtendEntries = async (
-  rootPath: string,
-): Promise<Record<string, IToExtendEntry>> => {
-  const entries = await readMarkedImageMap(
-    path.join(rootPath, TO_EXTEND_FILE_NAME),
-    isToAnimateEntry,
-  );
-  return normalizeToAnimateEntries(entries);
-};
-
-export const setToExtendEntry = async (
-  rootPath: string,
-  relativePath: string,
-  metadata: string,
-  action: string,
-  prompt: string,
-): Promise<void> => {
-  const filePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
-  await withMarkedImageFileLock(filePath, async () => {
-    const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
-    entries[relativePath] = { metadata, action, prompt };
-    await writeMarkedImageMap(filePath, entries);
-  });
-};
-
-export const removeToExtendEntry = async (
-  rootPath: string,
-  relativePath: string,
-): Promise<void> => {
-  const filePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
-  await withMarkedImageFileLock(filePath, async () => {
-    const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
-    if (relativePath in entries) {
-      delete entries[relativePath];
-      await writeMarkedImageMap(filePath, entries);
-    }
-  });
-};
-
-const isVideoLink = (value: unknown): value is IVideoLink => {
-  return (
-    isPlainObjectRecord(value) &&
-    typeof value.sourceRelativePath === "string" &&
-    (value.sourceMediaType === "image" || value.sourceMediaType === "video") &&
-    typeof value.action === "string" &&
-    typeof value.prompt === "string" &&
-    typeof value.metadata === "string" &&
-    typeof value.linkedAt === "number"
-  );
-};
-
-export const readVideoLinks = async (rootPath: string): Promise<Record<string, IVideoLink>> => {
-  return readMarkedImageMap(path.join(rootPath, VIDEO_LINKS_FILE_NAME), isVideoLink);
-};
-
-export const removeVideoLink = async (rootPath: string, relativePath: string): Promise<void> => {
-  const filePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
-  await withMarkedImageFileLock(filePath, async () => {
-    const entries = await readMarkedImageMap(filePath, isVideoLink);
-    if (relativePath in entries) {
-      delete entries[relativePath];
-      await writeMarkedImageMap(filePath, entries);
-    }
-  });
-};
-
-// Rekeys a link when its video is renamed (Redraw-on-video), returning the migrated record, or
-// null when the renamed video had no link (nothing to migrate).
-export const migrateVideoLink = async (
-  rootPath: string,
-  oldRelativePath: string,
-  newRelativePath: string,
-): Promise<IVideoLink | null> => {
-  const filePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
-  return withMarkedImageFileLock(filePath, async () => {
-    const entries = await readMarkedImageMap(filePath, isVideoLink);
-    const link = entries[oldRelativePath];
-    if (!link) {
-      return null;
-    }
-
-    delete entries[oldRelativePath];
-    entries[newRelativePath] = link;
-    await writeMarkedImageMap(filePath, entries);
-    return link;
-  });
-};
-
 // One pending request to animate/extend, resolved against the image library so it carries the
 // style/character/target-name needed to group it with candidate videos.
 interface IPendingAnimationClaim {
@@ -1024,7 +596,9 @@ const buildPendingAnimationClaims = (
   const claimsByGroupKey = new Map<string, IPendingAnimationClaim[]>();
 
   const addClaims = (
-    entries: Record<string, IToAnimateEntry | IToExtendEntry>,
+    // IToExtendEntry is a type alias for IToAnimateEntry (same shape, different mark file), so
+    // this parameter's type is just IToAnimateEntry - a union of the two would be redundant.
+    entries: Record<string, IToAnimateEntry>,
     sourceMediaType: TMediaType,
     markFile: "animate" | "extend",
   ): void => {
@@ -1108,28 +682,6 @@ const buildUnclaimedVideoCandidates = (
   }
 
   return candidatesByGroupKey;
-};
-
-// Deletes a to-animate.json/to-extends.json entry only if it still deep-equals what
-// reconciliation observed when it built the claim being fulfilled, so a concurrent PUT that
-// changed or replaced the mark in the window between reading claims and removing them here
-// survives instead of being silently discarded. Compares against the *normalized* entry (prompt
-// defaulted to "" when absent), matching what buildPendingAnimationClaims read the claim from -
-// comparing raw disk entries would never match a legacy mark file written before `prompt`
-// existed, since it lacks the key entirely.
-const removeMarkedImageMapEntryIfUnchanged = async (
-  filePath: string,
-  relativePath: string,
-  expectedEntry: IToAnimateEntry,
-): Promise<void> => {
-  await withMarkedImageFileLock(filePath, async () => {
-    const rawEntries = await readMarkedImageMap(filePath, isToAnimateEntry);
-    const currentEntry = normalizeToAnimateEntries(rawEntries)[relativePath];
-    if (currentEntry && JSON.stringify(currentEntry) === JSON.stringify(expectedEntry)) {
-      delete rawEntries[relativePath];
-      await writeMarkedImageMap(filePath, rawEntries);
-    }
-  });
 };
 
 // Matches newly-indexed, unclaimed videos to pending to-animate.json/to-extends.json marks and
@@ -1394,22 +946,6 @@ export const isDuplicateGroupReviewed = (
   });
 };
 
-// A video's own preview sidecar (e.g. "Base.preview.png") ends in ".png", so it must be excluded
-// explicitly once ".png" is treated as a generic media extension, or it would be misindexed as a
-// standalone image alongside the video it belongs to.
-const isPreviewSidecarFileName = (fileName: string): boolean => {
-  const lower = fileName.toLowerCase();
-  return lower.endsWith(PREVIEW_FILE_SUFFIX) || lower.endsWith(VIDEO_PREVIEW_FILE_SUFFIX);
-};
-
-export const isVideoFilePath = (filePath: string): boolean => {
-  return path.extname(filePath).toLowerCase() === VIDEO_EXTENSION;
-};
-
-const getMediaTypeForFileName = (fileName: string): TMediaType => {
-  return isVideoFilePath(fileName) ? "video" : "image";
-};
-
 const listMediaFiles = async (characterFolderPath: string): Promise<string[]> => {
   const entries = await fs.readdir(characterFolderPath, {
     withFileTypes: true,
@@ -1419,6 +955,7 @@ const listMediaFiles = async (characterFolderPath: string): Promise<string[]> =>
     .filter((entry) => entry.isFile())
     .map((entry) => entry.name)
     .filter((fileName) => !isPreviewSidecarFileName(fileName))
+    .filter((fileName) => !isTemporaryRenameFileName(fileName))
     .filter((fileName) => MEDIA_EXTENSIONS.has(path.extname(fileName).toLowerCase()));
 };
 
@@ -1606,332 +1143,6 @@ const buildImageItem = (
   };
 };
 
-const toCacheFileNameForRoot = (rootPath: string, suffix: string): string => {
-  const rootHash = Buffer.from(path.resolve(rootPath)).toString("base64url");
-  return `${rootHash}${suffix}`;
-};
-
-const getCacheDirectoryPath = (): string => {
-  const configuredCacheDir = process.env[SD_CACHE_DIR_ENV_KEY]?.trim();
-
-  if (configuredCacheDir) {
-    return path.resolve(configuredCacheDir);
-  }
-
-  return path.resolve(process.cwd(), DEFAULT_CACHE_DIR_RELATIVE_PATH);
-};
-
-const getFirstSeenCachePath = (rootPath: string): string => {
-  return path.join(
-    getCacheDirectoryPath(),
-    toCacheFileNameForRoot(rootPath, FIRST_SEEN_CACHE_FILE_SUFFIX),
-  );
-};
-
-const getLibraryIndexCachePath = (rootPath: string): string => {
-  return path.join(
-    getCacheDirectoryPath(),
-    toCacheFileNameForRoot(rootPath, LIBRARY_INDEX_CACHE_FILE_SUFFIX),
-  );
-};
-
-const toRelativeCachePath = (rootPath: string, absolutePath: string): string => {
-  return normalizeRelativePath(path.relative(rootPath, absolutePath));
-};
-
-const getFileSnapshot = async (
-  rootPath: string,
-  absolutePath: string,
-): Promise<ICacheFileSnapshot | null> => {
-  const stat = await fs.stat(absolutePath).catch(() => null);
-  if (!stat?.isFile()) {
-    return null;
-  }
-
-  return {
-    relativePath: toRelativeCachePath(rootPath, absolutePath),
-    modifiedAt: Math.trunc(stat.mtimeMs),
-  };
-};
-
-const collectConfigFileSnapshots = async (rootPath: string): Promise<ICacheFileSnapshot[]> => {
-  const configPaths = [
-    path.join(rootPath, LIBRARY_CONFIG_FILE_NAME),
-    path.join(rootPath, POSE_FILTERS_FILE_NAME),
-    path.join(rootPath, "characters", CHARACTERS_CONFIG_FILE_NAME),
-    // Watched so that marking an image/video (which never touches the characters/ directory
-    // tree the snapshots below watch) still invalidates the cache and gives
-    // reconcilePendingAnimationMarks a chance to run - otherwise a mark added for a video that
-    // already existed at the time of the last uncached rebuild would never be reconciled until
-    // something unrelated happened to change a watched directory's mtime.
-    path.join(rootPath, TO_ANIMATE_FILE_NAME),
-    path.join(rootPath, TO_EXTEND_FILE_NAME),
-  ];
-  const snapshots = await Promise.all(
-    configPaths.map((configPath) => getFileSnapshot(rootPath, configPath)),
-  );
-  return snapshots.filter((snapshot): snapshot is ICacheFileSnapshot => snapshot !== null);
-};
-
-const collectDirectorySnapshots = async (
-  rootPath: string,
-  directoryPath: string,
-): Promise<ICacheFileSnapshot[]> => {
-  const directoryStat = await fs.stat(directoryPath);
-  const snapshots: ICacheFileSnapshot[] = [
-    {
-      relativePath: toRelativeCachePath(rootPath, directoryPath),
-      modifiedAt: Math.trunc(directoryStat.mtimeMs),
-    },
-  ];
-  const entries = await fs.readdir(directoryPath, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-
-    const childSnapshots = await collectDirectorySnapshots(
-      rootPath,
-      path.join(directoryPath, entry.name),
-    );
-    snapshots.push(...childSnapshots);
-  }
-
-  return snapshots.sort((a, b) => compareNatural(a.relativePath, b.relativePath));
-};
-
-const areSnapshotsEqual = (
-  currentSnapshots: ICacheFileSnapshot[],
-  cachedSnapshots: ICacheFileSnapshot[],
-): boolean => {
-  if (currentSnapshots.length !== cachedSnapshots.length) {
-    return false;
-  }
-
-  return currentSnapshots.every((snapshot, index) => {
-    const cachedSnapshot = cachedSnapshots[index];
-    return (
-      cachedSnapshot?.relativePath === snapshot.relativePath &&
-      cachedSnapshot.modifiedAt === snapshot.modifiedAt
-    );
-  });
-};
-
-const areStringArraysEqual = (a: string[], b: string[]): boolean => {
-  return a.length === b.length && a.every((value, index) => value === b[index]);
-};
-
-// Snapshots every extra root's "characters" tree, tagging each entry's relativePath with the
-// root's index so entries never collide across roots and so a change to the resolved list of
-// extra roots itself (one added/removed/reordered) is caught by comparing extraRootPaths too.
-const collectExtraDirectorySnapshots = async (
-  extraRootPaths: string[],
-): Promise<ICacheFileSnapshot[]> => {
-  const snapshotsByRoot = await Promise.all(
-    extraRootPaths.map(async (extraRootPath, extraRootIndex) => {
-      try {
-        const snapshots = await collectDirectorySnapshots(
-          extraRootPath,
-          path.join(extraRootPath, "characters"),
-        );
-        return snapshots.map((snapshot) => ({
-          relativePath: `${extraRootIndex}/${snapshot.relativePath}`,
-          modifiedAt: snapshot.modifiedAt,
-        }));
-      } catch {
-        return [];
-      }
-    }),
-  );
-
-  return snapshotsByRoot.flat();
-};
-
-const refreshCachedLibrary = (library: ILibraryData): ILibraryData => {
-  const now = Date.now();
-  return {
-    ...library,
-    images: library.images.map((image) => ({
-      ...image,
-      isNew: now - image.firstSeenAt <= NEW_IMAGE_WINDOW_MS,
-    })),
-    cacheAvailable: true,
-  };
-};
-
-const readLibraryIndexCache = async (
-  rootPath: string,
-  charactersRootPath: string,
-  extraRootPaths: string[],
-): Promise<ILibraryData | null> => {
-  const cachePath = getLibraryIndexCachePath(rootPath);
-
-  try {
-    const rawContent = await fs.readFile(cachePath, "utf8");
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const cacheFile = JSON.parse(rawContent) as ILibraryIndexCacheFile;
-
-    if (
-      cacheFile.version !== LIBRARY_INDEX_CACHE_VERSION ||
-      cacheFile.rootPath !== path.resolve(rootPath) ||
-      !cacheFile.library?.rootConfigured ||
-      !areStringArraysEqual(cacheFile.extraRootPaths ?? [], extraRootPaths)
-    ) {
-      return null;
-    }
-
-    const [configFiles, directories, extraDirectories] = await Promise.all([
-      collectConfigFileSnapshots(rootPath),
-      collectDirectorySnapshots(rootPath, charactersRootPath),
-      collectExtraDirectorySnapshots(extraRootPaths),
-    ]);
-
-    if (
-      !areSnapshotsEqual(configFiles, cacheFile.configFiles) ||
-      !areSnapshotsEqual(directories, cacheFile.directories) ||
-      !areSnapshotsEqual(extraDirectories, cacheFile.extraDirectories ?? [])
-    ) {
-      return null;
-    }
-
-    return refreshCachedLibrary(cacheFile.library);
-  } catch {
-    return null;
-  }
-};
-
-const writeLibraryIndexCache = async (
-  rootPath: string,
-  charactersRootPath: string,
-  extraRootPaths: string[],
-  library: ILibraryData,
-): Promise<boolean> => {
-  const cachePath = getLibraryIndexCachePath(rootPath);
-
-  try {
-    const [configFiles, directories, extraDirectories] = await Promise.all([
-      collectConfigFileSnapshots(rootPath),
-      collectDirectorySnapshots(rootPath, charactersRootPath),
-      collectExtraDirectorySnapshots(extraRootPaths),
-    ]);
-    const cacheFile: ILibraryIndexCacheFile = {
-      version: LIBRARY_INDEX_CACHE_VERSION,
-      rootPath: path.resolve(rootPath),
-      generatedAt: Date.now(),
-      configFiles,
-      directories,
-      extraRootPaths,
-      extraDirectories,
-      library: { ...library, cacheAvailable: true },
-    };
-
-    await fs.mkdir(path.dirname(cachePath), { recursive: true });
-    await fs.writeFile(cachePath, `${JSON.stringify(cacheFile, null, 2)}\n`, "utf8");
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-export const removeLibraryIndexCache = async (): Promise<void> => {
-  const rootPath = getImagesRootPathFromEnv();
-
-  if (!rootPath) {
-    return;
-  }
-
-  await fs.unlink(getLibraryIndexCachePath(rootPath)).catch(() => {});
-};
-
-const loadFirstSeenCache = async (
-  rootPath: string,
-): Promise<{ cache: Map<string, number>; available: boolean }> => {
-  const cachePath = getFirstSeenCachePath(rootPath);
-
-  try {
-    const rawContent = await fs.readFile(cachePath, "utf8");
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const parsedContent = JSON.parse(rawContent) as Record<string, unknown>;
-    const cacheMap = new Map<string, number>();
-
-    for (const [relativePath, firstSeenAt] of Object.entries(parsedContent)) {
-      if (typeof relativePath !== "string") {
-        continue;
-      }
-
-      if (typeof firstSeenAt !== "number" || !Number.isFinite(firstSeenAt) || firstSeenAt < 0) {
-        continue;
-      }
-
-      cacheMap.set(relativePath, firstSeenAt);
-    }
-
-    return { cache: cacheMap, available: true };
-  } catch (error) {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { cache: new Map<string, number>(), available: true };
-    }
-
-    return { cache: new Map<string, number>(), available: false };
-  }
-};
-
-const persistFirstSeenCache = async (
-  rootPath: string,
-  firstSeenByRelativePath: Map<string, number>,
-): Promise<boolean> => {
-  const cachePath = getFirstSeenCachePath(rootPath);
-  const cacheDirPath = path.dirname(cachePath);
-  const serializable = Object.fromEntries(
-    [...firstSeenByRelativePath.entries()].sort((a, b) => compareNatural(a[0], b[0])),
-  );
-
-  try {
-    await fs.mkdir(cacheDirPath, { recursive: true });
-    await fs.writeFile(cachePath, `${JSON.stringify(serializable, null, 2)}\n`, "utf8");
-    return true;
-  } catch {
-    // Ignore persistence failures to keep the library endpoint resilient.
-    return false;
-  }
-};
-
-const markNewImages = (
-  imageItems: IImageItem[],
-  now: number,
-  firstSeenByRelativePath: Map<string, number>,
-): boolean => {
-  let hasChanges = false;
-  const activeRelativePaths = new Set<string>();
-
-  for (const imageItem of imageItems) {
-    const cacheKey = imageItem.relativePath;
-    activeRelativePaths.add(cacheKey);
-
-    const firstSeenAt = firstSeenByRelativePath.get(cacheKey) ?? now;
-    if (!firstSeenByRelativePath.has(cacheKey)) {
-      firstSeenByRelativePath.set(cacheKey, firstSeenAt);
-      hasChanges = true;
-    }
-
-    imageItem.isNew = now - firstSeenAt <= NEW_IMAGE_WINDOW_MS;
-    imageItem.firstSeenAt = firstSeenAt;
-  }
-
-  for (const [cacheKey, firstSeenAt] of firstSeenByRelativePath.entries()) {
-    const isStaleAndNotActive =
-      !activeRelativePaths.has(cacheKey) && now - firstSeenAt > NEW_IMAGE_WINDOW_MS;
-    if (isStaleAndNotActive) {
-      firstSeenByRelativePath.delete(cacheKey);
-      hasChanges = true;
-    }
-  }
-
-  return hasChanges;
-};
-
 const updateCharacterAccumulator = (
   characterMap: Map<string, ICharacterAccumulator>,
   imageItem: IImageItem,
@@ -1992,10 +1203,20 @@ const indexCharacterFolder = async (
   rootContext: IImageRootContext,
 ): Promise<void> => {
   const mediaFiles = await listMediaFiles(characterFolderPath);
+  // A file can be deleted between listMediaFiles() and this stat (e.g. a concurrent delete
+  // request while a cache rebuild is in flight) - skip it rather than failing the whole folder.
+  const stats = await Promise.all(
+    mediaFiles.map((mediaFile) =>
+      fs.stat(path.join(characterFolderPath, mediaFile)).catch(() => null),
+    ),
+  );
 
-  for (const mediaFile of mediaFiles) {
-    const imagePath = path.join(characterFolderPath, mediaFile);
-    const stat = await fs.stat(imagePath);
+  for (const [index, mediaFile] of mediaFiles.entries()) {
+    const stat = stats[index];
+    if (!stat) {
+      continue;
+    }
+
     const imageItem = buildImageItem(
       style,
       characterName,
@@ -2018,15 +1239,19 @@ const indexStyleFolder = async (
 ): Promise<void> => {
   const characterEntries = await fs.readdir(stylePath, { withFileTypes: true });
 
-  for (const characterEntry of characterEntries) {
-    if (!characterEntry.isDirectory()) {
-      continue;
-    }
-
-    const characterName = characterEntry.name;
-    const characterFolderPath = path.join(stylePath, characterName);
-    await indexCharacterFolder(style, characterName, characterFolderPath, state, rootContext);
-  }
+  // Each call only mutates `state` with synchronous Map/array operations between awaits, so
+  // running them concurrently can't interleave mid-mutation - and the resulting image/character
+  // lists are fully re-sorted later (sortImageItems, then by name in toLibraryData), so the
+  // insertion order this produces doesn't need to match directory iteration order.
+  await Promise.all(
+    characterEntries
+      .filter((characterEntry) => characterEntry.isDirectory())
+      .map((characterEntry) => {
+        const characterName = characterEntry.name;
+        const characterFolderPath = path.join(stylePath, characterName);
+        return indexCharacterFolder(style, characterName, characterFolderPath, state, rootContext);
+      }),
+  );
 };
 
 // Extra roots only ever contribute images for styles resolved from the main root's config.json
@@ -2118,12 +1343,12 @@ const toLibraryData = (
         return summary;
       }
 
-      return {
-        ...summary,
-        category: metadata.category,
-        serie: metadata.serie,
-        tags: metadata.tags,
-      };
+      // `summary` is freshly built above (not shared or mutated elsewhere), so assigning onto it
+      // directly is safe and avoids the shallow-copy overhead of spreading into a new object.
+      summary.category = metadata.category;
+      summary.serie = metadata.serie;
+      summary.tags = metadata.tags;
+      return summary;
     })
     .sort((a, b) => compareNatural(a.name, b.name));
 
@@ -2152,12 +1377,6 @@ const toLibraryData = (
     warning: null,
     cacheAvailable,
   };
-};
-
-export const getImagesRootPathFromEnv = (): string | null => {
-  ensureLocalEnvLoaded();
-  const configuredRoot = process.env[SD_IMAGES_ROOT_ENV_KEY]?.trim();
-  return configuredRoot || null;
 };
 
 export const readImageLibrary = async (): Promise<ILibraryData> => {
@@ -2239,22 +1458,7 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
     indexState.imageItems,
     effectiveStyleConfig.animations,
   );
-  // Locked read-modify-write, same as removeFirstSeenCacheEntry/markImageAsSeen: this file can
-  // also be written concurrently by a "mark as seen" request or another in-flight rebuild, and
-  // without a lock the last writer's snapshot silently discards the others' changes.
-  let cacheReadable = true;
-  let cacheWritable = true;
-  await withMarkedImageFileLock(getFirstSeenCachePath(rootPath), async () => {
-    const loadedCache = await loadFirstSeenCache(rootPath);
-    cacheReadable = loadedCache.available;
-
-    const hasCacheChanges = markNewImages(indexState.imageItems, Date.now(), loadedCache.cache);
-    if (hasCacheChanges) {
-      cacheWritable = await persistFirstSeenCache(rootPath, loadedCache.cache);
-    }
-  });
-
-  const cacheAvailable = cacheReadable && cacheWritable;
+  const { available: cacheAvailable } = await syncFirstSeenCache(rootPath, indexState.imageItems);
 
   const library = toLibraryData(
     rootPath,
@@ -2273,150 +1477,4 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
   );
 
   return { ...library, cacheAvailable: cacheAvailable && libraryCacheWritable };
-};
-
-const resolveFilePathUnderRoot = (rootPath: string, relativePath: string): string | null => {
-  if (!relativePath || path.isAbsolute(relativePath)) {
-    return null;
-  }
-
-  const normalizedRelative = path.normalize(relativePath);
-
-  if (normalizedRelative.startsWith("..") || normalizedRelative.includes(`..${path.sep}`)) {
-    return null;
-  }
-
-  const fullPath = path.resolve(rootPath, normalizedRelative);
-  // Media only ever lives under "characters/{style}/{character}/*.png|*.mp4" (see
-  // readImageLibrary), so containment is scoped to that subtree rather than the whole root -
-  // otherwise any other *.png/*.mp4 file placed directly under the root (e.g. next to
-  // config.json) would be readable or deletable through this endpoint.
-  const resolvedCharactersRootPath = path.resolve(rootPath, "characters");
-  const isInsideCharactersRoot =
-    fullPath === resolvedCharactersRootPath ||
-    fullPath.startsWith(`${resolvedCharactersRootPath}${path.sep}`);
-
-  if (!isInsideCharactersRoot || !MEDIA_EXTENSIONS.has(path.extname(fullPath).toLowerCase())) {
-    return null;
-  }
-
-  return fullPath;
-};
-
-export const resolveImageFilePath = (relativePath: string): string | null => {
-  if (!relativePath || path.isAbsolute(relativePath)) {
-    return null;
-  }
-
-  const extraRootMatch = parseExtraRootRelativePath(relativePath);
-
-  if (extraRootMatch) {
-    const extraRootPath = getExtraImagesRootPathsFromEnv()[extraRootMatch.extraRootIndex];
-
-    if (!extraRootPath) {
-      return null;
-    }
-
-    return resolveFilePathUnderRoot(extraRootPath, extraRootMatch.remainder);
-  }
-
-  const rootPath = getImagesRootPathFromEnv();
-
-  if (!rootPath) {
-    return null;
-  }
-
-  return resolveFilePathUnderRoot(rootPath, relativePath);
-};
-
-export const resolvePreviewFilePath = (mediaFilePath: string): string => {
-  const extension = path.extname(mediaFilePath);
-  const suffix = isVideoFilePath(mediaFilePath) ? VIDEO_PREVIEW_FILE_SUFFIX : PREVIEW_FILE_SUFFIX;
-  return `${mediaFilePath.slice(0, -extension.length)}${suffix}`;
-};
-
-export const removeFirstSeenCacheEntry = async (relativePath: string): Promise<void> => {
-  const rootPath = getImagesRootPathFromEnv();
-
-  if (!rootPath) {
-    return;
-  }
-
-  const normalizedPath = normalizeRelativePath(relativePath);
-
-  // Locked read-modify-write: this file is also touched by readImageLibrary()'s rebuild path and
-  // by markImageAsSeen, and without a lock two concurrent writers (e.g. a rebuild in flight while
-  // an image is deleted) can each read the same snapshot and the second write silently discards
-  // the first one's change.
-  await withMarkedImageFileLock(getFirstSeenCachePath(rootPath), async () => {
-    const { cache: firstSeenCache } = await loadFirstSeenCache(rootPath);
-
-    if (firstSeenCache.has(normalizedPath)) {
-      firstSeenCache.delete(normalizedPath);
-      await persistFirstSeenCache(rootPath, firstSeenCache);
-    }
-  });
-};
-
-// Called when an image/video's Details view is opened, so it drops out of `isNew` (and the "show
-// new only" filter) immediately rather than waiting out NEW_IMAGE_WINDOW_MS. Sets firstSeenAt to
-// 0 rather than deleting the cache entry - a delete would re-seed it at "now" on the next
-// uncached rebuild (markNewImages treats a missing entry as freshly discovered), making the image
-// look new again instead of seen. Also drops the library index cache: a cache hit recomputes
-// `isNew` from the *cached* image's firstSeenAt (see refreshCachedLibrary) rather than re-reading
-// this file, so without invalidating it the change wouldn't be visible until something else
-// happened to trigger a rebuild.
-export const markImageAsSeen = async (relativePath: string): Promise<void> => {
-  const rootPath = getImagesRootPathFromEnv();
-
-  if (!rootPath) {
-    return;
-  }
-
-  const normalizedPath = normalizeRelativePath(relativePath);
-
-  // Locked read-modify-write, same as removeFirstSeenCacheEntry above: without it, concurrent
-  // "seen" requests (or one racing readImageLibrary()'s own rebuild) can each read the same
-  // snapshot and the last write wins, silently erasing another image's just-persisted change.
-  const didChange = await withMarkedImageFileLock(getFirstSeenCachePath(rootPath), async () => {
-    const { cache: firstSeenCache } = await loadFirstSeenCache(rootPath);
-
-    if (firstSeenCache.get(normalizedPath) === 0) {
-      return false;
-    }
-
-    firstSeenCache.set(normalizedPath, 0);
-    await persistFirstSeenCache(rootPath, firstSeenCache);
-    return true;
-  });
-
-  if (didChange) {
-    await removeLibraryIndexCache();
-  }
-};
-
-// Called after an image or video is deleted or renamed (the old relativePath no longer refers
-// to it), so any pending upscale/animate/extend/upscale-video mark tied to it is dropped rather
-// than left dangling. Best-effort: the delete/rename it follows has already happened on disk,
-// so a failure to clean up a mark (e.g. a transient disk error) must not surface as a failure of
-// that larger operation.
-export const removeMarkedActionEntries = async (relativePath: string): Promise<void> => {
-  const rootPath = getImagesRootPathFromEnv();
-
-  if (!rootPath) {
-    return;
-  }
-
-  const normalizedPath = normalizeRelativePath(relativePath);
-
-  try {
-    await Promise.all([
-      removeToUpscaleEntry(rootPath, normalizedPath),
-      removeToAnimateEntry(rootPath, normalizedPath),
-      removeToExtendEntry(rootPath, normalizedPath),
-      removeToUpscaleVideoEntry(rootPath, normalizedPath),
-    ]);
-  } catch {
-    // Ignore: see comment above.
-  }
 };

@@ -6,20 +6,14 @@ import CloseIcon from "@mui/icons-material/Close";
 import InfoIcon from "@mui/icons-material/Info";
 import PhotoIcon from "@mui/icons-material/Photo";
 import {
-  Alert,
   Box,
-  Button,
   CircularProgress,
   Dialog,
-  DialogActions,
   DialogContent,
-  DialogContentText,
-  DialogTitle,
   Divider,
   IconButton,
   Menu,
   MenuItem,
-  TextField,
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -31,7 +25,13 @@ import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 
 import { CAPTION_SX, META_TITLE_SX } from "../common/constants";
 import { ImageDetailActions } from "./ImageDetailActions";
+import { ImageDetailDeleteDialog } from "./ImageDetailDeleteDialog";
+import { ImageDetailEditPromptDialog } from "./ImageDetailEditPromptDialog";
 import { ImageDetailMetadata } from "./ImageDetailMetadata";
+
+// Stable reference for the `animations` default prop - an inline `[]` literal would be
+// re-created on every render, breaking referential equality for anything memoized off it.
+const EMPTY_ANIMATIONS: IAnimationConfig[] = [];
 
 const DIALOG_SX = { "& .MuiDialog-paper": { height: "95vh", m: 1 } };
 const DIALOG_CONTENT_SX = { p: 0, bgcolor: "#000", display: "flex", overflow: "hidden" };
@@ -115,8 +115,6 @@ const SIDEBAR_ACTIONS_SX = {
 
 const DIVIDER_SX = { borderColor: "rgba(255,255,255,0.1)" };
 const SPINNER_SX = { color: "rgba(255,255,255,0.5)" };
-const EDIT_PROMPT_ERROR_SX = { mb: 2 };
-const EDIT_PROMPT_FIELD_SX = { mt: 1 };
 // Precomputed per-depth sx objects for the flattened animation menu's indentation, so the JSX
 // below references a stable object rather than creating a new one on every render.
 const MAX_PRECOMPUTED_ANIMATE_MENU_INDENT_DEPTH = 6;
@@ -303,7 +301,7 @@ export function ImageDetailModal({
   onNavigatePrevious,
   onNavigateNext,
   styleLabel = formatStyleLabel,
-  animations = [],
+  animations = EMPTY_ANIMATIONS,
 }: Readonly<IImageDetailModalProps>) {
   const [metadataState, setMetadataState] = useState<IMetadataState>({ path: null, data: null });
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -1122,53 +1120,25 @@ export function ImageDetailModal({
         ))}
       </Menu>
 
-      <Dialog open={isConfirmOpen} onClose={handleConfirmClose}>
-        <DialogTitle>{isVideo ? "Delete video?" : "Delete image?"}</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            This will permanently delete{" "}
-            <strong>{getImageUrl(image.relativePath).split("/").pop()}</strong> for{" "}
-            <strong>{image.characterName}</strong>. This action cannot be undone.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleConfirmClose} disabled={isDeleting}>
-            Cancel
-          </Button>
-          <Button onClick={handleConfirmDelete} color="error" disabled={isDeleting}>
-            {isDeleting ? <CircularProgress size={18} /> : "Delete"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ImageDetailDeleteDialog
+        open={isConfirmOpen}
+        isVideo={isVideo}
+        fileName={image.relativePath.split("/").pop() ?? ""}
+        characterName={image.characterName}
+        isDeleting={isDeleting}
+        onClose={handleConfirmClose}
+        onConfirm={handleConfirmDelete}
+      />
 
-      <Dialog open={isEditPromptOpen} onClose={handleCloseEditPrompt} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Animation Prompt</DialogTitle>
-        <DialogContent>
-          {editPromptError && (
-            <Alert severity="error" sx={EDIT_PROMPT_ERROR_SX}>
-              {editPromptError}
-            </Alert>
-          )}
-          <TextField
-            autoFocus
-            multiline
-            fullWidth
-            minRows={3}
-            label="Prompt"
-            value={editPromptDraft}
-            onChange={(event) => setEditPromptDraft(event.target.value)}
-            sx={EDIT_PROMPT_FIELD_SX}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseEditPrompt} disabled={isSavingPrompt}>
-            Cancel
-          </Button>
-          <Button onClick={handleSaveEditPrompt} disabled={isSavingPrompt}>
-            {isSavingPrompt ? <CircularProgress size={18} /> : "Save"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ImageDetailEditPromptDialog
+        open={isEditPromptOpen}
+        error={editPromptError}
+        draft={editPromptDraft}
+        isSaving={isSavingPrompt}
+        onDraftChange={setEditPromptDraft}
+        onClose={handleCloseEditPrompt}
+        onSave={handleSaveEditPrompt}
+      />
     </>
   );
 }

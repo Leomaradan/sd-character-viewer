@@ -79,6 +79,17 @@ describe("/api/metadata GET", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 400 when no path query param is provided", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(resolveImageFilePath).mockReturnValue(null);
+
+    const response = await GET(new Request("http://localhost/api/metadata"));
+
+    expect(response.status).toBe(400);
+    expect(resolveImageFilePath).toHaveBeenCalledWith("");
+  });
+
   it("returns an empty metadata object for a video, without parsing PNG chunks", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
@@ -180,5 +191,31 @@ describe("/api/metadata GET", () => {
     vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/sweep-a.png");
     await GET(new Request("http://localhost/api/metadata?path=sweep-a.png"));
     expect(fs.readFile).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps a not-yet-expired cache entry when a sweep runs before its TTL elapses", async () => {
+    const baseTime = Date.now();
+    vi.useFakeTimers();
+    vi.setSystemTime(baseTime);
+
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(fs.readFile).mockResolvedValue(Buffer.from([1, 2, 3]));
+    vi.mocked(extractChunks).mockReturnValue([
+      { name: "tEXt", data: new Uint8Array([1]) },
+    ] as never);
+    vi.mocked(decode).mockReturnValue({ keyword: "prompt", text: "fresh" });
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/fresh.png");
+
+    await GET(new Request("http://localhost/api/metadata?path=fresh.png"));
+    expect(fs.readFile).toHaveBeenCalledTimes(1);
+
+    // Past the sweep interval (triggers a sweep pass) but well within the 7-day TTL: the entry
+    // should survive the sweep and still be served from cache.
+    vi.setSystemTime(baseTime + 2 * 60 * 60 * 1000);
+    const response = await GET(new Request("http://localhost/api/metadata?path=fresh.png"));
+
+    expect(fs.readFile).toHaveBeenCalledTimes(1);
+    await expect(response.json()).resolves.toEqual({ prompt: "fresh" });
   });
 });

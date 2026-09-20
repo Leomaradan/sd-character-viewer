@@ -19,6 +19,7 @@ import {
   removeFirstSeenCacheEntry,
   resolveImageFilePath,
   resolvePreviewFilePath,
+  TEMPORARY_RENAME_FILE_PREFIX,
   writeReviewedDuplicateGroups,
   type IReviewedDuplicateGroup,
 } from "@/lib/image-library";
@@ -93,42 +94,46 @@ const finalizeKeptFiles = async (params: {
     (entry) => entry.currentFileName !== entry.targetFileName,
   );
 
-  const tempRenames: Array<{
-    tempFileName: string;
-    targetFileName: string;
-    oldRelativePath: string;
-  }> = [];
+  // Two phases, each internally parallel but never overlapping with the other: every pending
+  // rename first moves its file to a unique temp name (so a target name freed up by one rename
+  // can never collide with another pending rename still reading its old name), and only once all
+  // of those have landed does the second phase move everything from its temp name to its real
+  // target name. Within each phase every entry touches a distinct file, so running them
+  // concurrently can't race.
+  const tempRenames = await Promise.all(
+    pendingRenames.map(async (entry) => {
+      const tempFileName = `${TEMPORARY_RENAME_FILE_PREFIX}${randomUUID()}.png`;
+      const currentFilePath = path.join(directory, entry.currentFileName);
+      const tempFilePath = path.join(directory, tempFileName);
 
-  for (const entry of pendingRenames) {
-    const tempFileName = `.duplicate-finder-tmp-${randomUUID()}.png`;
-    const currentFilePath = path.join(directory, entry.currentFileName);
-    const tempFilePath = path.join(directory, tempFileName);
+      await fs.rename(currentFilePath, tempFilePath);
+      await fs
+        .rename(resolvePreviewFilePath(currentFilePath), resolvePreviewFilePath(tempFilePath))
+        .catch(() => {});
 
-    await fs.rename(currentFilePath, tempFilePath);
-    await fs
-      .rename(resolvePreviewFilePath(currentFilePath), resolvePreviewFilePath(tempFilePath))
-      .catch(() => {});
+      return {
+        tempFileName,
+        targetFileName: entry.targetFileName,
+        oldRelativePath: toRelativePath(entry.currentFileName),
+      };
+    }),
+  );
 
-    tempRenames.push({
-      tempFileName,
-      targetFileName: entry.targetFileName,
-      oldRelativePath: toRelativePath(entry.currentFileName),
-    });
-  }
+  await Promise.all(
+    tempRenames.map(async ({ tempFileName, targetFileName, oldRelativePath }) => {
+      const tempFilePath = path.join(directory, tempFileName);
+      const targetFilePath = path.join(directory, targetFileName);
 
-  for (const { tempFileName, targetFileName, oldRelativePath } of tempRenames) {
-    const tempFilePath = path.join(directory, tempFileName);
-    const targetFilePath = path.join(directory, targetFileName);
+      await fs.rename(tempFilePath, targetFilePath);
+      await fs
+        .rename(resolvePreviewFilePath(tempFilePath), resolvePreviewFilePath(targetFilePath))
+        .catch(() => {});
 
-    await fs.rename(tempFilePath, targetFilePath);
-    await fs
-      .rename(resolvePreviewFilePath(tempFilePath), resolvePreviewFilePath(targetFilePath))
-      .catch(() => {});
-
-    invalidateMetadataCacheEntry(oldRelativePath);
-    invalidateMetadataCacheEntry(toRelativePath(targetFileName));
-    await removeFirstSeenCacheEntry(oldRelativePath);
-  }
+      invalidateMetadataCacheEntry(oldRelativePath);
+      invalidateMetadataCacheEntry(toRelativePath(targetFileName));
+      await removeFirstSeenCacheEntry(oldRelativePath);
+    }),
+  );
 
   const finalFileNames = renamePlan
     .map((entry) => entry.targetFileName)
@@ -367,19 +372,21 @@ export const POST = async (request: Request) => {
     }
 
     try {
-      for (const fileName of groupFileNames) {
-        if (keptFileNameSet.has(fileName)) {
-          continue;
-        }
+      // Each rejected file is independent (distinct path, distinct cache entry), so deleting
+      // them can run concurrently rather than one at a time.
+      await Promise.all(
+        groupFileNames
+          .filter((fileName) => !keptFileNameSet.has(fileName))
+          .map(async (fileName) => {
+            const filePath = path.join(directory, fileName);
+            await fs.unlink(filePath);
+            await fs.unlink(resolvePreviewFilePath(filePath)).catch(() => {});
 
-        const filePath = path.join(directory, fileName);
-        await fs.unlink(filePath);
-        await fs.unlink(resolvePreviewFilePath(filePath)).catch(() => {});
-
-        const relativePath = toRelativePath(fileName);
-        invalidateMetadataCacheEntry(relativePath);
-        await removeFirstSeenCacheEntry(relativePath);
-      }
+            const relativePath = toRelativePath(fileName);
+            invalidateMetadataCacheEntry(relativePath);
+            await removeFirstSeenCacheEntry(relativePath);
+          }),
+      );
 
       await removeLibraryIndexCache();
 

@@ -314,16 +314,17 @@ const collectMediaFiles = async (directoryPath) => {
   const entries = await fs.readdir(directoryPath, { withFileTypes: true });
   const mediaFilePaths = [];
 
+  const childMediaFileLists = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => collectMediaFiles(path.join(directoryPath, entry.name))),
+  );
+  for (const childMediaFilePaths of childMediaFileLists) {
+    mediaFilePaths.push(...childMediaFilePaths);
+  }
+
   for (const entry of entries) {
-    const entryPath = path.join(directoryPath, entry.name);
-
-    if (entry.isDirectory()) {
-      const childMediaFilePaths = await collectMediaFiles(entryPath);
-      mediaFilePaths.push(...childMediaFilePaths);
-      continue;
-    }
-
-    if (!entry.isFile()) {
+    if (entry.isDirectory() || !entry.isFile()) {
       continue;
     }
 
@@ -335,7 +336,7 @@ const collectMediaFiles = async (directoryPath) => {
       continue;
     }
 
-    mediaFilePaths.push(entryPath);
+    mediaFilePaths.push(path.join(directoryPath, entry.name));
   }
 
   return mediaFilePaths;
@@ -344,14 +345,17 @@ const collectMediaFiles = async (directoryPath) => {
 const buildFirstSeenMapFromFilesystem = async (rootPath, mediaFilePaths) => {
   const firstSeenByRelativePath = new Map();
 
-  for (const absoluteMediaFilePath of mediaFilePaths) {
+  const eligiblePaths = mediaFilePaths.filter((absoluteMediaFilePath) => {
     const relativeToRoot = path.relative(rootPath, absoluteMediaFilePath);
-    if (relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) {
-      continue;
-    }
+    return !relativeToRoot.startsWith("..") && !path.isAbsolute(relativeToRoot);
+  });
+  const stats = await Promise.all(
+    eligiblePaths.map((absoluteMediaFilePath) => fs.stat(absoluteMediaFilePath)),
+  );
 
-    const stat = await fs.stat(absoluteMediaFilePath);
-    const firstSeenAt = resolveCreationTimestampMs(stat);
+  for (const [index, absoluteMediaFilePath] of eligiblePaths.entries()) {
+    const relativeToRoot = path.relative(rootPath, absoluteMediaFilePath);
+    const firstSeenAt = resolveCreationTimestampMs(stats[index]);
     const cacheKey = normalizeRelativePath(relativeToRoot);
     firstSeenByRelativePath.set(cacheKey, firstSeenAt);
   }
@@ -367,30 +371,42 @@ const collectExtraRootMediaAndFirstSeen = async (extraRootPaths) => {
   const mediaFilePaths = [];
   const firstSeenByRelativePath = new Map();
 
-  for (const [extraRootIndex, extraRootPath] of extraRootPaths.entries()) {
-    const extraCharactersRootPath = path.join(extraRootPath, "characters");
+  // Each extra root is scanned independently (own directory tree, own try/catch so one
+  // missing/unreadable root doesn't fail the others), so the scans run concurrently; only the
+  // synchronous merge into the shared map/array below happens in a fixed, deterministic order.
+  const extraRootResults = await Promise.all(
+    extraRootPaths.map(async (extraRootPath, extraRootIndex) => {
+      const extraCharactersRootPath = path.join(extraRootPath, "characters");
 
-    try {
-      const extraMediaFilePaths = await collectMediaFiles(extraCharactersRootPath);
-      const extraFirstSeen = await buildFirstSeenMapFromFilesystem(
-        extraRootPath,
-        extraMediaFilePaths,
-      );
-      const prefix = buildExtraRootRelativePrefix(extraRootIndex);
-
-      for (const [relativePath, firstSeenAt] of extraFirstSeen) {
-        firstSeenByRelativePath.set(
-          normalizeRelativePath(`${prefix}/${relativePath}`),
-          firstSeenAt,
+      try {
+        const extraMediaFilePaths = await collectMediaFiles(extraCharactersRootPath);
+        const extraFirstSeen = await buildFirstSeenMapFromFilesystem(
+          extraRootPath,
+          extraMediaFilePaths,
         );
+        return { extraRootIndex, extraMediaFilePaths, extraFirstSeen };
+      } catch (error) {
+        console.warn(
+          `Skipping extra image root ${extraRootPath}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return null;
       }
+    }),
+  );
 
-      mediaFilePaths.push(...extraMediaFilePaths);
-    } catch (error) {
-      console.warn(
-        `Skipping extra image root ${extraRootPath}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+  for (const result of extraRootResults) {
+    if (!result) {
+      continue;
     }
+
+    const { extraRootIndex, extraMediaFilePaths, extraFirstSeen } = result;
+    const prefix = buildExtraRootRelativePrefix(extraRootIndex);
+
+    for (const [relativePath, firstSeenAt] of extraFirstSeen) {
+      firstSeenByRelativePath.set(normalizeRelativePath(`${prefix}/${relativePath}`), firstSeenAt);
+    }
+
+    mediaFilePaths.push(...extraMediaFilePaths);
   }
 
   return { mediaFilePaths, firstSeenByRelativePath };
@@ -430,12 +446,13 @@ const collectDirectorySnapshots = async (rootPath, directoryPath) => {
   ];
   const entries = await fs.readdir(directoryPath, { withFileTypes: true });
 
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      snapshots.push(
-        ...(await collectDirectorySnapshots(rootPath, path.join(directoryPath, entry.name))),
-      );
-    }
+  const childSnapshotLists = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => collectDirectorySnapshots(rootPath, path.join(directoryPath, entry.name))),
+  );
+  for (const childSnapshots of childSnapshotLists) {
+    snapshots.push(...childSnapshots);
   }
 
   return snapshots.sort((a, b) => compareNatural(a.relativePath, b.relativePath));
@@ -584,15 +601,18 @@ const buildLibraryIndexCache = async (
   const characterMap = new Map();
   const poseCounter = new Map();
 
-  for (const absoluteMediaFilePath of mediaFilePaths) {
-    const stat = await fs.stat(absoluteMediaFilePath);
+  const stats = await Promise.all(
+    mediaFilePaths.map((absoluteMediaFilePath) => fs.stat(absoluteMediaFilePath)),
+  );
+
+  for (const [index, absoluteMediaFilePath] of mediaFilePaths.entries()) {
     const image = buildImageEntryFromMediaFile({
       rootPath,
       styleSet,
       compiledPatternFilters,
       firstSeenByRelativePath,
       absoluteMediaFilePath,
-      mtimeMs: stat.mtimeMs,
+      mtimeMs: stats[index].mtimeMs,
     });
 
     if (!image) {
@@ -805,6 +825,11 @@ const runWithConcurrency = async (items, concurrency, worker) => {
     while (nextIndex < items.length) {
       const currentIndex = nextIndex;
       nextIndex += 1;
+      // Intentionally sequential within each worker lane - that's what bounds concurrency to
+      // `concurrency` lanes. Collecting every item's promise into one Promise.all instead (the
+      // rule's usual suggestion) would run the whole batch at once, exactly what this helper
+      // exists to avoid (each item spawns a sharp/ffmpeg process for thumbnail generation).
+      // oxlint-disable-next-line eslint/no-await-in-loop
       results[currentIndex] = await worker(items[currentIndex]);
     }
   };
@@ -816,19 +841,18 @@ const runWithConcurrency = async (items, concurrency, worker) => {
 
 const generatePreviewThumbnails = async (mediaFilePaths, isDryRun) => {
   if (isDryRun) {
-    let staleCount = 0;
+    const staleFlags = await Promise.all(
+      mediaFilePaths.map(async (mediaFilePath) => {
+        const previewFilePath = toPreviewFilePath(mediaFilePath);
+        const [mediaStat, previewStat] = await Promise.all([
+          fs.stat(mediaFilePath),
+          fs.stat(previewFilePath).catch(() => null),
+        ]);
 
-    for (const mediaFilePath of mediaFilePaths) {
-      const previewFilePath = toPreviewFilePath(mediaFilePath);
-      const [mediaStat, previewStat] = await Promise.all([
-        fs.stat(mediaFilePath),
-        fs.stat(previewFilePath).catch(() => null),
-      ]);
-
-      if (!previewStat || previewStat.mtimeMs < mediaStat.mtimeMs) {
-        staleCount += 1;
-      }
-    }
+        return !previewStat || previewStat.mtimeMs < mediaStat.mtimeMs;
+      }),
+    );
+    const staleCount = staleFlags.filter(Boolean).length;
 
     console.log(`[dry-run] Would generate/update ${staleCount} preview thumbnail(s).`);
     return;

@@ -575,6 +575,18 @@ describe("/api/marks PUT", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 400 when type is omitted entirely", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+
+    const response = await PUT(jsonRequest("http://localhost/api/marks", "PUT", { path: "a.png" }));
+
+    expect(response.status).toBe(400);
+  });
+
   it("marks a video for upscaleVideo, ignoring any client-supplied metadata", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);

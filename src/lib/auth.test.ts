@@ -151,6 +151,18 @@ describe("isAuthenticatedRequest", () => {
     expect(isAuthenticatedRequest(makeRequest(staleToken))).toBe(false);
   });
 
+  it("skips a malformed cookie segment with no '=' and still reads a valid cookie", () => {
+    process.env.SD_PASSWORD = "correct-pass";
+    process.env.SD_PASSWORD_SALT = "auth-salt-skip-malformed";
+    const validToken = createAuthCookieValue()!;
+
+    const headers = new Headers();
+    headers.set("cookie", `flag_with_no_equals; ${AUTH_COOKIE_NAME}=${validToken}`);
+    const request = new Request("http://localhost/", { headers });
+
+    expect(isAuthenticatedRequest(request)).toBe(true);
+  });
+
   it("rejects a request whose cookie value cannot be percent-decoded", () => {
     process.env.SD_PASSWORD = "correct-pass";
     process.env.SD_PASSWORD_SALT = "auth-salt-malformed";

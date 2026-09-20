@@ -5,7 +5,8 @@ SYNC_ENABLED_RAW="${SD_FIRST_SEEN_SYNC_ENABLED:-1}"
 SYNC_INTERVAL_SECONDS="${SD_FIRST_SEEN_SYNC_INTERVAL_SECONDS:-86400}"
 
 is_true() {
-  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+  local raw_value="$1"
+  case "$(printf '%s' "$raw_value" | tr '[:upper:]' '[:lower:]')" in
     1 | true | yes | on)
       return 0
       ;;
@@ -13,7 +14,7 @@ is_true() {
       return 1
       ;;
     *)
-      echo "[first-seen-sync] Invalid SD_FIRST_SEEN_SYNC_ENABLED value '$1', defaulting to disabled"
+      echo "[first-seen-sync] Invalid SD_FIRST_SEEN_SYNC_ENABLED value '$raw_value', defaulting to disabled"
       return 1
       ;;
   esac

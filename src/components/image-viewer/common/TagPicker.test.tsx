@@ -13,9 +13,15 @@ const OPTIONS = [
   { value: "running", label: "Running" },
 ];
 
+const VALUE_EMPTY: string[] = [];
+const VALUE_SITTING = ["sitting"];
+const VALUE_SITTING_STANDING = ["sitting", "standing"];
+const VALUE_SITTING_STANDING_RUNNING = ["sitting", "standing", "running"];
+const VALUE_SITTING_CROUCHING = ["sitting", "crouching"];
+
 describe("TagPicker", () => {
   it("renders a chip for each selected value", () => {
-    render(<TagPicker options={OPTIONS} value={["sitting", "standing"]} onChange={vi.fn()} />);
+    render(<TagPicker options={OPTIONS} value={VALUE_SITTING_STANDING} onChange={vi.fn()} />);
 
     expect(screen.getByText("Sitting")).toBeInTheDocument();
     expect(screen.getByText("Standing")).toBeInTheDocument();
@@ -23,7 +29,7 @@ describe("TagPicker", () => {
   });
 
   it("does not render chips or the clear button when nothing is selected", () => {
-    render(<TagPicker options={OPTIONS} value={[]} onChange={vi.fn()} />);
+    render(<TagPicker options={OPTIONS} value={VALUE_EMPTY} onChange={vi.fn()} />);
 
     expect(screen.queryByRole("button", { name: "Clear all" })).not.toBeInTheDocument();
   });
@@ -31,7 +37,7 @@ describe("TagPicker", () => {
   it("calls onChange with the tag added when a new option is picked", () => {
     const handleChange = vi.fn();
 
-    render(<TagPicker options={OPTIONS} value={["sitting"]} onChange={handleChange} />);
+    render(<TagPicker options={OPTIONS} value={VALUE_SITTING} onChange={handleChange} />);
 
     fireEvent.mouseDown(screen.getByRole("combobox"));
     fireEvent.click(screen.getByRole("option", { name: "Standing" }));
@@ -40,7 +46,7 @@ describe("TagPicker", () => {
   });
 
   it("only offers options that are not already selected", () => {
-    render(<TagPicker options={OPTIONS} value={["sitting"]} onChange={vi.fn()} />);
+    render(<TagPicker options={OPTIONS} value={VALUE_SITTING} onChange={vi.fn()} />);
 
     fireEvent.mouseDown(screen.getByRole("combobox"));
 
@@ -51,7 +57,7 @@ describe("TagPicker", () => {
   it("calls onChange with the tag removed when a chip is deleted", () => {
     const handleChange = vi.fn();
 
-    render(<TagPicker options={OPTIONS} value={["sitting", "standing"]} onChange={handleChange} />);
+    render(<TagPicker options={OPTIONS} value={VALUE_SITTING_STANDING} onChange={handleChange} />);
 
     const chip = screen.getByText("Sitting").closest(".MuiChip-root");
     const deleteIcon = chip?.querySelector(".MuiChip-deleteIcon");
@@ -64,7 +70,7 @@ describe("TagPicker", () => {
 
   it("makes the select read-only once every option is selected", () => {
     render(
-      <TagPicker options={OPTIONS} value={["sitting", "standing", "running"]} onChange={vi.fn()} />,
+      <TagPicker options={OPTIONS} value={VALUE_SITTING_STANDING_RUNNING} onChange={vi.fn()} />,
     );
 
     expect(screen.getByRole("combobox")).toHaveAttribute("aria-readonly", "true");
@@ -74,7 +80,7 @@ describe("TagPicker", () => {
   });
 
   it("falls back to the raw value as a chip label when it has no matching option", () => {
-    render(<TagPicker options={OPTIONS} value={["sitting", "crouching"]} onChange={vi.fn()} />);
+    render(<TagPicker options={OPTIONS} value={VALUE_SITTING_CROUCHING} onChange={vi.fn()} />);
 
     expect(screen.getByText("crouching")).toBeInTheDocument();
   });
@@ -82,7 +88,7 @@ describe("TagPicker", () => {
   it("calls onChange with an empty array when 'Clear all' is clicked", () => {
     const handleChange = vi.fn();
 
-    render(<TagPicker options={OPTIONS} value={["sitting", "standing"]} onChange={handleChange} />);
+    render(<TagPicker options={OPTIONS} value={VALUE_SITTING_STANDING} onChange={handleChange} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
 

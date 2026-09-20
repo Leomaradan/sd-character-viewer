@@ -11,12 +11,13 @@ const OPTIONS = [
   { id: "cat-1", type: "category" as const, value: "outfit", label: "Outfit" },
   { id: "tag-1", type: "tag" as const, value: "cute", label: "Cute" },
 ];
+const EMPTY_OPTIONS: typeof OPTIONS = [];
 
 describe("CategoryFilter", () => {
   it("renders nothing when there are no filter options", () => {
     const { container } = render(
       <CategoryFilter
-        metadataFilterOptions={[]}
+        metadataFilterOptions={EMPTY_OPTIONS}
         selectedMetadataFilterId=""
         onMetadataFilterChange={vi.fn()}
         onClearMetadataFilter={vi.fn()}

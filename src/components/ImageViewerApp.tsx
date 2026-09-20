@@ -233,7 +233,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     }));
     setModalFilteredImages((currentImages) => currentImages.map(markSeen));
     setSelectedImageForModal((currentImage) =>
-      currentImage && currentImage.relativePath === relativePath
+      currentImage?.relativePath === relativePath
         ? { ...currentImage, isNew: false }
         : currentImage,
     );
