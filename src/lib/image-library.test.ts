@@ -1909,7 +1909,7 @@ describe("markImageAsSeen", () => {
       number
     >;
     expect(persisted["characters/3d/Anna/Base.png"]).toBe(0);
-    await expect(fs.access(libraryIndexCachePath)).rejects.toThrow();
+    await expect(fs.access(libraryIndexCachePath)).rejects.toThrow("ENOENT");
   });
 
   it("is idempotent - a second call for an already-seen path makes no further writes", async () => {

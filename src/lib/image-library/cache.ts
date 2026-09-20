@@ -117,15 +117,12 @@ const collectDirectorySnapshots = async (
   ];
   const entries = await fs.readdir(directoryPath, { withFileTypes: true });
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-
-    const childSnapshots = await collectDirectorySnapshots(
-      rootPath,
-      path.join(directoryPath, entry.name),
-    );
+  const childSnapshotLists = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => collectDirectorySnapshots(rootPath, path.join(directoryPath, entry.name))),
+  );
+  for (const childSnapshots of childSnapshotLists) {
     snapshots.push(...childSnapshots);
   }
 

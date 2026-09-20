@@ -10,7 +10,7 @@ import {
   DialogTitle,
   TextField,
 } from "@mui/material";
-import { type ChangeEvent } from "react";
+import { useCallback, type ChangeEvent } from "react";
 
 const EDIT_PROMPT_ERROR_SX = { mb: 2 };
 const EDIT_PROMPT_FIELD_SX = { mt: 1 };
@@ -34,9 +34,12 @@ export function ImageDetailEditPromptDialog({
   onClose,
   onSave,
 }: Readonly<IImageDetailEditPromptDialogProps>) {
-  const handleDraftChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    onDraftChange(event.target.value);
-  };
+  const handleDraftChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      onDraftChange(event.target.value);
+    },
+    [onDraftChange],
+  );
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -48,7 +51,6 @@ export function ImageDetailEditPromptDialog({
           </Alert>
         )}
         <TextField
-          autoFocus
           multiline
           fullWidth
           minRows={3}

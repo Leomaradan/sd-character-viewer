@@ -595,7 +595,9 @@ const buildPendingAnimationClaims = (
   const claimsByGroupKey = new Map<string, IPendingAnimationClaim[]>();
 
   const addClaims = (
-    entries: Record<string, IToAnimateEntry | IToExtendEntry>,
+    // IToExtendEntry is a type alias for IToAnimateEntry (same shape, different mark file), so
+    // this parameter's type is just IToAnimateEntry - a union of the two would be redundant.
+    entries: Record<string, IToAnimateEntry>,
     sourceMediaType: TMediaType,
     markFile: "animate" | "extend",
   ): void => {
@@ -1199,15 +1201,16 @@ const indexCharacterFolder = async (
   rootContext: IImageRootContext,
 ): Promise<void> => {
   const mediaFiles = await listMediaFiles(characterFolderPath);
+  const stats = await Promise.all(
+    mediaFiles.map((mediaFile) => fs.stat(path.join(characterFolderPath, mediaFile))),
+  );
 
-  for (const mediaFile of mediaFiles) {
-    const imagePath = path.join(characterFolderPath, mediaFile);
-    const stat = await fs.stat(imagePath);
+  for (const [index, mediaFile] of mediaFiles.entries()) {
     const imageItem = buildImageItem(
       style,
       characterName,
       mediaFile,
-      Math.trunc(stat.mtimeMs),
+      Math.trunc(stats[index].mtimeMs),
       rootContext.rootKey,
       rootContext.relativePathPrefix,
     );
@@ -1225,15 +1228,19 @@ const indexStyleFolder = async (
 ): Promise<void> => {
   const characterEntries = await fs.readdir(stylePath, { withFileTypes: true });
 
-  for (const characterEntry of characterEntries) {
-    if (!characterEntry.isDirectory()) {
-      continue;
-    }
-
-    const characterName = characterEntry.name;
-    const characterFolderPath = path.join(stylePath, characterName);
-    await indexCharacterFolder(style, characterName, characterFolderPath, state, rootContext);
-  }
+  // Each call only mutates `state` with synchronous Map/array operations between awaits, so
+  // running them concurrently can't interleave mid-mutation - and the resulting image/character
+  // lists are fully re-sorted later (sortImageItems, then by name in toLibraryData), so the
+  // insertion order this produces doesn't need to match directory iteration order.
+  await Promise.all(
+    characterEntries
+      .filter((characterEntry) => characterEntry.isDirectory())
+      .map((characterEntry) => {
+        const characterName = characterEntry.name;
+        const characterFolderPath = path.join(stylePath, characterName);
+        return indexCharacterFolder(style, characterName, characterFolderPath, state, rootContext);
+      }),
+  );
 };
 
 // Extra roots only ever contribute images for styles resolved from the main root's config.json
@@ -1325,12 +1332,12 @@ const toLibraryData = (
         return summary;
       }
 
-      return {
-        ...summary,
-        category: metadata.category,
-        serie: metadata.serie,
-        tags: metadata.tags,
-      };
+      // `summary` is freshly built above (not shared or mutated elsewhere), so assigning onto it
+      // directly is safe and avoids the shallow-copy overhead of spreading into a new object.
+      summary.category = metadata.category;
+      summary.serie = metadata.serie;
+      summary.tags = metadata.tags;
+      return summary;
     })
     .sort((a, b) => compareNatural(a.name, b.name));
 

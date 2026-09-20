@@ -29,6 +29,10 @@ import { ImageDetailDeleteDialog } from "./ImageDetailDeleteDialog";
 import { ImageDetailEditPromptDialog } from "./ImageDetailEditPromptDialog";
 import { ImageDetailMetadata } from "./ImageDetailMetadata";
 
+// Stable reference for the `animations` default prop - an inline `[]` literal would be
+// re-created on every render, breaking referential equality for anything memoized off it.
+const EMPTY_ANIMATIONS: IAnimationConfig[] = [];
+
 const DIALOG_SX = { "& .MuiDialog-paper": { height: "95vh", m: 1 } };
 const DIALOG_CONTENT_SX = { p: 0, bgcolor: "#000", display: "flex", overflow: "hidden" };
 const CONTENT_BOX_SX = { display: "flex", width: "100%", height: "100%", position: "relative" };
@@ -297,7 +301,7 @@ export function ImageDetailModal({
   onNavigatePrevious,
   onNavigateNext,
   styleLabel = formatStyleLabel,
-  animations = [],
+  animations = EMPTY_ANIMATIONS,
 }: Readonly<IImageDetailModalProps>) {
   const [metadataState, setMetadataState] = useState<IMetadataState>({ path: null, data: null });
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
