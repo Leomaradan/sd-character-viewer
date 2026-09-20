@@ -391,6 +391,33 @@ describe("reconcilePendingAnimationMarks", () => {
     );
   });
 
+  it("does not re-match an already-fulfilled claim to a second candidate when two reconciliation passes race", async () => {
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance", "");
+    const firstVideo = danceVideo({ poseVariant: 1 });
+    const secondVideo = danceVideo({
+      relativePath: "characters/3d/Anna/Dance 2.mp4",
+      poseVariant: 2,
+    });
+    const imageItems = [baseImage, firstVideo, secondVideo];
+
+    // Both calls see the same one claim and start from the same on-disk state (as two concurrent
+    // uncached readImageLibrary() rebuilds would). Without re-reading marks inside the lock, the
+    // second pass would still see the claim after the first pass already fulfilled and removed
+    // it, and match it to the second (still-unclaimed) video - creating a spurious second link
+    // for a claim that's already been satisfied.
+    await Promise.all([
+      reconcilePendingAnimationMarks(TEMP_ROOT, imageItems, DANCE_ANIMATIONS),
+      reconcilePendingAnimationMarks(TEMP_ROOT, imageItems, DANCE_ANIMATIONS),
+    ]);
+
+    const links = await readVideoLinks(TEMP_ROOT);
+    expect(Object.keys(links)).toEqual([firstVideo.relativePath]);
+    expect(links[firstVideo.relativePath]).toEqual(
+      expect.objectContaining({ sourceRelativePath: baseImage.relativePath }),
+    );
+    expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({});
+  });
+
   it("matches a claim to a video whose filename normalizes underscores/hyphens differently than the animation's raw name", async () => {
     const animations: IAnimationConfig[] = [
       { key: "dance-party", name: "Dance_Party", prompt: "" },

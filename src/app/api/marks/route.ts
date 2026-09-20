@@ -137,21 +137,12 @@ const resolveAnimationAction = async (
 const resolveMarkPrompt = (rawPrompt: unknown, node: IAnimationConfig): string =>
   typeof rawPrompt === "string" ? rawPrompt : node.prompt;
 
-// Edit Animation sends no `metadata` at all (it only ever edits the prompt) - when omitted, the
-// mark's existing metadata is preserved rather than blanked to "", which a plain default would
-// do. A brand-new mark (no existing entry) still defaults to "".
-const resolveAnimateMarkMetadata = async (
-  rootPath: string,
-  requestedPath: string,
-  rawMetadata: unknown,
-): Promise<string> => {
-  if (typeof rawMetadata === "string") {
-    return rawMetadata;
-  }
-
-  const existingEntries = await readToAnimateEntries(rootPath);
-  return existingEntries[requestedPath]?.metadata ?? "";
-};
+// Edit Animation sends no `metadata` at all (it only ever edits the prompt) - when omitted here,
+// `setToAnimateEntry` preserves the mark's existing metadata itself (atomically, inside its own
+// lock) rather than this route pre-reading it and passing the resolved string along, which would
+// race a concurrent mark update landing between the read and the write.
+const resolveAnimateMarkMetadata = (rawMetadata: unknown): string | undefined =>
+  typeof rawMetadata === "string" ? rawMetadata : undefined;
 
 const handleAnimateMark = async (
   rootPath: string,
@@ -166,7 +157,7 @@ const handleAnimateMark = async (
   }
 
   const prompt = resolveMarkPrompt(rawPrompt, resolved.node);
-  const metadata = await resolveAnimateMarkMetadata(rootPath, requestedPath, rawMetadata);
+  const metadata = resolveAnimateMarkMetadata(rawMetadata);
   await setToAnimateEntry(rootPath, requestedPath, metadata, resolved.action, prompt);
   return new Response(null, { status: 204 });
 };
