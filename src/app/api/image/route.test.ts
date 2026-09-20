@@ -134,6 +134,63 @@ describe("/api/image", () => {
     expect(readFileMock).not.toHaveBeenCalled();
   });
 
+  it("GET returns 304 when If-Modified-Since is at or after the file's Last-Modified", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const readFileMock = vi.mocked(fs.readFile);
+    const statMock = vi.mocked(fs.stat);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
+    statMock.mockResolvedValue({ size: 3, mtimeMs: 1_700_000_000_000 } as never);
+
+    const response = await GET(
+      new Request("http://localhost/api/image?path=ok.png", {
+        headers: { "If-Modified-Since": new Date(1_700_000_000_000).toUTCString() },
+      }),
+    );
+
+    expect(response.status).toBe(304);
+    expect(readFileMock).not.toHaveBeenCalled();
+  });
+
+  it("GET returns 200 when If-Modified-Since is before the file's Last-Modified", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const readFileMock = vi.mocked(fs.readFile);
+    const statMock = vi.mocked(fs.stat);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
+    statMock.mockResolvedValue({ size: 3, mtimeMs: 1_700_000_000_000 } as never);
+    readFileMock.mockResolvedValue(Buffer.from([1, 2, 3]));
+
+    const response = await GET(
+      new Request("http://localhost/api/image?path=ok.png", {
+        headers: { "If-Modified-Since": new Date(1_600_000_000_000).toUTCString() },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("GET ignores an unparseable If-Modified-Since header and returns the file", async () => {
+    const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
+    const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);
+    const readFileMock = vi.mocked(fs.readFile);
+    const statMock = vi.mocked(fs.stat);
+    isPasswordProtectionEnabledMock.mockReturnValue(false);
+    resolveImageFilePathMock.mockReturnValue("/tmp/a.png");
+    statMock.mockResolvedValue({ size: 3, mtimeMs: 1_700_000_000_000 } as never);
+    readFileMock.mockResolvedValue(Buffer.from([1, 2, 3]));
+
+    const response = await GET(
+      new Request("http://localhost/api/image?path=ok.png", {
+        headers: { "If-Modified-Since": "not-a-date" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
   it("GET returns 206 with the requested byte range for a Range request", async () => {
     const isPasswordProtectionEnabledMock = vi.mocked(auth.isPasswordProtectionEnabled);
     const resolveImageFilePathMock = vi.mocked(resolveImageFilePath);

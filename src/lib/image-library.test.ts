@@ -33,8 +33,10 @@ import {
   readToUpscaleEntries,
   readToUpscaleVideoEntries,
   readVideoLinks,
+  removeFirstSeenCacheEntry,
   removeLibraryIndexCache,
   removeMarkedActionEntries,
+  removeMarkedImageMapEntryIfUnchanged,
   removeToAnimateEntry,
   removeToExtendEntry,
   removeToUpscaleEntry,
@@ -176,6 +178,34 @@ describe("resolveImageFilePath", () => {
     process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
 
     const resolved = resolveImageFilePath("extra-roots/0/outside.png");
+
+    expect(resolved).toBeNull();
+  });
+
+  it("returns null for an empty relative path", () => {
+    process.env.SD_IMAGES_ROOT = "/tmp/images";
+
+    expect(resolveImageFilePath("")).toBeNull();
+  });
+
+  it("returns null for an absolute relative path", () => {
+    process.env.SD_IMAGES_ROOT = "/tmp/images";
+
+    expect(resolveImageFilePath("/etc/passwd")).toBeNull();
+  });
+
+  it("returns null when SD_IMAGES_ROOT is not configured", () => {
+    delete process.env.SD_IMAGES_ROOT;
+
+    expect(resolveImageFilePath("characters/3d/Anna/Base.png")).toBeNull();
+  });
+
+  it("returns null when the extra-root remainder is itself an absolute path", async () => {
+    const extraRoot = "/tmp/extra-images";
+    await fs.mkdir(path.join(extraRoot, "characters"), { recursive: true });
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+
+    const resolved = resolveImageFilePath("extra-roots/0//etc/passwd");
 
     expect(resolved).toBeNull();
   });
@@ -1676,6 +1706,64 @@ describe("readToAnimateEntries / setToAnimateEntry / removeToAnimateEntry", () =
       "a.png": { metadata: "", action: "Zoom In", prompt: "" },
     });
   });
+
+  it("is a no-op when removing an entry that is not marked", async () => {
+    const tempRoot = "/tmp/sd-animate-remove-missing";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await expect(
+      removeToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png"),
+    ).resolves.toBeUndefined();
+    expect(await readToAnimateEntries(tempRoot)).toEqual({});
+  });
+});
+
+describe("removeMarkedImageMapEntryIfUnchanged", () => {
+  it("deletes the entry when it still deep-equals the expected snapshot", async () => {
+    const tempRoot = "/tmp/sd-animate-remove-if-unchanged-match";
+    await fs.mkdir(tempRoot, { recursive: true });
+    const filePath = path.join(tempRoot, "to-animate.json");
+    await setToAnimateEntry(tempRoot, "a.png", "raw", "Zoom In", "zoom in slowly");
+
+    await removeMarkedImageMapEntryIfUnchanged(filePath, "a.png", {
+      metadata: "raw",
+      action: "Zoom In",
+      prompt: "zoom in slowly",
+    });
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({});
+  });
+
+  it("leaves the entry untouched when it no longer matches the expected snapshot", async () => {
+    const tempRoot = "/tmp/sd-animate-remove-if-unchanged-mismatch";
+    await fs.mkdir(tempRoot, { recursive: true });
+    const filePath = path.join(tempRoot, "to-animate.json");
+    await setToAnimateEntry(tempRoot, "a.png", "raw", "Zoom In", "edited concurrently");
+
+    await removeMarkedImageMapEntryIfUnchanged(filePath, "a.png", {
+      metadata: "raw",
+      action: "Zoom In",
+      prompt: "zoom in slowly",
+    });
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "a.png": { metadata: "raw", action: "Zoom In", prompt: "edited concurrently" },
+    });
+  });
+
+  it("is a no-op when the entry does not exist at all", async () => {
+    const tempRoot = "/tmp/sd-animate-remove-if-unchanged-absent";
+    await fs.mkdir(tempRoot, { recursive: true });
+    const filePath = path.join(tempRoot, "to-animate.json");
+
+    await expect(
+      removeMarkedImageMapEntryIfUnchanged(filePath, "a.png", {
+        metadata: "raw",
+        action: "Zoom In",
+        prompt: "zoom in slowly",
+      }),
+    ).resolves.toBeUndefined();
+  });
 });
 
 describe("readToUpscaleVideoEntries / setToUpscaleVideoEntry / removeToUpscaleVideoEntry", () => {
@@ -1762,6 +1850,16 @@ describe("readToExtendEntries / setToExtendEntry / removeToExtendEntry", () => {
     expect(await readToExtendEntries(tempRoot)).toEqual({
       "a.mp4": { metadata: "", action: "Pan", prompt: "" },
     });
+  });
+
+  it("is a no-op when removing an entry that is not marked", async () => {
+    const tempRoot = "/tmp/sd-extend-remove-missing";
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await expect(
+      removeToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4"),
+    ).resolves.toBeUndefined();
+    expect(await readToExtendEntries(tempRoot)).toEqual({});
   });
 });
 
@@ -1950,5 +2048,53 @@ describe("markImageAsSeen", () => {
     >;
     expect(persisted["characters/3d/Anna/Base.png"]).toBe(0);
     expect(persisted["characters/3d/Anna/Full.png"]).toBe(0);
+  });
+});
+
+describe("removeFirstSeenCacheEntry", () => {
+  it("is a no-op when no images root is configured", async () => {
+    delete process.env.SD_IMAGES_ROOT;
+
+    await expect(removeFirstSeenCacheEntry("characters/3d/Anna/Base.png")).resolves.toBeUndefined();
+  });
+
+  it("is a no-op when the path has no first-seen cache entry", async () => {
+    const tempRoot = "/tmp/sd-remove-first-seen-missing";
+    await fs.mkdir(tempRoot, { recursive: true });
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    await markImageAsSeen("characters/3d/Anna/Base.png");
+    const writeFileSpy = vi.spyOn(fs, "writeFile");
+
+    await removeFirstSeenCacheEntry("characters/3d/Anna/Other.png");
+
+    expect(writeFileSpy).not.toHaveBeenCalled();
+    writeFileSpy.mockRestore();
+  });
+
+  it("removes the entry, leaving other entries untouched", async () => {
+    const tempRoot = "/tmp/sd-remove-first-seen-present";
+    await fs.mkdir(tempRoot, { recursive: true });
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const cacheDirPath = "/tmp/sd-remove-first-seen-present-cache";
+    process.env.SD_CACHE_DIR = cacheDirPath;
+    await fs.mkdir(cacheDirPath, { recursive: true });
+
+    await markImageAsSeen("characters/3d/Anna/Base.png");
+    await markImageAsSeen("characters/3d/Anna/Full.png");
+
+    await removeFirstSeenCacheEntry("characters/3d/Anna/Base.png");
+
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const firstSeenCachePath = path.join(cacheDirPath, `${rootHash}.first-seen.json`);
+    const persisted = JSON.parse(await fs.readFile(firstSeenCachePath, "utf8")) as Record<
+      string,
+      number
+    >;
+    expect(persisted).not.toHaveProperty("characters/3d/Anna/Base.png");
+    expect(persisted).toHaveProperty("characters/3d/Anna/Full.png");
+
+    delete process.env.SD_CACHE_DIR;
   });
 });

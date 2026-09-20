@@ -69,6 +69,17 @@ describe("/api/image/seen POST", () => {
     expect(markImageAsSeen).not.toHaveBeenCalled();
   });
 
+  it("returns 400 when no path query param is provided", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+
+    const response = await POST(new Request("http://localhost/api/image/seen", { method: "POST" }));
+
+    expect(response.status).toBe(400);
+    expect(resolveImageFilePath).not.toHaveBeenCalled();
+    expect(markImageAsSeen).not.toHaveBeenCalled();
+  });
+
   it("marks the requested image as seen and does not require SD_ALLOW_DELETE", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);

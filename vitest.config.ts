@@ -19,10 +19,10 @@ export default defineConfig({
       reporter: [["lcovonly"], ["html"], ["cobertura"], ["text-summary"]],
       thresholds: {
         autoUpdate: (newThreshold) => Math.floor(newThreshold),
-        statements: 97,
-        branches: 89,
+        statements: 98,
+        branches: 91,
         functions: 98,
-        lines: 97,
+        lines: 98,
       },
     },
   },
