@@ -260,14 +260,20 @@ export const ImageViewerBody = ({
   }, [selectedCharacterImages]);
 
   const visibleCharacterDetailImages = useMemo(() => {
-    return selectedCharacterImages.filter((image) => {
+    const matchingImages = selectedCharacterImages.filter((image) => {
       const matchesStyle =
         characterDetailStyle === "--all--" ? true : image.style === characterDetailStyle;
       const matchesPose =
         characterDetailPose === "--all--" ? true : image.poseBaseName === characterDetailPose;
       return matchesStyle && matchesPose;
     });
-  }, [selectedCharacterImages, characterDetailStyle, characterDetailPose]);
+
+    if (characterSortOrder === "date") {
+      return [...matchingImages].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+    }
+
+    return matchingImages;
+  }, [selectedCharacterImages, characterDetailStyle, characterDetailPose, characterSortOrder]);
 
   const styleFilteredImages = useMemo(() => {
     const normalizedSearchText = styleViewSearchText.trim().toLowerCase();
