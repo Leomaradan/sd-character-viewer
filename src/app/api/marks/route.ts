@@ -135,7 +135,8 @@ const resolveAnimationAction = async (
 interface IResolvedMark {
   action: string;
   prompt: string;
-  options: IAnimationGenerationOptions;
+  // undefined on an Edit Animation save: the setter then keeps the mark's stored options.
+  options: IAnimationGenerationOptions | undefined;
 }
 
 // Resolves the requested node to what actually gets marked (see selectAnimation): a random
@@ -143,10 +144,14 @@ interface IResolvedMark {
 // Animation reuses this same PUT upsert with an explicit `prompt`: that edits the existing mark
 // as-is, so no random pick happens - otherwise a mark on a group node (one created before its
 // prompt was emptied) would silently switch to a random child's key while the client keeps
-// showing the original action.
+// showing the original action - and its stored lora/trigger/weight are kept rather than
+// replaced by whatever the (possibly since-edited) config now says.
 const resolveMark = (rawPrompt: unknown, node: IAnimationConfig): IResolvedMark => {
-  const selection =
-    typeof rawPrompt === "string" ? { node, prompt: rawPrompt } : selectAnimation(node);
+  if (typeof rawPrompt === "string") {
+    return { action: node.key, prompt: rawPrompt, options: undefined };
+  }
+
+  const selection = selectAnimation(node);
   const { lora, trigger, weight } = selection.node;
   return {
     action: selection.node.key,

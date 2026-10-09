@@ -79,6 +79,15 @@ const buildToAnimateEntry = (
   return entry;
 };
 
+// `options` omitted (undefined) means "preserve whatever this mark already has" - same contract
+// (and same in-lock atomicity reasoning) as setToAnimateEntry's `metadata`, used by Edit
+// Animation, which only ever edits the prompt.
+const resolveGenerationOptions = (
+  options: IAnimationGenerationOptions | undefined,
+  existingEntry: IRawToAnimateEntry | undefined,
+): IAnimationGenerationOptions =>
+  options ?? (existingEntry ? normalizeToAnimateEntry(existingEntry) : {});
+
 const normalizeToAnimateEntries = (
   entries: Record<string, IRawToAnimateEntry>,
 ): Record<string, IToAnimateEntry> => {
@@ -200,13 +209,18 @@ export const setToAnimateEntry = async (
   metadata: string | undefined,
   action: string,
   prompt: string,
-  options: IAnimationGenerationOptions = {},
+  options?: IAnimationGenerationOptions,
 ): Promise<void> => {
   const filePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
   await withMarkedImageFileLock(filePath, async () => {
     const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
     const resolvedMetadata = metadata ?? entries[relativePath]?.metadata ?? "";
-    entries[relativePath] = buildToAnimateEntry(resolvedMetadata, action, prompt, options);
+    entries[relativePath] = buildToAnimateEntry(
+      resolvedMetadata,
+      action,
+      prompt,
+      resolveGenerationOptions(options, entries[relativePath]),
+    );
     await writeMarkedImageMap(filePath, entries);
   });
 };
@@ -274,12 +288,17 @@ export const setToExtendEntry = async (
   metadata: string,
   action: string,
   prompt: string,
-  options: IAnimationGenerationOptions = {},
+  options?: IAnimationGenerationOptions,
 ): Promise<void> => {
   const filePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
   await withMarkedImageFileLock(filePath, async () => {
     const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
-    entries[relativePath] = buildToAnimateEntry(metadata, action, prompt, options);
+    entries[relativePath] = buildToAnimateEntry(
+      metadata,
+      action,
+      prompt,
+      resolveGenerationOptions(options, entries[relativePath]),
+    );
     await writeMarkedImageMap(filePath, entries);
   });
 };

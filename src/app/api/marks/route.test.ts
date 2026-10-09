@@ -498,7 +498,7 @@ describe("/api/marks PUT", () => {
       "raw",
       "Zoom In",
       "edited by user",
-      {},
+      undefined,
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ action: "Zoom In", prompt: "edited by user" });
@@ -531,7 +531,7 @@ describe("/api/marks PUT", () => {
       undefined,
       "Zoom In",
       "edited by user",
-      {},
+      undefined,
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ action: "Zoom In", prompt: "edited by user" });
@@ -661,9 +661,7 @@ describe("/api/marks PUT", () => {
       undefined,
       "dance",
       "edited by user",
-      {
-        lora: "dance_lora",
-      },
+      undefined,
     );
     await expect(response.json()).resolves.toEqual({ action: "dance", prompt: "edited by user" });
   });
@@ -991,7 +989,7 @@ describe("/api/marks PUT", () => {
       "",
       "Zoom In",
       "edited by user",
-      {},
+      undefined,
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ action: "Zoom In", prompt: "edited by user" });

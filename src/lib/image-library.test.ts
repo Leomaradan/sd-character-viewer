@@ -1448,6 +1448,31 @@ describe("animate/extend mark generation options", () => {
     });
   });
 
+  it("preserves stored lora/trigger/weight when re-set without options (prompt-only edit)", async () => {
+    await fs.mkdir(tempRoot, { recursive: true });
+    const options = { lora: "zoom_lora", trigger: "zoomtrigger", weight: 0.8 };
+    await setToAnimateEntry(tempRoot, "a.png", "raw", "zoom", "zoom in", options);
+    await setToExtendEntry(tempRoot, "a.mp4", "", "zoom", "zoom in", options);
+
+    await setToAnimateEntry(tempRoot, "a.png", undefined, "zoom", "edited");
+    await setToExtendEntry(tempRoot, "a.mp4", "", "zoom", "edited");
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "a.png": { metadata: "raw", action: "zoom", prompt: "edited", ...options },
+    });
+    expect(await readToExtendEntries(tempRoot)).toEqual({
+      "a.mp4": { metadata: "", action: "zoom", prompt: "edited", ...options },
+    });
+
+    // Explicit options (a fresh mark) still replace them, including clearing them with {}.
+    await setToAnimateEntry(tempRoot, "a.png", "raw", "zoom", "zoom in", {});
+    expect((await readToAnimateEntries(tempRoot))["a.png"]).toEqual({
+      metadata: "raw",
+      action: "zoom",
+      prompt: "zoom in",
+    });
+  });
+
   it("drops malformed lora/trigger/weight values when reading an entry back", async () => {
     await fs.mkdir(tempRoot, { recursive: true });
     await fs.writeFile(
