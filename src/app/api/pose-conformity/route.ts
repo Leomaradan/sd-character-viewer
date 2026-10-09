@@ -127,7 +127,13 @@ export const POST = async (request: Request) => {
   const body = await readRequestBody(request);
   const relativePath = typeof body?.path === "string" ? body.path.trim() : "";
 
-  if (!relativePath || !resolveImageFilePath(relativePath)) {
+  // Canonical paths only (no "./" or in-tree ".."): marks are keyed by the exact relativePath,
+  // so an aliased spelling would be stored under a key GET never matches.
+  if (
+    !relativePath ||
+    path.posix.normalize(relativePath) !== relativePath ||
+    !resolveImageFilePath(relativePath)
+  ) {
     return new Response("Invalid image path", { status: 400 });
   }
 

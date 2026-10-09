@@ -4,7 +4,7 @@ import path from "node:path";
 import { insertVariantNumber } from "@/lib/pose-conformity";
 
 import { migrateFirstSeenCacheEntry, removeLibraryIndexCache } from "./cache";
-import { migrateMarkedActionEntries } from "./marks";
+import { migrateMarkedActionEntries, withMarkedImageFileLock } from "./marks";
 import {
   isPreviewSidecarFileName,
   isTemporaryRenameFileName,
@@ -100,36 +100,51 @@ export const renameMediaFile = async (
   }
 
   const directory = path.dirname(filePath);
-  let entries: string[];
 
-  try {
-    entries = await fs.readdir(directory);
-  } catch {
-    throw new MediaRenameError("not-found", "File not found");
-  }
+  // Listing the folder, picking a free name and renaming happen under one per-folder lock:
+  // otherwise two concurrent renames (e.g. two quick Pose Conformity clicks) can both pick the
+  // same free name from their own listing, and on POSIX the second rename silently replaces the
+  // first file.
+  const newFileName = await withMarkedImageFileLock(`rename-dir:${directory}`, async () => {
+    let entries: string[];
 
-  if (!entries.includes(fileName)) {
-    throw new MediaRenameError("not-found", "File not found");
-  }
+    try {
+      entries = await fs.readdir(directory);
+    } catch {
+      throw new MediaRenameError("not-found", "File not found");
+    }
 
-  const findConflictingEntry = (candidateFileName: string): string | undefined => {
-    const lowerCandidate = candidateFileName.toLowerCase();
-    return entries.find((entry) => entry !== fileName && entry.toLowerCase() === lowerCandidate);
-  };
+    if (!entries.includes(fileName)) {
+      throw new MediaRenameError("not-found", "File not found");
+    }
 
-  let newFileName = requestedFileName;
-  const conflictingEntry = findConflictingEntry(newFileName);
+    const findConflictingEntry = (candidateFileName: string): string | undefined => {
+      const lowerCandidate = candidateFileName.toLowerCase();
+      return entries.find((entry) => entry !== fileName && entry.toLowerCase() === lowerCandidate);
+    };
 
-  if (conflictingEntry && !options.incrementOnConflict) {
-    throw new MediaRenameError("conflict", `A file named "${conflictingEntry}" already exists.`);
-  }
+    let candidateFileName = requestedFileName;
+    const conflictingEntry = findConflictingEntry(candidateFileName);
 
-  // Auto-numbering: "Dancing.mp4" taken -> "Dancing 2.mp4", then "Dancing 3.mp4"... (the number
-  // goes before any "[...]" annotations). Bounded by the folder size, since each taken candidate
-  // is a distinct existing entry.
-  for (let variant = 2; findConflictingEntry(newFileName); variant += 1) {
-    newFileName = `${insertVariantNumber(stem, variant)}${extension}`;
-  }
+    if (conflictingEntry && !options.incrementOnConflict) {
+      throw new MediaRenameError("conflict", `A file named "${conflictingEntry}" already exists.`);
+    }
+
+    // Auto-numbering: "Dancing.mp4" taken -> "Dancing 2.mp4", then "Dancing 3.mp4"... (the
+    // number goes before any annotations). Bounded by the folder size, since each taken
+    // candidate is a distinct existing entry.
+    for (let variant = 2; findConflictingEntry(candidateFileName); variant += 1) {
+      candidateFileName = `${insertVariantNumber(stem, variant)}${extension}`;
+    }
+
+    if (candidateFileName !== fileName) {
+      const candidateFilePath = path.join(directory, candidateFileName);
+      await fs.rename(filePath, candidateFilePath);
+      await renamePreviewSidecar(filePath, candidateFilePath);
+    }
+
+    return candidateFileName;
+  });
 
   if (newFileName === fileName) {
     return relativePath;
@@ -138,10 +153,7 @@ export const renameMediaFile = async (
   // Same folder, same extension, and a separator-free stem, so the new path stays inside the
   // subtree resolveImageFilePath already validated for the old one.
   const newRelativePath = `${relativePath.slice(0, relativePath.length - fileName.length)}${newFileName}`;
-  const newFilePath = path.join(directory, newFileName);
 
-  await fs.rename(filePath, newFilePath);
-  await renamePreviewSidecar(filePath, newFilePath);
   // Both migrations are best-effort (they swallow their own persistence errors): the file has
   // already moved, so a bookkeeping failure must not surface as a failed rename.
   await migrateFirstSeenCacheEntry(relativePath, newRelativePath);

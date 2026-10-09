@@ -249,6 +249,27 @@ describe("renameMediaFile with incrementOnConflict", () => {
     ).resolves.toBe("characters/3d/Anna/Casual 2 [Upscaled].png");
   });
 
+  it("never lets two concurrent renames pick the same free name", async () => {
+    await fs.writeFile(path.join(ANNA_DIR, "Odd.png"), "odd");
+    await fs.writeFile(path.join(ANNA_DIR, "Casual.png"), "taken");
+
+    const newPaths = await Promise.all([
+      renameMediaFile("characters/3d/Anna/Casul.png", "Casual", { incrementOnConflict: true }),
+      renameMediaFile("characters/3d/Anna/Odd.png", "Casual", { incrementOnConflict: true }),
+    ]);
+
+    expect(newPaths).toEqual([
+      "characters/3d/Anna/Casual 2.png",
+      "characters/3d/Anna/Casual 3.png",
+    ]);
+    expect((await fs.readdir(ANNA_DIR)).filter((entry) => entry.endsWith(".png")).sort()).toEqual([
+      "Base.png",
+      "Casual 2.png",
+      "Casual 3.png",
+      "Casual.png",
+    ]);
+  });
+
   it("uses the requested name when it's free", async () => {
     await expect(
       renameMediaFile("characters/3d/Anna/Casul.png", "Casual", { incrementOnConflict: true }),
