@@ -7,12 +7,16 @@ import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } 
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
 import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 import {
+  getImagesRootPathFromEnv,
+  isVideoFilePath,
+  migrateVideoLink,
+  removeFirstSeenCacheEntry,
   removeLibraryIndexCache,
+  removeMarkedActionEntries,
   resolveImageFilePath,
   resolvePreviewFilePath,
-  removeFirstSeenCacheEntry,
-  removeMarkedActionEntries,
-  isVideoFilePath,
+  setToAnimateEntry,
+  setToExtendEntry,
 } from "@/lib/image-library";
 
 const getContentTypeForFilePath = (filePath: string): string => {
@@ -259,6 +263,50 @@ const findNextAvailableNumber = async (
   return maxNumber === 1 ? 2 : maxNumber;
 };
 
+// Redraw-on-video: renaming a linked video frees its old name (same non-destructive semantics as
+// Redraw-on-image) and re-requests the same generation - same source, action, and prompt - by
+// requeuing a mark in whichever file matches the link's sourceMediaType. Best-effort: any failure
+// here (no link found, or a write error) must never fail the rename itself, which has already
+// succeeded on disk by the time this runs.
+const requeueVideoLinkMark = async (
+  oldRelativePath: string,
+  newRelativePath: string,
+): Promise<boolean> => {
+  try {
+    const rootPath = getImagesRootPathFromEnv();
+    if (!rootPath) {
+      return false;
+    }
+
+    const link = await migrateVideoLink(rootPath, oldRelativePath, newRelativePath);
+    if (!link) {
+      return false;
+    }
+
+    if (link.sourceMediaType === "image") {
+      await setToAnimateEntry(
+        rootPath,
+        link.sourceRelativePath,
+        link.metadata,
+        link.action,
+        link.prompt,
+      );
+    } else {
+      await setToExtendEntry(
+        rootPath,
+        link.sourceRelativePath,
+        link.metadata,
+        link.action,
+        link.prompt,
+      );
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const PATCH = async (request: Request) => {
   if (isMisconfigured()) {
     return Response.json({ misconfigured: true, required: true, authenticated: false });
@@ -306,7 +354,11 @@ export const PATCH = async (request: Request) => {
     await removeMarkedActionEntries(oldRelativePath);
     await removeLibraryIndexCache();
 
-    return Response.json({ newPath: newRelativePath }, { status: 200 });
+    const requeued = isVideoFilePath(filePath)
+      ? await requeueVideoLinkMark(oldRelativePath, newRelativePath)
+      : false;
+
+    return Response.json({ newPath: newRelativePath, requeued }, { status: 200 });
   } catch {
     return new Response("Could not rename image", { status: 500 });
   }
