@@ -28,9 +28,36 @@ Example `config.json`:
     "comic": "Comic Book",
     "3d": "3D Render"
   },
-  "animations": ["Zoom In", "Pan Left to Right"]
+  "animations": [
+    { "key": "zoom-in", "name": "Zoom In", "prompt": "slow zoom in on the face" },
+    {
+      "key": "pan",
+      "name": "Pan Left to Right",
+      "prompt": ["slow pan left to right", "fast pan left to right"],
+      "lora": "camera_pan",
+      "trigger": "panshot",
+      "weight": 0.8
+    },
+    {
+      "key": "dance",
+      "name": "Dance",
+      "subVersions": [
+        { "key": "latin-dance", "name": "Latin Dance", "prompt": "latin dancing" },
+        { "key": "sensual-dance", "name": "Sensual Dance", "prompt": "slow sensual dancing" }
+      ]
+    }
+  ]
 }
 ```
+
+Each `animations` entry is an object with:
+
+- `key` (required, unique across the whole tree) and `name` (required, display name).
+- `prompt`: a string, or an array of strings. When an image is marked, one line of the array is picked at random.
+- `lora`, `trigger` (strings) and `weight` (number): optional, copied as-is into the mark entry for the external tool.
+- `subVersions`: optional nested entries of the same shape.
+
+An entry with an empty (or missing) `prompt` and no `subVersions` is skipped entirely. An entry with an empty `prompt` but with `subVersions` stays selectable: marking with it picks one of its sub-versions at random (recursively), and that sub-version's key, prompt and `lora`/`trigger`/`weight` are what get stored. Plain-string entries (the old `"animations": ["Zoom In"]` format) have no prompt and are therefore skipped.
 
 Pose naming rules:
 
@@ -114,7 +141,7 @@ The image detail view has **Upscale** and **Animate** buttons (alongside Redraw/
 - **Animate** opens a dropdown of the animation names configured in `config.json`'s `animations` array (see [Image Folder Structure](#image-folder-structure) above); the button itself is hidden when that list is empty. Picking a name marks the image with that action; picking the currently-marked name again unmarks it. Picking a different name switches the mark to the new action.
 - Marks are stored as flat JSON objects, one entry per marked image, keyed by the image's relative path (the same relative path used by `GET /api/image?path=...`):
   - `to-upscale.json` — value is the image's raw PNG generation metadata (the `parameters` text chunk) as a string.
-  - `to-animate.json` — value is `{ "metadata": "...", "action": "Zoom In" }`.
+  - `to-animate.json` — value is `{ "metadata": "...", "action": "zoom-in", "prompt": "...", "lora": "...", "trigger": "...", "weight": 0.8 }` (`action` is the key of the node actually picked; `lora`/`trigger`/`weight` only when that node sets them).
 - Both files live in the main root (`SD_IMAGES_ROOT`) and are created automatically the first time an image is marked.
 - Deleting or redrawing (renaming) an image removes its entry from both files automatically, so they never reference a path that no longer exists.
 
@@ -124,7 +151,11 @@ Example `to-animate.json`:
 {
   "characters/3d/Anna/Base.png": {
     "metadata": "Steps: 30, Sampler: DPM++ 2M, ...",
-    "action": "Zoom In"
+    "action": "pan",
+    "prompt": "slow pan left to right",
+    "lora": "camera_pan",
+    "trigger": "panshot",
+    "weight": 0.8
   }
 }
 ```

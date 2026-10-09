@@ -50,7 +50,7 @@ const buildImage = (
   ...overrides,
 });
 
-const DANCE_ANIMATIONS: IAnimationConfig[] = [{ key: "dance", name: "Dance", prompt: "" }];
+const DANCE_ANIMATIONS: IAnimationConfig[] = [{ key: "dance", name: "Dance", prompt: ["dance"] }];
 
 const baseImage = buildImage({
   relativePath: "characters/3d/Anna/Base.png",
@@ -124,6 +124,22 @@ describe("reconcilePendingAnimationMarks", () => {
         prompt: "edited by user, zoom in slowly",
       }),
     });
+  });
+
+  it("frees a fulfilled mark that carries lora/trigger/weight generation options", async () => {
+    await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance", "dance", {
+      lora: "dance_lora",
+      trigger: "dancetrigger",
+      weight: 0.7,
+    });
+    const video = danceVideo();
+
+    await reconcilePendingAnimationMarks(TEMP_ROOT, [baseImage, video], DANCE_ANIMATIONS);
+
+    expect(await readVideoLinks(TEMP_ROOT)).toEqual({
+      [video.relativePath]: expect.objectContaining({ sourceRelativePath: baseImage.relativePath }),
+    });
+    expect(await readToAnimateEntries(TEMP_ROOT)).toEqual({});
   });
 
   it("pairs multiple claims to multiple candidates in FIFO order (by poseVariant)", async () => {
@@ -420,7 +436,7 @@ describe("reconcilePendingAnimationMarks", () => {
 
   it("matches a claim to a video whose filename normalizes underscores/hyphens differently than the animation's raw name", async () => {
     const animations: IAnimationConfig[] = [
-      { key: "dance-party", name: "Dance_Party", prompt: "" },
+      { key: "dance-party", name: "Dance_Party", prompt: ["party"] },
     ];
     await setToAnimateEntry(TEMP_ROOT, baseImage.relativePath, "raw", "dance-party", "");
     // A video named "Dance_Party.mp4" is parsed (via sanitizePoseName) to poseBaseName

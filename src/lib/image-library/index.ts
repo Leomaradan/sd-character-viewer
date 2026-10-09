@@ -67,7 +67,7 @@ interface ILibraryConfig {
   styles?: string[];
   defaultStyle?: string;
   styleLabels?: Record<string, string>;
-  // Recursive shape (plain strings, or {key,name,prompt,subVersions} nodes) validated by
+  // Recursive shape ({key,name,prompt,lora,trigger,weight,subVersions} nodes) validated by
   // normalizeAnimationsConfig, not Ajv - see its comment.
   animations?: unknown[];
 }
@@ -138,8 +138,8 @@ const libraryConfigValidator = ajv.compile<ILibraryConfig>({
       type: "object",
       additionalProperties: { type: "string" },
     },
-    // Items aren't constrained here: animations is a recursive shape (plain strings, or
-    // {key,name,prompt,subVersions} nodes) that normalizeAnimationsConfig validates/normalizes
+    // Items aren't constrained here: animations is a recursive shape
+    // ({key,name,prompt,lora,trigger,weight,subVersions} nodes) that normalizeAnimationsConfig validates/normalizes
     // instead, since Ajv's `strict: false` mode doesn't support recursive schemas cleanly.
     animations: {
       type: "array",
@@ -573,6 +573,8 @@ interface IPendingAnimationClaim {
   metadata: string;
   prompt: string;
   markFile: "animate" | "extend";
+  // The mark entry exactly as read, used to compare-and-delete it once fulfilled.
+  entry: IToAnimateEntry;
 }
 
 // Groups to-animate.json/to-extends.json entries by `${style}::${characterName}::${targetName}`
@@ -621,6 +623,7 @@ const buildPendingAnimationClaims = (
         metadata: entry.metadata,
         prompt: entry.prompt,
         markFile,
+        entry,
       };
 
       const existingClaims = claimsByGroupKey.get(groupKey);
@@ -773,11 +776,7 @@ export const reconcilePendingAnimationMarks = async (
 
           // The entry reconciliation actually observed when it built this claim, used below to
           // compare-and-delete rather than blindly deleting by key.
-          const fulfilledEntry = {
-            metadata: claim.metadata,
-            action: claim.action,
-            prompt: claim.prompt,
-          };
+          const fulfilledEntry = claim.entry;
           if (claim.markFile === "animate") {
             fulfilledAnimateClaims.push({
               relativePath: claim.sourceRelativePath,

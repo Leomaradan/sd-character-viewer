@@ -18,7 +18,7 @@ const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
 // Bumped whenever a cached ILibraryData's shape changes, so a cache written by an older version
 // of the app (e.g. one predating the `mediaType` field) is treated as a miss and rebuilt, rather
 // than being returned as-is with the new field silently undefined.
-const LIBRARY_INDEX_CACHE_VERSION = 7;
+const LIBRARY_INDEX_CACHE_VERSION = 8;
 const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
 interface ICacheFileSnapshot {

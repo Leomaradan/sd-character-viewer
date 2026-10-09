@@ -1,4 +1,4 @@
-import type { IAnimationConfig } from "@/types/library";
+import type { IAnimationConfig, IAnimationGenerationOptions } from "@/types/library";
 
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
@@ -18,6 +18,7 @@ import {
   removeToUpscaleEntry,
   removeToUpscaleVideoEntry,
   resolveImageFilePath,
+  selectAnimation,
   setToAnimateEntry,
   setToExtendEntry,
   setToUpscaleEntry,
@@ -107,11 +108,10 @@ interface IMarkRequestBody {
 
 // Shared by the animate and extend mark types: both key off a node in the (possibly nested)
 // animations config, resolved by its stable `key` rather than display name. Returns the resolved
-// node itself (not just its key) so callers can seed a mark's prompt from the node's configured
-// default when the client doesn't send one.
+// node itself (not just its key) so callers can resolve the mark's actual subVersion/prompt from it.
 const resolveAnimationAction = async (
   rawAction: unknown,
-): Promise<{ action: string; node: IAnimationConfig } | { error: Response }> => {
+): Promise<{ node: IAnimationConfig } | { error: Response }> => {
   const action = typeof rawAction === "string" ? rawAction.trim() : "";
   if (!action) {
     return { error: new Response("Invalid animation action", { status: 400 }) };
@@ -129,13 +129,32 @@ const resolveAnimationAction = async (
     return { error: new Response("Unknown animation action", { status: 400 }) };
   }
 
-  return { action, node };
+  return { node };
 };
 
-// Edit Animation reuses this same PUT upsert with an explicit `prompt` - omitting it (as the
-// initial mark-creation flow does) seeds from the resolved node's configured prompt instead.
-const resolveMarkPrompt = (rawPrompt: unknown, node: IAnimationConfig): string =>
-  typeof rawPrompt === "string" ? rawPrompt : node.prompt;
+interface IResolvedMark {
+  action: string;
+  prompt: string;
+  options: IAnimationGenerationOptions;
+}
+
+// Resolves the requested node to what actually gets marked (see selectAnimation): a random
+// subVersion when the node has no prompt of its own, and a random line of its prompt. Edit
+// Animation reuses this same PUT upsert with an explicit `prompt`, which then wins over the
+// randomly-picked line - omitting it (as the initial mark-creation flow does) keeps the pick.
+const resolveMark = (rawPrompt: unknown, node: IAnimationConfig): IResolvedMark => {
+  const selection = selectAnimation(node);
+  const { lora, trigger, weight } = selection.node;
+  return {
+    action: selection.node.key,
+    prompt: typeof rawPrompt === "string" ? rawPrompt : selection.prompt,
+    options: { lora, trigger, weight },
+  };
+};
+
+// The client can't reproduce the random pick itself, so the marked action/prompt is returned.
+const markResponse = (mark: IResolvedMark): Response =>
+  Response.json({ action: mark.action, prompt: mark.prompt });
 
 // Edit Animation sends no `metadata` at all (it only ever edits the prompt) - when omitted here,
 // `setToAnimateEntry` preserves the mark's existing metadata itself (atomically, inside its own
@@ -156,10 +175,17 @@ const handleAnimateMark = async (
     return resolved.error;
   }
 
-  const prompt = resolveMarkPrompt(rawPrompt, resolved.node);
+  const mark = resolveMark(rawPrompt, resolved.node);
   const metadata = resolveAnimateMarkMetadata(rawMetadata);
-  await setToAnimateEntry(rootPath, requestedPath, metadata, resolved.action, prompt);
-  return new Response(null, { status: 204 });
+  await setToAnimateEntry(
+    rootPath,
+    requestedPath,
+    metadata,
+    mark.action,
+    mark.prompt,
+    mark.options,
+  );
+  return markResponse(mark);
 };
 
 // A video's metadata is never client-supplied (there's no PNG chunk to source it from for a
@@ -182,10 +208,10 @@ const handleExtendMark = async (
     return resolved.error;
   }
 
-  const prompt = resolveMarkPrompt(rawPrompt, resolved.node);
+  const mark = resolveMark(rawPrompt, resolved.node);
   const metadata = await resolveVideoMetadata(rootPath, requestedPath);
-  await setToExtendEntry(rootPath, requestedPath, metadata, resolved.action, prompt);
-  return new Response(null, { status: 204 });
+  await setToExtendEntry(rootPath, requestedPath, metadata, mark.action, mark.prompt, mark.options);
+  return markResponse(mark);
 };
 
 export const PUT = async (request: Request) => {
