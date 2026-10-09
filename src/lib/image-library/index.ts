@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { SD_IMAGES_ROOT_ENV_KEY } from "@/lib/env-keys";
 import { buildExtraRootRelativePrefix } from "@/lib/extra-image-roots";
+import { getPoseFilterName } from "@/lib/pose-name";
 import {
   STYLES,
   type IAnimationConfig,
@@ -821,6 +822,7 @@ export const parsePoseName = (
 ): {
   poseName: string;
   poseBaseName: string;
+  poseFilterName: string;
   poseVariant: number;
 } => {
   const extension = path.extname(fileName);
@@ -842,6 +844,7 @@ export const parsePoseName = (
   return {
     poseName: cleanName,
     poseBaseName: poseBaseName || cleanName,
+    poseFilterName: getPoseFilterName(cleanName, getMediaTypeForFileName(fileName)),
     poseVariant: variantRaw ? Number.parseInt(variantRaw, 10) : 1,
   };
 };
@@ -1074,7 +1077,7 @@ const applyPosePatternFilterIds = (
     imageItem.posePatternFilterIds = compiledPatternFilters
       .filter((filter) => {
         filter.regex.lastIndex = 0;
-        return filter.regex.test(imageItem.poseBaseName);
+        return filter.regex.test(imageItem.poseFilterName);
       })
       .map((filter) => filter.id);
   }
@@ -1133,6 +1136,7 @@ const buildImageItem = (
     characterName,
     poseName: parsedPose.poseName,
     poseBaseName: parsedPose.poseBaseName,
+    poseFilterName: parsedPose.poseFilterName,
     poseVariant: parsedPose.poseVariant,
     relativePath,
     isNew: false,
@@ -1153,7 +1157,7 @@ const updateCharacterAccumulator = (
   if (existingCharacter) {
     existingCharacter.imageCount += 1;
     existingCharacter.styles.add(imageItem.style);
-    existingCharacter.poses.add(imageItem.poseBaseName);
+    existingCharacter.poses.add(imageItem.poseFilterName);
 
     if (isBasePose && !existingCharacter.thumbnailsByStyle[imageItem.style]) {
       existingCharacter.thumbnailsByStyle[imageItem.style] = imageItem.relativePath;
@@ -1167,7 +1171,7 @@ const updateCharacterAccumulator = (
     name: imageItem.characterName,
     imageCount: 1,
     styles: new Set([imageItem.style]),
-    poses: new Set([imageItem.poseBaseName]),
+    poses: new Set([imageItem.poseFilterName]),
     thumbnailsByStyle: isBasePose ? { [imageItem.style]: imageItem.relativePath } : {},
     thumbnailModifiedAtByStyle: isBasePose ? { [imageItem.style]: imageItem.modifiedAt } : {},
   };
@@ -1175,16 +1179,16 @@ const updateCharacterAccumulator = (
   characterMap.set(imageItem.characterName, characterAccumulator);
 };
 
-const incrementPoseCounter = (poseCounter: Map<string, number>, poseBaseName: string): void => {
-  const currentPoseCount = poseCounter.get(poseBaseName) ?? 0;
-  poseCounter.set(poseBaseName, currentPoseCount + 1);
+const incrementPoseCounter = (poseCounter: Map<string, number>, poseName: string): void => {
+  const currentPoseCount = poseCounter.get(poseName) ?? 0;
+  poseCounter.set(poseName, currentPoseCount + 1);
 };
 
 const mergeIndexState = (target: ILibraryIndexState, source: ILibraryIndexState): void => {
   for (const imageItem of source.imageItems) {
     target.imageItems.push(imageItem);
     updateCharacterAccumulator(target.characterMap, imageItem);
-    incrementPoseCounter(target.poseCounter, imageItem.poseBaseName);
+    incrementPoseCounter(target.poseCounter, imageItem.poseFilterName);
   }
 };
 
@@ -1227,7 +1231,7 @@ const indexCharacterFolder = async (
     );
     state.imageItems.push(imageItem);
     updateCharacterAccumulator(state.characterMap, imageItem);
-    incrementPoseCounter(state.poseCounter, imageItem.poseBaseName);
+    incrementPoseCounter(state.poseCounter, imageItem.poseFilterName);
   }
 };
 

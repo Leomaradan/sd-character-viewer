@@ -21,6 +21,7 @@ const createImage = (overrides?: Partial<IImageItem>): IImageItem => ({
   characterName: "Anna",
   poseName: "Sitting",
   poseBaseName: "sitting",
+  poseFilterName: "sitting",
   poseVariant: 0,
   relativePath: "characters/realistic/Anna/Sitting.png",
   isNew: false,

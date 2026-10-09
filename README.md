@@ -64,6 +64,9 @@ Pose naming rules:
 - One file equals one pose image or video (for example `Base.png`, `Lying Side.png`, `Dance.mp4`).
 - Variant files are supported with numeric suffixes (for example `Full.png`, `Full 2.png`, `Dance 2.mp4`).
 - `Base` is treated as the thumbnail pose for each character.
+- Anything in square brackets is an annotation, not part of the pose, and is ignored by the pose filters (for example `Casual [Upscaled].png` or `Casual 2 [Extended].mp4` both count as the `Casual` pose).
+- A video can be named `Animation (Pose).mp4`: the part before the parentheses is the animation, the part inside is the pose. Only the pose part is used by the pose filters, so `Dancing (Casual).mp4` is listed under `Casual`. A video without parentheses (for example `Dancing.mp4`) uses its whole name as its pose.
+- The Duplicate Finder still groups by the full name (minus the variant number), so `Dancing (Casual).mp4` and `Casual.mp4` are never treated as duplicates of each other.
 
 ### Video Support
 

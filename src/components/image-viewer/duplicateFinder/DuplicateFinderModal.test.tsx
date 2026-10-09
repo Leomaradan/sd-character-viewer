@@ -16,6 +16,7 @@ const buildImage = (
   style: "3d",
   poseName: "Base",
   poseBaseName: "Base",
+  poseFilterName: "Base",
   poseVariant: 1,
   isNew: false,
   firstSeenAt: 0,
