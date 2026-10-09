@@ -857,6 +857,21 @@ describe("/api/image PATCH manual rename", () => {
     expect(response.status).toBe(500);
   });
 
+  it("rejects a body that can't be read instead of falling back to Redraw", async () => {
+    allowRename();
+    const request = new Request("http://localhost/api/image?path=characters/3d/Anna/Casul.png", {
+      method: "PATCH",
+      body: "{}",
+    });
+    vi.spyOn(request, "text").mockRejectedValue(new Error("aborted"));
+
+    const response = await PATCH(request);
+
+    expect(response.status).toBe(400);
+    expect(fs.rename).not.toHaveBeenCalled();
+    expect(renameMediaFile).not.toHaveBeenCalled();
+  });
+
   it("rejects a malformed rename body with 400", async () => {
     allowRename();
 

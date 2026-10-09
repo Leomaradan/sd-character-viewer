@@ -135,6 +135,11 @@ describe("renameMediaFile", () => {
 
   it("rejects invalid paths and missing files", async () => {
     await expectRenameError(renameMediaFile("../outside.png", "x"), "invalid-path");
+    await expectRenameError(renameMediaFile("characters/3d/./Anna/Casul.png", "x"), "invalid-path");
+    await expectRenameError(
+      renameMediaFile("characters/3d/Bob/../Anna/Casul.png", "x"),
+      "invalid-path",
+    );
     await expectRenameError(renameMediaFile("characters/3d/Anna/Gone.png", "x"), "not-found");
     await expectRenameError(renameMediaFile("characters/3d/Nobody/Gone.png", "x"), "not-found");
   });

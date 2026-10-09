@@ -65,7 +65,10 @@ const renamePreviewSidecar = async (oldFilePath: string, newFilePath: string): P
 // (compared case-insensitively, so it also holds on case-insensitive filesystems). Returns the
 // new relativePath (unchanged when the name didn't change).
 export const renameMediaFile = async (relativePath: string, newStem: string): Promise<string> => {
-  const filePath = resolveImageFilePath(relativePath);
+  // Only canonical paths (no "./" or in-tree ".." segments): the bookkeeping files key entries by
+  // the exact relativePath, so an aliased spelling would resolve on disk but miss its entries.
+  const filePath =
+    path.posix.normalize(relativePath) === relativePath ? resolveImageFilePath(relativePath) : null;
 
   if (!filePath) {
     throw new MediaRenameError("invalid-path", "Invalid image path");

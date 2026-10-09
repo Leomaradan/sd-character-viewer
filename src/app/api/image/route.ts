@@ -318,9 +318,15 @@ const MEDIA_RENAME_ERROR_STATUS: Record<MediaRenameError["code"], number> = {
 
 // Reads PATCH's optional JSON body: `{ "newName": "..." }` selects a manual rename, while an
 // empty body keeps the original Redraw behavior. Returns undefined for "no body", null for a
-// body that isn't a valid rename request.
+// body that isn't a valid rename request - including one that couldn't be read, which must not
+// silently fall back to Redraw.
 const readManualRenameName = async (request: Request): Promise<string | null | undefined> => {
-  const rawBody = await request.text().catch(() => "");
+  let rawBody: string;
+  try {
+    rawBody = await request.text();
+  } catch {
+    return null;
+  }
 
   if (rawBody.trim() === "") {
     return undefined;
