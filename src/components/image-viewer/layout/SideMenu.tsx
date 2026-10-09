@@ -1,9 +1,9 @@
 "use client";
 
 import BrightnessAutoIcon from "@mui/icons-material/BrightnessAuto";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import DirectionsRunIcon from "@mui/icons-material/DirectionsRun";
+import HandymanIcon from "@mui/icons-material/Handyman";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import PaletteIcon from "@mui/icons-material/Palette";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
@@ -53,7 +53,7 @@ const TOOLS_SECTION_SX = {
   borderTop: "1px solid",
   borderColor: "divider",
 };
-const DUPLICATE_FINDER_BUTTON_SX = { mt: 0.5, width: "100%", justifyContent: "flex-start" };
+const LIBRARY_TOOLBOX_BUTTON_SX = { mt: 0.5, width: "100%", justifyContent: "flex-start" };
 const APP_VERSION_SX = { display: "block", mt: 1.5, textAlign: "center", opacity: 0.5 };
 
 interface ISideMenuProps {
@@ -64,8 +64,8 @@ interface ISideMenuProps {
   characterSortOrder?: TCharacterSortOrder;
   onCharacterSortOrderChange?: (nextSortOrder: TCharacterSortOrder) => void;
   library: ILibraryData;
-  canManageDuplicates?: boolean;
-  onOpenDuplicateFinder?: () => void;
+  canUseLibraryTools?: boolean;
+  onOpenLibraryToolbox?: () => void;
   appVersion?: string;
 }
 
@@ -77,8 +77,8 @@ export const SideMenu = ({
   characterSortOrder = "name",
   onCharacterSortOrderChange,
   library,
-  canManageDuplicates = false,
-  onOpenDuplicateFinder,
+  canUseLibraryTools = false,
+  onOpenLibraryToolbox,
   appVersion,
 }: Readonly<ISideMenuProps>) => {
   const { mode, setMode } = useColorScheme();
@@ -192,18 +192,18 @@ export const SideMenu = ({
         </Box>
       </Box>
 
-      {canManageDuplicates && (
+      {canUseLibraryTools && (
         <Box sx={TOOLS_SECTION_SX}>
           <Typography variant="overline">Tools</Typography>
           <Button
             variant="outlined"
             size="small"
-            startIcon={<ContentCopyIcon />}
-            onClick={onOpenDuplicateFinder}
-            disabled={!onOpenDuplicateFinder}
-            sx={DUPLICATE_FINDER_BUTTON_SX}
+            startIcon={<HandymanIcon />}
+            onClick={onOpenLibraryToolbox}
+            disabled={!onOpenLibraryToolbox}
+            sx={LIBRARY_TOOLBOX_BUTTON_SX}
           >
-            Duplicate Finder
+            Library Toolbox
           </Button>
         </Box>
       )}

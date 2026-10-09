@@ -1,6 +1,7 @@
 "use client";
 
 import CasinoIcon from "@mui/icons-material/Casino";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import MenuIcon from "@mui/icons-material/Menu";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import {
@@ -56,6 +57,10 @@ import { ImageDetailModal } from "@/components/image-viewer/details/ImageDetailM
 import { DuplicateFinderModal } from "@/components/image-viewer/duplicateFinder/DuplicateFinderModal";
 import { ScrollToTopButton } from "@/components/image-viewer/layout/ScrollToTopButton";
 import { SideMenu } from "@/components/image-viewer/layout/SideMenu";
+import {
+  LibraryToolboxModal,
+  type ILibraryTool,
+} from "@/components/image-viewer/toolbox/LibraryToolboxModal";
 
 import { ImageViewerBody } from "./ImageViewerBody";
 
@@ -151,6 +156,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const [selectedImageForModal, setSelectedImageForModal] = useState<IImageItem | null>(null);
   const [modalFilteredImages, setModalFilteredImages] = useState<IImageItem[]>([]);
   const [isDuplicateFinderOpen, setIsDuplicateFinderOpen] = useState(false);
+  const [isLibraryToolboxOpen, setIsLibraryToolboxOpen] = useState(false);
   const [library, setLibrary] = useState<ILibraryData>(DEFAULT_LIBRARY);
   const modalHistoryPushed = useRef(false);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
@@ -217,10 +223,31 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     }
   }, []);
 
-  const handleOpenDuplicateFinder = useCallback(() => {
+  const handleOpenLibraryToolbox = useCallback(() => {
     closeMobileDrawer();
-    setIsDuplicateFinderOpen(true);
+    setIsLibraryToolboxOpen(true);
   }, [closeMobileDrawer]);
+
+  const handleCloseLibraryToolbox = useCallback(() => {
+    setIsLibraryToolboxOpen(false);
+  }, []);
+
+  const handleOpenDuplicateFinder = useCallback(() => {
+    setIsDuplicateFinderOpen(true);
+  }, []);
+
+  const libraryTools = useMemo<ILibraryTool[]>(
+    () => [
+      {
+        id: "duplicate-finder",
+        name: "Duplicate Finder",
+        description: "Review images sharing the same pose and keep only the ones you want.",
+        icon: <ContentCopyIcon />,
+        onOpen: handleOpenDuplicateFinder,
+      },
+    ],
+    [handleOpenDuplicateFinder],
+  );
 
   const handleCloseDuplicateFinder = useCallback(() => {
     setIsDuplicateFinderOpen(false);
@@ -630,8 +657,8 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           characterSortOrder={characterSortOrder}
           onCharacterSortOrderChange={handleCharacterSortOrderChange}
           library={library}
-          canManageDuplicates={canDeleteImage}
-          onOpenDuplicateFinder={handleOpenDuplicateFinder}
+          canUseLibraryTools={canDeleteImage}
+          onOpenLibraryToolbox={handleOpenLibraryToolbox}
           appVersion={appVersion}
         />
       </Drawer>
@@ -647,8 +674,8 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
             characterSortOrder={characterSortOrder}
             onCharacterSortOrderChange={handleCharacterSortOrderChange}
             library={library}
-            canManageDuplicates={canDeleteImage}
-            onOpenDuplicateFinder={handleOpenDuplicateFinder}
+            canUseLibraryTools={canDeleteImage}
+            onOpenLibraryToolbox={handleOpenLibraryToolbox}
             appVersion={appVersion}
           />
         </Drawer>
@@ -695,6 +722,12 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         onNavigateNext={handleModalNext}
         styleLabel={styleLabel}
         animations={library.animations}
+      />
+
+      <LibraryToolboxModal
+        open={isLibraryToolboxOpen}
+        onClose={handleCloseLibraryToolbox}
+        tools={libraryTools}
       />
 
       <DuplicateFinderModal
