@@ -116,6 +116,10 @@ The dice button in the top app bar picks something at random from what the curre
 - On the base **Characters** page (no character selected), it opens a random character among the visible ones (respecting the media type and metadata filters).
 - Anywhere else (a character's page, the Styles view, the Poses view), it opens a random image or video from the currently filtered grid in the detail view, so previous/next navigation keeps working within that list. Since the grid already respects the Images/Videos/Both switch, a selection of only pictures yields a picture, only videos a video.
 
+## Sort by Date
+
+The side menu's **Sort by** switch orders characters and images by name (default) or by date, newest first. In Date mode, each card also shows its date under the title: the date an image was first discovered, or for a character card, its earliest discovered image in the default style. Images already opened in the detail view are no longer flagged as new and lose their discovery date (they sort last and show no date).
+
 ## Preview Thumbnails
 
 To keep the browsing grid fast, the app serves a heavily compressed preview next to each media file instead of transferring the full-resolution file: a JPEG for images (`.preview.jpg`), or a PNG poster frame for videos (`.preview.png`). A preview is stored as a sibling file, for example `characters/3d/Elric/Base.png` gets `characters/3d/Elric/Base.preview.jpg`, and `characters/3d/Elric/Dance.mp4` gets `characters/3d/Elric/Dance.preview.png`.

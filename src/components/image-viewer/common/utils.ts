@@ -115,3 +115,17 @@ export const filterCharactersByMetadataOption = (
     ),
   );
 };
+
+const FIRST_SEEN_DATE_FORMAT: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+};
+
+export const formatFirstSeenDate = (timestamp: number): string | null => {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return null;
+  }
+
+  return new Date(timestamp).toLocaleDateString(undefined, FIRST_SEEN_DATE_FORMAT);
+};

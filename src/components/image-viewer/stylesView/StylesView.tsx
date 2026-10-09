@@ -22,6 +22,7 @@ interface IStylesViewProps {
   selectedMetadataFilterId: string;
   styleFilteredImages: IImageItem[];
   showNewBadge: boolean;
+  showDate?: boolean;
   mediaTypeFilter: TMediaTypeFilter;
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   onStyleSelect: (style: string) => void;
@@ -40,6 +41,7 @@ export const StylesView = ({
   selectedMetadataFilterId,
   styleFilteredImages,
   showNewBadge,
+  showDate = false,
   mediaTypeFilter,
   onMediaTypeFilterChange,
   onStyleSelect,
@@ -112,6 +114,7 @@ export const StylesView = ({
               key={image.id}
               image={image}
               showNewBadge={showNewBadge}
+              showDate={showDate}
               styleLabel={styleLabel}
               onSelect={onImageSelect}
             />

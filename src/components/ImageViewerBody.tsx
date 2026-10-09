@@ -520,6 +520,7 @@ export const ImageViewerBody = ({
         selectedMetadataFilterId={effectiveStyleMetadataFilterId}
         styleFilteredImages={styleFilteredImages}
         showNewBadge={!showOnlyNewImages}
+        showDate={characterSortOrder === "date"}
         mediaTypeFilter={mediaTypeFilter}
         onMediaTypeFilterChange={onMediaTypeFilterChange}
         onStyleSelect={onStyleSelect}
@@ -543,6 +544,7 @@ export const ImageViewerBody = ({
       selectedMetadataFilterId={effectivePoseMetadataFilterId}
       poseFilteredImages={poseFilteredImages}
       showNewBadge={!showOnlyNewImages}
+      showDate={characterSortOrder === "date"}
       mediaTypeFilter={mediaTypeFilter}
       onMediaTypeFilterChange={onMediaTypeFilterChange}
       onClearPoses={onClearPoses}

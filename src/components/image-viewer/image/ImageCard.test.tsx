@@ -90,4 +90,19 @@ describe("ImageCard", () => {
 
     expect(screen.queryByLabelText("Video")).not.toBeInTheDocument();
   });
+
+  it("shows the first-seen date only when requested", () => {
+    const image = createImage({ firstSeenAt: Date.UTC(2026, 9, 9, 12) });
+    const expected = new Date(image.firstSeenAt).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+
+    const { rerender } = render(<ImageCard image={image} />);
+    expect(screen.queryByText(expected)).not.toBeInTheDocument();
+
+    rerender(<ImageCard image={image} showDate />);
+    expect(screen.getByText(expected)).toBeInTheDocument();
+  });
 });

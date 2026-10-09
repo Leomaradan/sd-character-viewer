@@ -5,6 +5,7 @@ import { useCallback, useMemo } from "react";
 
 import type { ICharacterSummary } from "@/types/library";
 
+import { formatFirstSeenDate } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 
 interface ICharacterViewProps {
@@ -12,6 +13,7 @@ interface ICharacterViewProps {
   browseStyle: string;
 
   character: ICharacterSummary;
+  showDate?: boolean;
 
   onSelectCharacter: (characterName: string | null) => void;
 }
@@ -31,6 +33,7 @@ export const CharacterView = ({
   defaultStyle,
   browseStyle,
   character,
+  showDate = false,
   onSelectCharacter,
 }: Readonly<ICharacterViewProps>) => {
   const thumbnailPath = useMemo(() => {
@@ -52,6 +55,8 @@ export const CharacterView = ({
 
     return thumbnailEntry ? character.thumbnailModifiedAtByStyle[thumbnailEntry[0]] : undefined;
   }, [character, thumbnailPath]);
+
+  const firstSeenDate = showDate ? formatFirstSeenDate(character.firstSeenAt) : null;
 
   const handleOnClick = useCallback(() => {
     onSelectCharacter(character.name);
@@ -82,6 +87,11 @@ export const CharacterView = ({
           <Typography variant="body2" color="text.secondary">
             {character.imageCount} images
           </Typography>
+          {firstSeenDate && (
+            <Typography variant="caption" color="text.secondary" noWrap component="p">
+              {firstSeenDate}
+            </Typography>
+          )}
         </CardContent>
       </CardActionArea>
     </Card>
