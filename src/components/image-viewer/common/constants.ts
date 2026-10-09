@@ -39,6 +39,7 @@ export const DEFAULT_LIBRARY: ILibraryData = {
   styles: ["realistic", "3d", "anime"],
   styleLabels: {},
   animations: [],
+  standardPoses: [],
   images: [],
   characters: [],
   poses: [],

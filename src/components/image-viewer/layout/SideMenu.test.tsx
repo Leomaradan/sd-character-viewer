@@ -28,6 +28,7 @@ const createMockLibrary = (overrides?: Partial<ILibraryData>): ILibraryData => {
     defaultStyle: "3d",
     styles: ["realistic", "3d", "anime"],
     animations: [],
+    standardPoses: [],
     images: [],
     characters: [],
     poses: [],

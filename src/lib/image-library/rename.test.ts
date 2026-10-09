@@ -18,9 +18,12 @@ import {
   markImageAsSeen,
   migrateFirstSeenCacheEntry,
   migrateMarkedActionEntries,
+  readCustomPoseEntries,
   readToAnimateEntries,
+  removeMarkedActionEntries,
   readToUpscaleEntries,
   readVideoLinks,
+  setCustomPoseEntry,
   setToAnimateEntry,
   setToUpscaleEntry,
 } from "@/lib/image-library";
@@ -225,5 +228,45 @@ describe("rename bookkeeping helpers", () => {
       "characters/3d/Anna/Casual.png",
     );
     writeFileSpy.mockRestore();
+  });
+});
+
+describe("renameMediaFile with incrementOnConflict", () => {
+  it("picks the next free number, before bracket annotations", async () => {
+    await fs.writeFile(path.join(ANNA_DIR, "Casual.png"), "taken");
+    await fs.writeFile(path.join(ANNA_DIR, "casual 2.png"), "taken");
+
+    await expect(
+      renameMediaFile("characters/3d/Anna/Casul.png", "Casual", { incrementOnConflict: true }),
+    ).resolves.toBe("characters/3d/Anna/Casual 3.png");
+
+    await fs.writeFile(path.join(ANNA_DIR, "Odd [Upscaled].png"), "png");
+    await fs.writeFile(path.join(ANNA_DIR, "Casual [Upscaled].png"), "taken");
+    await expect(
+      renameMediaFile("characters/3d/Anna/Odd [Upscaled].png", "Casual [Upscaled]", {
+        incrementOnConflict: true,
+      }),
+    ).resolves.toBe("characters/3d/Anna/Casual 2 [Upscaled].png");
+  });
+
+  it("uses the requested name when it's free", async () => {
+    await expect(
+      renameMediaFile("characters/3d/Anna/Casul.png", "Casual", { incrementOnConflict: true }),
+    ).resolves.toBe("characters/3d/Anna/Casual.png");
+  });
+});
+
+describe("custom pose marks", () => {
+  it("are stored, follow a rename, and are dropped on delete", async () => {
+    await setCustomPoseEntry(ROOT, "characters/3d/Anna/Casul.png");
+    expect(Object.keys(await readCustomPoseEntries(ROOT))).toEqual([
+      "characters/3d/Anna/Casul.png",
+    ]);
+
+    await renameMediaFile("characters/3d/Anna/Casul.png", "Odd");
+    expect(Object.keys(await readCustomPoseEntries(ROOT))).toEqual(["characters/3d/Anna/Odd.png"]);
+
+    await removeMarkedActionEntries("characters/3d/Anna/Odd.png");
+    expect(await readCustomPoseEntries(ROOT)).toEqual({});
   });
 });

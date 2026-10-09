@@ -15,7 +15,7 @@ characters/{style}/{character_name}/*.mp4
 Styles configuration:
 
 - Optional styles are loaded from `config.json` in the image root folder (`SD_IMAGES_ROOT`).
-- `config.json` accepts `styles` (array of folder names), optional `defaultStyle`, optional `styleLabels` for display aliases, and optional `animations` (see [Upscale and Animate Marking](#upscale-and-animate-marking) below).
+- `config.json` accepts `styles` (array of folder names), optional `defaultStyle`, optional `styleLabels` for display aliases, optional `animations` (see [Upscale and Animate Marking](#upscale-and-animate-marking) below), and optional `poses` (the standard pose names checked by the [Pose Conformity](#library-toolbox) tool, for example `"poses": ["Casual", "Dancing", "Lying Side"]`).
 - If `config.json` is missing or invalid, the app falls back to `realistic`, `3d` (default), and `anime`, with no configured animations.
 
 Example `config.json`:
@@ -94,7 +94,7 @@ Character metadata file:
 
 - Additional images can be loaded from folders configured with `SD_EXTRA_IMAGES_ROOT` (a list of paths separated by `:` on Linux/macOS or `;` on Windows).
 - Each configured entry is either an images root itself (it directly contains a `characters` folder) or a parent directory whose immediate subdirectories are each their own images root. The latter is what makes multiple extra folders work in Docker, where a single bind mount can only map one host path: point `SD_EXTRA_IMAGES_ROOT` at a parent directory and put each additional folder inside it as a subdirectory.
-- Extra roots only ever contribute images. `config.json`, `characters/characters.json`, `pose-filters.json`, `duplicate-reviews.json`, `to-upscale.json`, and `to-animate.json` are always read from (and written to) the main root (`SD_IMAGES_ROOT`) only — an extra root's own copies of these files, if any, are ignored. Likewise, only the main root's `config.json` determines the list of available styles; a style folder in an extra root that isn't part of that list is skipped.
+- Extra roots only ever contribute images. `config.json`, `characters/characters.json`, `pose-filters.json`, `duplicate-reviews.json`, `to-upscale.json`, `to-animate.json`, and `custom-poses.json` are always read from (and written to) the main root (`SD_IMAGES_ROOT`) only — an extra root's own copies of these files, if any, are ignored. Likewise, only the main root's `config.json` determines the list of available styles; a style folder in an extra root that isn't part of that list is skipped.
 - Images found in an extra root are merged into the same browsable library as the main root (characters, poses, thumbnails, the "new" badge, and the Duplicate Finder), and support the same view/rename/delete actions. Duplicate detection only ever groups images that live in the same root, since validating a group renumbers files within a single folder.
 
 Optional pose pattern filters:
@@ -155,6 +155,10 @@ This script walks every PNG and MP4 under `characters/` in `SD_IMAGES_ROOT` and 
 When `SD_ALLOW_DELETE` is enabled, the side menu's **Tools** section shows a **Library Toolbox** button. It opens a popup listing the library-maintenance tools; picking one closes the toolbox and opens that tool.
 
 - **Duplicate Finder**: groups images sharing the same style, character, and pose (in the same folder) so you can keep the ones you want; validating deletes the others and renumbers the survivors.
+- **Pose Conformity** (only listed when `config.json` has a non-empty `poses` array): shows every image and video whose pose isn't one of the standard `poses`, each with one button per standard pose plus **Custom**.
+  - What counts as the pose follows the [pose naming rules](#image-folder-structure): case is ignored, as are the variant number and `[...]` annotations; an image is checked by its whole name (`Casual.png`), a video by its whole name (`Casual.mp4`) or by its pose part (`Dancing (Casual).mp4` matches `Casual`). `Base` always counts as a standard pose, so thumbnails are never flagged.
+  - Picking a pose renames the file. An image, or a video without an animation part, becomes `<Pose>`; a video named `Animation (Old)` becomes `Animation (Pose)`, except when the pose is the animation itself (`Dancing (Test).mp4` + `Dancing` gives `Dancing.mp4`, not `Dancing (Dancing).mp4`). The variant number is dropped and `[...]` annotations are kept. If the name is already taken, a number is added (`Dancing 2.mp4`, `Dancing 3.mp4`…, placed before any `[...]`). As with [Manual Rename](#manual-rename), the preview, discovery date, marks and video links follow the file.
+  - **Custom** keeps the file as it is and records it in `custom-poses.json` (main root), so it isn't listed again. The mark is dropped when the file is deleted or redrawn, and follows it when it's renamed.
 
 ## Manual Rename
 

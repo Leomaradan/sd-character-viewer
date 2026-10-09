@@ -26,6 +26,7 @@ export const TO_ANIMATE_FILE_NAME = "to-animate.json";
 export const TO_EXTEND_FILE_NAME = "to-extends.json";
 const TO_UPSCALE_VIDEO_FILE_NAME = "to-upscale-video.json";
 export const VIDEO_LINKS_FILE_NAME = "video-links.json";
+const CUSTOM_POSES_FILE_NAME = "custom-poses.json";
 
 // Accepts entries with no prompt field (or a malformed one) at parse time - normalizeToAnimateEntry
 // below is what actually guarantees the IToAnimateEntry contract's prompt: string.
@@ -388,6 +389,34 @@ export const removeMarkedImageMapEntryIfUnchanged = async (
   });
 };
 
+const isCustomPoseEntry = (value: unknown): value is number => typeof value === "number";
+
+// Items the Pose Conformity tool was told to leave alone ("Custom"), keyed by relativePath with
+// the time they were marked.
+export const readCustomPoseEntries = async (rootPath: string): Promise<Record<string, number>> => {
+  return readMarkedImageMap(path.join(rootPath, CUSTOM_POSES_FILE_NAME), isCustomPoseEntry);
+};
+
+export const setCustomPoseEntry = async (rootPath: string, relativePath: string): Promise<void> => {
+  const filePath = path.join(rootPath, CUSTOM_POSES_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isCustomPoseEntry);
+    entries[normalizeRelativePath(relativePath)] = Date.now();
+    await writeMarkedImageMap(filePath, entries);
+  });
+};
+
+const removeCustomPoseEntry = async (rootPath: string, relativePath: string): Promise<void> => {
+  const filePath = path.join(rootPath, CUSTOM_POSES_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isCustomPoseEntry);
+    if (relativePath in entries) {
+      delete entries[relativePath];
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
+};
+
 // Called after an image or video is deleted or renamed (the old relativePath no longer refers
 // to it), so any pending upscale/animate/extend/upscale-video mark tied to it is dropped rather
 // than left dangling. Best-effort: the delete/rename it follows has already happened on disk,
@@ -408,6 +437,7 @@ export const removeMarkedActionEntries = async (relativePath: string): Promise<v
       removeToAnimateEntry(rootPath, normalizedPath),
       removeToExtendEntry(rootPath, normalizedPath),
       removeToUpscaleVideoEntry(rootPath, normalizedPath),
+      removeCustomPoseEntry(rootPath, normalizedPath),
     ]);
   } catch {
     // Ignore: see comment above.
@@ -495,6 +525,12 @@ export const migrateMarkedActionEntries = async (
       migrateMarkedImageMapKey(
         path.join(rootPath, TO_UPSCALE_VIDEO_FILE_NAME),
         isRawMetadataEntry,
+        normalizedOldPath,
+        normalizedNewPath,
+      ),
+      migrateMarkedImageMapKey(
+        path.join(rootPath, CUSTOM_POSES_FILE_NAME),
+        isCustomPoseEntry,
         normalizedOldPath,
         normalizedNewPath,
       ),
