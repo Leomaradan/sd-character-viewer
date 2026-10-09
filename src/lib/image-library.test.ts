@@ -463,6 +463,41 @@ describe("readImageLibrary with video files", () => {
     expect(library.characters.find((character) => character.name === "Anna")?.poseCount).toBe(2);
   });
 
+  it("lets a pose-filters pattern take priority over the video pose split (issue #72)", async () => {
+    const tempRoot = "/tmp/sd-library-pattern-priority";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await Promise.all([
+      fs.writeFile(path.join(characterDir, "With Zelda (Skyward Sword) 2.png"), ""),
+      fs.writeFile(path.join(characterDir, "With Zelda (Skyward Sword).mp4"), ""),
+      fs.writeFile(path.join(characterDir, "Casual (no lora).png"), ""),
+      fs.writeFile(path.join(characterDir, "Dancing (Casual) (no lora).mp4"), ""),
+    ]);
+    await fs.writeFile(
+      path.join(tempRoot, "pose-filters.json"),
+      JSON.stringify([{ label: "With Somebody", pattern: "^with ", flags: "i" }]),
+    );
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.poses).toEqual([
+      { name: "Casual", imageCount: 2 },
+      { name: "With Zelda (Skyward Sword)", imageCount: 2 },
+    ]);
+    expect(library.poseFilterOptions.map((option) => option.label)).toEqual([
+      "Casual",
+      "With Somebody",
+    ]);
+    const withVideo = library.images.find(
+      (image) => image.relativePath.endsWith(".mp4") && image.poseName.startsWith("With"),
+    );
+    expect(withVideo?.poseFilterName).toBe("With Zelda (Skyward Sword)");
+    expect(withVideo?.posePatternFilterIds).toHaveLength(1);
+    expect(library.characters.find((character) => character.name === "Anna")?.poseCount).toBe(2);
+  });
+
   it("applies a pose-pattern filter to an animation-named video the same as it would to an image", async () => {
     const tempRoot = "/tmp/sd-library-video-pose-pattern-filter";
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
@@ -1062,7 +1097,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 10,
+          version: 11,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],
