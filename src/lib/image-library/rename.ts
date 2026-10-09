@@ -1,6 +1,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
+import { insertVariantNumber } from "@/lib/pose-conformity";
+
 import { migrateFirstSeenCacheEntry, removeLibraryIndexCache } from "./cache";
 import { migrateMarkedActionEntries } from "./marks";
 import {
@@ -59,12 +61,22 @@ const renamePreviewSidecar = async (oldFilePath: string, newFilePath: string): P
   }
 };
 
+export interface IRenameMediaFileOptions {
+  // Pick the next free numbered name instead of failing when the name is taken.
+  incrementOnConflict?: boolean;
+}
+
 // Renames a media file within its own folder to `newStem` + its current extension, carrying its
 // preview sidecar, first-seen date, marks, and video links along. Throws MediaRenameError when
 // the path/name is invalid, the file is gone, or another file already uses the target name
-// (compared case-insensitively, so it also holds on case-insensitive filesystems). Returns the
-// new relativePath (unchanged when the name didn't change).
-export const renameMediaFile = async (relativePath: string, newStem: string): Promise<string> => {
+// (compared case-insensitively, so it also holds on case-insensitive filesystems) - unless
+// `incrementOnConflict` is set, which numbers the name instead. Returns the new relativePath
+// (unchanged when the name didn't change).
+export const renameMediaFile = async (
+  relativePath: string,
+  newStem: string,
+  options: IRenameMediaFileOptions = {},
+): Promise<string> => {
   // Only canonical paths (no "./" or in-tree ".." segments): the bookkeeping files key entries by
   // the exact relativePath, so an aliased spelling would resolve on disk but miss its entries.
   const filePath =
@@ -77,9 +89,13 @@ export const renameMediaFile = async (relativePath: string, newStem: string): Pr
   const stem = normalizeMediaStem(newStem);
   const fileName = path.basename(filePath);
   const extension = path.extname(fileName);
-  const newFileName = stem ? `${stem}${extension}` : "";
+  const requestedFileName = stem ? `${stem}${extension}` : "";
 
-  if (!stem || isPreviewSidecarFileName(newFileName) || isTemporaryRenameFileName(newFileName)) {
+  if (
+    !stem ||
+    isPreviewSidecarFileName(requestedFileName) ||
+    isTemporaryRenameFileName(requestedFileName)
+  ) {
     throw new MediaRenameError("invalid-name", "This name can't be used for a file.");
   }
 
@@ -96,17 +112,27 @@ export const renameMediaFile = async (relativePath: string, newStem: string): Pr
     throw new MediaRenameError("not-found", "File not found");
   }
 
-  if (newFileName === fileName) {
-    return relativePath;
+  const findConflictingEntry = (candidateFileName: string): string | undefined => {
+    const lowerCandidate = candidateFileName.toLowerCase();
+    return entries.find((entry) => entry !== fileName && entry.toLowerCase() === lowerCandidate);
+  };
+
+  let newFileName = requestedFileName;
+  const conflictingEntry = findConflictingEntry(newFileName);
+
+  if (conflictingEntry && !options.incrementOnConflict) {
+    throw new MediaRenameError("conflict", `A file named "${conflictingEntry}" already exists.`);
   }
 
-  const lowerNewFileName = newFileName.toLowerCase();
-  const conflictingEntry = entries.find(
-    (entry) => entry !== fileName && entry.toLowerCase() === lowerNewFileName,
-  );
+  // Auto-numbering: "Dancing.mp4" taken -> "Dancing 2.mp4", then "Dancing 3.mp4"... (the number
+  // goes before any "[...]" annotations). Bounded by the folder size, since each taken candidate
+  // is a distinct existing entry.
+  for (let variant = 2; findConflictingEntry(newFileName); variant += 1) {
+    newFileName = `${insertVariantNumber(stem, variant)}${extension}`;
+  }
 
-  if (conflictingEntry) {
-    throw new MediaRenameError("conflict", `A file named "${conflictingEntry}" already exists.`);
+  if (newFileName === fileName) {
+    return relativePath;
   }
 
   // Same folder, same extension, and a separator-free stem, so the new path stays inside the

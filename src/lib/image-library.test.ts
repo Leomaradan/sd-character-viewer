@@ -619,6 +619,29 @@ describe("readImageLibrary with characters metadata", () => {
     expect(library.animations).toEqual([]);
   });
 
+  it("reads standard poses from config.json, trimmed and de-duplicated", async () => {
+    const tempRoot = "/tmp/sd-library-standard-poses";
+    await fs.mkdir(path.join(tempRoot, "characters", "3d", "Anna"), { recursive: true });
+    await fs.writeFile(
+      path.join(tempRoot, "config.json"),
+      JSON.stringify({ styles: ["3d"], poses: [" Casual ", "casual", "", "Lying Side"] }),
+    );
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.standardPoses).toEqual(["Casual", "Lying Side"]);
+  });
+
+  it("has no standard poses when config.json doesn't list any", async () => {
+    const tempRoot = "/tmp/sd-library-no-standard-poses";
+    await fs.mkdir(path.join(tempRoot, "characters", "3d", "Anna"), { recursive: true });
+    await fs.writeFile(path.join(tempRoot, "config.json"), JSON.stringify({ styles: ["3d"] }));
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    expect((await readImageLibrary()).standardPoses).toEqual([]);
+  });
+
   it("loads pose pattern filters from pose-filters.json", async () => {
     const tempRoot = "/tmp/sd-library-pose-filters";
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
@@ -1006,6 +1029,7 @@ describe("readImageLibrary with characters metadata", () => {
       styles: ["3d"],
       styleLabels: {},
       animations: [],
+      standardPoses: [],
       images: [
         {
           id: "cached",
@@ -1038,7 +1062,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 9,
+          version: 10,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],

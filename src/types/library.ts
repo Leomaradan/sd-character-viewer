@@ -114,6 +114,8 @@ export interface ILibraryData {
   styles: string[];
   styleLabels?: Partial<Record<string, string>>;
   animations: IAnimationConfig[];
+  // config.json "poses": the standard pose names the Pose Conformity tool checks files against.
+  standardPoses: string[];
   images: IImageItem[];
   characters: ICharacterSummary[];
   poses: IPoseSummary[];

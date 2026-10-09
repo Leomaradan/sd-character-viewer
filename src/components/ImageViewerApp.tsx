@@ -1,5 +1,6 @@
 "use client";
 
+import AccessibilityNewIcon from "@mui/icons-material/AccessibilityNew";
 import CasinoIcon from "@mui/icons-material/Casino";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import MenuIcon from "@mui/icons-material/Menu";
@@ -57,6 +58,7 @@ import { ImageDetailModal } from "@/components/image-viewer/details/ImageDetailM
 import { DuplicateFinderModal } from "@/components/image-viewer/duplicateFinder/DuplicateFinderModal";
 import { ScrollToTopButton } from "@/components/image-viewer/layout/ScrollToTopButton";
 import { SideMenu } from "@/components/image-viewer/layout/SideMenu";
+import { PoseConformityModal } from "@/components/image-viewer/poseConformity/PoseConformityModal";
 import {
   LibraryToolboxModal,
   type ILibraryTool,
@@ -156,6 +158,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const [selectedImageForModal, setSelectedImageForModal] = useState<IImageItem | null>(null);
   const [modalFilteredImages, setModalFilteredImages] = useState<IImageItem[]>([]);
   const [isDuplicateFinderOpen, setIsDuplicateFinderOpen] = useState(false);
+  const [isPoseConformityOpen, setIsPoseConformityOpen] = useState(false);
   const [isLibraryToolboxOpen, setIsLibraryToolboxOpen] = useState(false);
   const [library, setLibrary] = useState<ILibraryData>(DEFAULT_LIBRARY);
   const modalHistoryPushed = useRef(false);
@@ -236,8 +239,18 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     setIsDuplicateFinderOpen(true);
   }, []);
 
-  const libraryTools = useMemo<ILibraryTool[]>(
-    () => [
+  const handleOpenPoseConformity = useCallback(() => {
+    setIsPoseConformityOpen(true);
+  }, []);
+
+  const handleClosePoseConformity = useCallback(() => {
+    setIsPoseConformityOpen(false);
+  }, []);
+
+  const hasStandardPoses = library.standardPoses.length > 0;
+
+  const libraryTools = useMemo<ILibraryTool[]>(() => {
+    const tools: ILibraryTool[] = [
       {
         id: "duplicate-finder",
         name: "Duplicate Finder",
@@ -245,9 +258,21 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         icon: <ContentCopyIcon />,
         onOpen: handleOpenDuplicateFinder,
       },
-    ],
-    [handleOpenDuplicateFinder],
-  );
+    ];
+
+    // Only offered once config.json lists standard poses to check against.
+    if (hasStandardPoses) {
+      tools.push({
+        id: "pose-conformity",
+        name: "Pose Conformity",
+        description: "Find files whose pose isn't a standard pose, and rename or keep them.",
+        icon: <AccessibilityNewIcon />,
+        onOpen: handleOpenPoseConformity,
+      });
+    }
+
+    return tools;
+  }, [handleOpenDuplicateFinder, handleOpenPoseConformity, hasStandardPoses]);
 
   const handleCloseDuplicateFinder = useCallback(() => {
     setIsDuplicateFinderOpen(false);
@@ -733,6 +758,13 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
       <DuplicateFinderModal
         open={isDuplicateFinderOpen}
         onClose={handleCloseDuplicateFinder}
+        onChangesApplied={handleDuplicateChangesApplied}
+        styleLabel={styleLabel}
+      />
+
+      <PoseConformityModal
+        open={isPoseConformityOpen}
+        onClose={handleClosePoseConformity}
         onChangesApplied={handleDuplicateChangesApplied}
         styleLabel={styleLabel}
       />

@@ -72,6 +72,7 @@ interface ILibraryConfig {
   // Recursive shape ({key,name,prompt,lora,trigger,weight,subVersions} nodes) validated by
   // normalizeAnimationsConfig, not Ajv - see its comment.
   animations?: unknown[];
+  poses?: string[];
 }
 
 interface IStyleConfig {
@@ -79,6 +80,7 @@ interface IStyleConfig {
   defaultStyle: string;
   styleLabels: Partial<Record<string, string>>;
   animations: IAnimationConfig[];
+  standardPoses: string[];
 }
 
 interface ICharacterAccumulator {
@@ -145,6 +147,10 @@ const libraryConfigValidator = ajv.compile<ILibraryConfig>({
     // instead, since Ajv's `strict: false` mode doesn't support recursive schemas cleanly.
     animations: {
       type: "array",
+    },
+    poses: {
+      type: "array",
+      items: { type: "string" },
     },
   },
   additionalProperties: true,
@@ -259,6 +265,21 @@ const normalizeStyleLabels = (
   return normalizedLabels;
 };
 
+// Trimmed, blank entries dropped, first spelling kept for case-insensitive duplicates.
+const normalizeStandardPoses = (poses: string[] | undefined): string[] => {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const pose of poses ?? []) {
+    const trimmed = pose.trim();
+    const key = trimmed.toLowerCase();
+    if (trimmed && !seen.has(key)) {
+      seen.add(key);
+      normalized.push(trimmed);
+    }
+  }
+  return normalized;
+};
+
 const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
   const configPath = path.join(rootPath, LIBRARY_CONFIG_FILE_NAME);
   const fallbackStyles = [...STYLES];
@@ -276,6 +297,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         defaultStyle: DEFAULT_STYLE,
         styleLabels: fallbackStyleLabels,
         animations: fallbackAnimations,
+        standardPoses: [],
       };
     }
 
@@ -284,6 +306,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       defaultStyle: DEFAULT_STYLE,
       styleLabels: fallbackStyleLabels,
       animations: fallbackAnimations,
+      standardPoses: [],
     };
   }
 
@@ -296,6 +319,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         defaultStyle: DEFAULT_STYLE,
         styleLabels: fallbackStyleLabels,
         animations: fallbackAnimations,
+        standardPoses: [],
       };
     }
 
@@ -306,6 +330,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         defaultStyle: DEFAULT_STYLE,
         styleLabels: fallbackStyleLabels,
         animations: normalizeAnimationsConfig(parsedContent.animations),
+        standardPoses: normalizeStandardPoses(parsedContent.poses),
       };
     }
 
@@ -314,6 +339,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       defaultStyle: resolveDefaultStyle(styles, parsedContent.defaultStyle),
       styleLabels: normalizeStyleLabels(styles, parsedContent.styleLabels),
       animations: normalizeAnimationsConfig(parsedContent.animations),
+      standardPoses: normalizeStandardPoses(parsedContent.poses),
     };
   } catch {
     // Fallback to legacy defaults when config.json is malformed.
@@ -322,6 +348,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       defaultStyle: DEFAULT_STYLE,
       styleLabels: fallbackStyleLabels,
       animations: fallbackAnimations,
+      standardPoses: [],
     };
   }
 };
@@ -1097,6 +1124,7 @@ const createEmptyLibraryData = (
     styles: styleConfig?.styles ?? [...STYLES],
     styleLabels: styleConfig?.styleLabels ?? {},
     animations: styleConfig?.animations ?? [],
+    standardPoses: styleConfig?.standardPoses ?? [],
     images: [],
     characters: [],
     poses: [],
@@ -1371,6 +1399,7 @@ const toLibraryData = (
     styles: styleConfig.styles,
     styleLabels: styleConfig.styleLabels,
     animations: styleConfig.animations,
+    standardPoses: styleConfig.standardPoses,
     images: state.imageItems,
     characters,
     poses,
@@ -1390,6 +1419,7 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
     defaultStyle: DEFAULT_STYLE,
     styleLabels: {},
     animations: [],
+    standardPoses: [],
   };
 
   if (!rootPath) {
