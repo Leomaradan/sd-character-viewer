@@ -3,6 +3,7 @@
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloseIcon from "@mui/icons-material/Close";
+import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutline";
 import InfoIcon from "@mui/icons-material/Info";
 import PhotoIcon from "@mui/icons-material/Photo";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -16,6 +17,7 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -30,11 +32,14 @@ import { ImageDetailActions } from "./ImageDetailActions";
 import { ImageDetailDeleteDialog } from "./ImageDetailDeleteDialog";
 import { ImageDetailEditPromptDialog } from "./ImageDetailEditPromptDialog";
 import { ImageDetailMetadata } from "./ImageDetailMetadata";
+import { ImageDetailRenameDialog } from "./ImageDetailRenameDialog";
 
 // Stable reference for the `animations` default prop - an inline `[]` literal would be
 // re-created on every render, breaking referential equality for anything memoized off it.
 const EMPTY_ANIMATIONS: IAnimationConfig[] = [];
 const MARK_SEEN_BUTTON_SX = { alignSelf: "flex-start" };
+const POSE_ROW_SX = { display: "flex", alignItems: "center", gap: 0.5 };
+const RENAME_BUTTON_SX = { color: "rgba(255,255,255,0.7)" };
 
 const DIALOG_SX = { "& .MuiDialog-paper": { height: "95vh", m: 1 } };
 const DIALOG_CONTENT_SX = { p: 0, bgcolor: "#000", display: "flex", overflow: "hidden" };
@@ -312,6 +317,7 @@ export function ImageDetailModal({
 }: Readonly<IImageDetailModalProps>) {
   const [metadataState, setMetadataState] = useState<IMetadataState>({ path: null, data: null });
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isRedrawing, setIsRedrawing] = useState(false);
@@ -379,7 +385,7 @@ export function ImageDetailModal({
   }, [relativePath, onImageSeen]);
 
   useEffect(() => {
-    if (!image || isConfirmOpen || isDeleting || isEditPromptOpen) {
+    if (!image || isConfirmOpen || isRenameOpen || isDeleting || isEditPromptOpen) {
       return () => {};
     }
 
@@ -406,6 +412,7 @@ export function ImageDetailModal({
     onNavigatePrevious,
     onNavigateNext,
     isConfirmOpen,
+    isRenameOpen,
     isDeleting,
     isEditPromptOpen,
   ]);
@@ -536,6 +543,19 @@ export function ImageDetailModal({
       setIsDeleting(false);
     }
   }, [relativePath, onDeleteSuccess]);
+
+  const handleRenameClick = useCallback(() => {
+    setIsRenameOpen(true);
+  }, []);
+
+  const handleRenameClose = useCallback(() => {
+    setIsRenameOpen(false);
+  }, []);
+
+  const handleRenamed = useCallback(() => {
+    setIsRenameOpen(false);
+    onDeleteSuccess?.();
+  }, [onDeleteSuccess]);
 
   const handleRedrawClick = useCallback(async () => {
     if (!relativePath) {
@@ -1056,9 +1076,23 @@ export function ImageDetailModal({
                 <Typography variant="caption" sx={CAPTION_SX}>
                   Pose
                 </Typography>
-                <Typography variant="h6" sx={META_TITLE_SX}>
-                  {image.poseName}
-                </Typography>
+                <Box sx={POSE_ROW_SX}>
+                  <Typography variant="h6" sx={META_TITLE_SX}>
+                    {image.poseName}
+                  </Typography>
+                  {canDeleteImage && (
+                    <Tooltip title={isVideo ? "Rename video" : "Rename image"}>
+                      <IconButton
+                        size="small"
+                        aria-label="Rename file"
+                        onClick={handleRenameClick}
+                        sx={RENAME_BUTTON_SX}
+                      >
+                        <DriveFileRenameOutlineIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                </Box>
               </Box>
 
               {cameFromLabel && (
@@ -1144,6 +1178,15 @@ export function ImageDetailModal({
         isDeleting={isDeleting}
         onClose={handleConfirmClose}
         onConfirm={handleConfirmDelete}
+      />
+
+      <ImageDetailRenameDialog
+        key={image.relativePath}
+        open={isRenameOpen}
+        isVideo={isVideo}
+        relativePath={image.relativePath}
+        onClose={handleRenameClose}
+        onRenamed={handleRenamed}
       />
 
       <ImageDetailEditPromptDialog

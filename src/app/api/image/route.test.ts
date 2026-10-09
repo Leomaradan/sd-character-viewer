@@ -29,6 +29,14 @@ vi.mock("@/lib/image-library", () => ({
   migrateVideoLink: vi.fn(),
   setToAnimateEntry: vi.fn(),
   setToExtendEntry: vi.fn(),
+  renameMediaFile: vi.fn(),
+  MediaRenameError: class MediaRenameError extends Error {
+    readonly code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+    }
+  },
 }));
 
 vi.mock("@/app/api/metadata/route", () => ({
@@ -55,6 +63,8 @@ import {
   migrateVideoLink,
   setToAnimateEntry,
   setToExtendEntry,
+  MediaRenameError,
+  renameMediaFile,
 } from "@/lib/image-library";
 
 import { DELETE, GET, PATCH } from "./route";
@@ -780,5 +790,94 @@ describe("/api/image PATCH", () => {
     expect(migrateVideoLinkMock).not.toHaveBeenCalled();
     const data = (await response.json()) as { requeued: boolean };
     expect(data.requeued).toBe(false);
+  });
+});
+
+describe("/api/image PATCH manual rename", () => {
+  const allowRename = () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/characters/3d/Anna/Casul.png");
+  };
+
+  const patchWithBody = (body: string) =>
+    PATCH(
+      new Request("http://localhost/api/image?path=characters/3d/Anna/Casul.png", {
+        method: "PATCH",
+        body,
+      }),
+    );
+
+  it("renames to the requested name and returns the new path", async () => {
+    allowRename();
+    vi.mocked(renameMediaFile).mockResolvedValue("characters/3d/Anna/Casual.png");
+
+    const response = await patchWithBody(JSON.stringify({ newName: "Casual" }));
+
+    expect(response.status).toBe(200);
+    expect(renameMediaFile).toHaveBeenCalledWith("characters/3d/Anna/Casul.png", "Casual");
+    expect(await response.json()).toEqual({ newPath: "characters/3d/Anna/Casual.png" });
+    expect(invalidateMetadataCacheEntry).toHaveBeenCalledWith("characters/3d/Anna/Casul.png");
+    expect(invalidateMetadataCacheEntry).toHaveBeenCalledWith("characters/3d/Anna/Casual.png");
+    expect(fs.rename).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 with the error message when the target name already exists", async () => {
+    allowRename();
+    vi.mocked(renameMediaFile).mockRejectedValue(
+      new MediaRenameError("conflict", 'A file named "Casual.png" already exists.'),
+    );
+
+    const response = await patchWithBody(JSON.stringify({ newName: "Casual" }));
+
+    expect(response.status).toBe(409);
+    expect(await response.text()).toBe('A file named "Casual.png" already exists.');
+  });
+
+  it("maps invalid-name and not-found errors to 400 and 404", async () => {
+    allowRename();
+    vi.mocked(renameMediaFile).mockRejectedValueOnce(
+      new MediaRenameError("invalid-name", "This name can't be used for a file."),
+    );
+    vi.mocked(renameMediaFile).mockRejectedValueOnce(
+      new MediaRenameError("not-found", "File not found"),
+    );
+
+    expect((await patchWithBody(JSON.stringify({ newName: "a/b" }))).status).toBe(400);
+    expect((await patchWithBody(JSON.stringify({ newName: "Casual" }))).status).toBe(404);
+  });
+
+  it("returns 500 on an unexpected rename failure", async () => {
+    allowRename();
+    vi.mocked(renameMediaFile).mockRejectedValue(new Error("disk full"));
+
+    const response = await patchWithBody(JSON.stringify({ newName: "Casual" }));
+
+    expect(response.status).toBe(500);
+  });
+
+  it("rejects a body that can't be read instead of falling back to Redraw", async () => {
+    allowRename();
+    const request = new Request("http://localhost/api/image?path=characters/3d/Anna/Casul.png", {
+      method: "PATCH",
+      body: "{}",
+    });
+    vi.spyOn(request, "text").mockRejectedValue(new Error("aborted"));
+
+    const response = await PATCH(request);
+
+    expect(response.status).toBe(400);
+    expect(fs.rename).not.toHaveBeenCalled();
+    expect(renameMediaFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed rename body with 400", async () => {
+    allowRename();
+
+    expect((await patchWithBody("not json")).status).toBe(400);
+    expect((await patchWithBody(JSON.stringify({ newName: 3 }))).status).toBe(400);
+    expect((await patchWithBody(JSON.stringify(null))).status).toBe(400);
+    expect(renameMediaFile).not.toHaveBeenCalled();
   });
 });
