@@ -69,6 +69,18 @@ afterEach(() => {
 });
 
 describe("parsePoseName", () => {
+  it("treats a number after annotations as the variant, for duplicate grouping", () => {
+    expect(parsePoseName("Casual (no lora) 2.png")).toMatchObject({
+      poseBaseName: "Casual (no lora)",
+      poseFilterName: "Casual",
+      poseVariant: 2,
+    });
+    expect(parsePoseName("Casual [Upscaled] 3.png")).toMatchObject({
+      poseBaseName: "Casual [Upscaled]",
+      poseVariant: 3,
+    });
+  });
+
   it("parses base pose without variant", () => {
     const parsed = parsePoseName("Base.png");
 

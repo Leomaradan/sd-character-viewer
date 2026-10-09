@@ -131,7 +131,7 @@ export const renameMediaFile = async (
     }
 
     // Auto-numbering: "Dancing.mp4" taken -> "Dancing 2.mp4", then "Dancing 3.mp4"... (the
-    // number goes before any annotations). Bounded by the folder size, since each taken
+    // number goes last, after any annotations). Bounded by the folder size, since each taken
     // candidate is a distinct existing entry.
     for (let variant = 2; findConflictingEntry(candidateFileName); variant += 1) {
       candidateFileName = `${insertVariantNumber(stem, variant)}${extension}`;

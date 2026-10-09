@@ -232,7 +232,7 @@ describe("rename bookkeeping helpers", () => {
 });
 
 describe("renameMediaFile with incrementOnConflict", () => {
-  it("picks the next free number, before bracket annotations", async () => {
+  it("picks the next free number, placed after annotations", async () => {
     await fs.writeFile(path.join(ANNA_DIR, "Casual.png"), "taken");
     await fs.writeFile(path.join(ANNA_DIR, "casual 2.png"), "taken");
 
@@ -246,7 +246,7 @@ describe("renameMediaFile with incrementOnConflict", () => {
       renameMediaFile("characters/3d/Anna/Odd [Upscaled].png", "Casual [Upscaled]", {
         incrementOnConflict: true,
       }),
-    ).resolves.toBe("characters/3d/Anna/Casual 2 [Upscaled].png");
+    ).resolves.toBe("characters/3d/Anna/Casual [Upscaled] 2.png");
   });
 
   it("never lets two concurrent renames pick the same free name", async () => {
