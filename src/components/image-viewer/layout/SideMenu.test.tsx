@@ -209,4 +209,36 @@ describe("SideMenu", () => {
 
     expect(screen.queryByText(/^v\d/)).not.toBeInTheDocument();
   });
+
+  it("shows the Library Toolbox button only when library tools are allowed", () => {
+    const library = createMockLibrary();
+    const onOpenLibraryToolbox = vi.fn();
+
+    const { rerender } = render(
+      <SideMenu
+        majorFilter="character"
+        onMajorFilterChange={vi.fn()}
+        showOnlyNewImages={false}
+        onShowOnlyNewImagesChange={vi.fn()}
+        library={library}
+        onOpenLibraryToolbox={onOpenLibraryToolbox}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Library Toolbox" })).not.toBeInTheDocument();
+
+    rerender(
+      <SideMenu
+        majorFilter="character"
+        onMajorFilterChange={vi.fn()}
+        showOnlyNewImages={false}
+        onShowOnlyNewImagesChange={vi.fn()}
+        library={library}
+        canUseLibraryTools
+        onOpenLibraryToolbox={onOpenLibraryToolbox}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Library Toolbox" }));
+
+    expect(onOpenLibraryToolbox).toHaveBeenCalledTimes(1);
+  });
 });
