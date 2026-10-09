@@ -1,4 +1,9 @@
-import type { IImageItem, IPosePatternFilter } from "@/types/library";
+import type {
+  ICharacterSummary,
+  IImageItem,
+  IMetadataFilterOption,
+  IPosePatternFilter,
+} from "@/types/library";
 
 export const isVideoRelativePath = (relativePath: string): boolean => {
   return relativePath.toLowerCase().endsWith(".mp4");
@@ -81,4 +86,32 @@ export const buildPoseFilterOptions = (
     .map((filter) => ({ value: filter.id, label: filter.label }));
 
   return [...nonPatternPoses, ...matchingPatternFilters];
+};
+
+export const pickRandomItem = <T>(
+  items: readonly T[],
+  random: () => number = Math.random,
+): T | null => {
+  if (items.length === 0) {
+    return null;
+  }
+
+  const index = Math.min(items.length - 1, Math.floor(random() * items.length));
+  return items[index];
+};
+
+export const filterCharactersByMetadataOption = (
+  characters: ICharacterSummary[],
+  option: IMetadataFilterOption | undefined,
+): ICharacterSummary[] => {
+  if (!option) {
+    return characters;
+  }
+
+  const selectedValue = option.value.trim().toLowerCase();
+  return characters.filter((character) =>
+    [character.category, character.serie, ...character.tags].some(
+      (value) => value?.trim().toLowerCase() === selectedValue,
+    ),
+  );
 };

@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import type { IPosePatternFilter } from "@/types/library";
+import type { ICharacterSummary, IPosePatternFilter } from "@/types/library";
 
-import { buildPoseFilterOptions, buildPoseOptions, formatStyleLabel, getImageUrl } from "./utils";
+import {
+  buildPoseFilterOptions,
+  buildPoseOptions,
+  filterCharactersByMetadataOption,
+  formatStyleLabel,
+  getImageUrl,
+  pickRandomItem,
+} from "./utils";
 
 const POSE_PATTERN_FILTERS: IPosePatternFilter[] = [
   { id: "pose-pattern::with-somebody", label: "With Somebody", pattern: "^With " },
@@ -132,5 +139,66 @@ describe("image-viewer utils", () => {
       { value: "Base", label: "Base" },
       { value: "With Alice", label: "With Alice" },
     ]);
+  });
+});
+
+const buildCharacter = (overrides: Partial<ICharacterSummary>): ICharacterSummary => ({
+  name: "Anna",
+  imageCount: 1,
+  poseCount: 1,
+  styles: ["3d"],
+  thumbnailsByStyle: {},
+  thumbnailModifiedAtByStyle: {},
+  category: null,
+  serie: null,
+  tags: [],
+  firstSeenAt: 0,
+  ...overrides,
+});
+
+describe("pickRandomItem", () => {
+  it("returns null for an empty list", () => {
+    expect(pickRandomItem([])).toBeNull();
+  });
+
+  it("picks the item matching the random value", () => {
+    expect(pickRandomItem(["a", "b", "c"], () => 0)).toBe("a");
+    expect(pickRandomItem(["a", "b", "c"], () => 0.5)).toBe("b");
+    expect(pickRandomItem(["a", "b", "c"], () => 0.99)).toBe("c");
+  });
+
+  it("never picks out of range, even if the random source returns 1", () => {
+    expect(pickRandomItem(["a", "b"], () => 1)).toBe("b");
+  });
+
+  it("uses Math.random by default", () => {
+    expect(["a", "b"]).toContain(pickRandomItem(["a", "b"]));
+  });
+});
+
+describe("filterCharactersByMetadataOption", () => {
+  const characters = [
+    buildCharacter({ name: "Anna", category: "Hero" }),
+    buildCharacter({ name: "Bob", serie: "Saga" }),
+    buildCharacter({ name: "Cleo", tags: ["Blonde"] }),
+  ];
+
+  it("returns every character without an option", () => {
+    expect(filterCharactersByMetadataOption(characters, undefined)).toBe(characters);
+  });
+
+  it("matches category, serie, and tags case-insensitively", () => {
+    const names = (value: string) =>
+      filterCharactersByMetadataOption(characters, {
+        id: `tag::${value}`,
+        type: "tag",
+        value,
+        label: value,
+      }).map((character) => character.name);
+
+    expect(names("hero")).toEqual(["Anna"]);
+    expect(names(" SAGA ")).toEqual(["Bob"]);
+    expect(names("blonde")).toEqual(["Cleo"]);
+    expect(names("missing")).toEqual([]);
   });
 });

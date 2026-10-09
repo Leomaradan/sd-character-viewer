@@ -1,5 +1,6 @@
 "use client";
 
+import CasinoIcon from "@mui/icons-material/Casino";
 import MenuIcon from "@mui/icons-material/Menu";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import {
@@ -15,6 +16,7 @@ import {
   Stack,
   TextField,
   Toolbar,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -152,6 +154,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const [library, setLibrary] = useState<ILibraryData>(DEFAULT_LIBRARY);
   const modalHistoryPushed = useRef(false);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
+  const [randomRequestToken, setRandomRequestToken] = useState(0);
   const [authStatus, setAuthStatus] = useState<TAuthStatus>("checking");
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -179,6 +182,10 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
 
   const closeMobileDrawer = useCallback(() => {
     setIsMobileDrawerOpen(false);
+  }, []);
+
+  const handleRandomClick = useCallback(() => {
+    setRandomRequestToken((currentToken) => currentToken + 1);
   }, []);
 
   const handleToggleSidebar = useCallback(() => {
@@ -589,6 +596,21 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           <Typography variant="h6" noWrap sx={APP_TITLE_SX}>
             Stable Diffusion Character Viewer
           </Typography>
+
+          <Tooltip
+            title={
+              selectedCharacter || majorFilter !== "character" ? "Random media" : "Random character"
+            }
+          >
+            <IconButton
+              color="inherit"
+              edge="end"
+              aria-label="pick random"
+              onClick={handleRandomClick}
+            >
+              <CasinoIcon />
+            </IconButton>
+          </Tooltip>
         </Toolbar>
       </AppBar>
 
@@ -647,6 +669,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           characterDetailStyle={characterDetailStyle}
           characterDetailPose={characterDetailPose}
           reloadToken={libraryRefreshToken}
+          randomRequestToken={randomRequestToken}
           setSelectedCharacter={handleSelectCharacter}
           setSelectedPoseFilters={handlePoseFiltersChange}
           setSelectedMetadataFilterId={handleMetadataFilterChange}
