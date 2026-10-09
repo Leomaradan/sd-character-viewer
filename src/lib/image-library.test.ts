@@ -420,6 +420,49 @@ describe("readImageLibrary with video files", () => {
     expect(anna?.poseCount).toBe(2);
   });
 
+  it("groups poses by their filter name: video pose part, brackets and variants ignored", async () => {
+    const tempRoot = "/tmp/sd-library-pose-filter-name";
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+
+    await fs.mkdir(characterDir, { recursive: true });
+    await Promise.all([
+      fs.writeFile(path.join(characterDir, "Casual.png"), ""),
+      fs.writeFile(path.join(characterDir, "Casual 2 [Upscaled].png"), ""),
+      fs.writeFile(path.join(characterDir, "Dancing (Casual).mp4"), ""),
+      fs.writeFile(path.join(characterDir, "Dancing (Casual) 2.mp4"), ""),
+      fs.writeFile(path.join(characterDir, "Dancing.mp4"), ""),
+    ]);
+
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.poses).toEqual([
+      { name: "Casual", imageCount: 4 },
+      { name: "Dancing", imageCount: 1 },
+    ]);
+    const filterNameByPath = Object.fromEntries(
+      library.images.map((image) => [
+        path.posix.basename(image.relativePath),
+        image.poseFilterName,
+      ]),
+    );
+    expect(filterNameByPath).toEqual({
+      "Casual.png": "Casual",
+      "Casual 2 [Upscaled].png": "Casual",
+      "Dancing (Casual).mp4": "Casual",
+      "Dancing (Casual) 2.mp4": "Casual",
+      "Dancing.mp4": "Dancing",
+    });
+    // Duplicate detection keeps using the full base name, so "Dancing (Casual)" and "Casual" stay
+    // separate groups.
+    expect(
+      library.images.find((image) => image.relativePath.endsWith("Dancing (Casual) 2.mp4"))
+        ?.poseBaseName,
+    ).toBe("Dancing (Casual)");
+    expect(library.characters.find((character) => character.name === "Anna")?.poseCount).toBe(2);
+  });
+
   it("applies a pose-pattern filter to an animation-named video the same as it would to an image", async () => {
     const tempRoot = "/tmp/sd-library-video-pose-pattern-filter";
     const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
@@ -970,6 +1013,7 @@ describe("readImageLibrary with characters metadata", () => {
           characterName: "Anna",
           poseName: "Base",
           poseBaseName: "Base",
+          poseFilterName: "Base",
           poseVariant: 1,
           relativePath: "characters/3d/Anna/Base.png",
           isNew: true,
@@ -994,7 +1038,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 8,
+          version: 9,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],
@@ -1615,6 +1659,7 @@ const buildImage = (
   characterName: "Anna",
   poseName: "Base",
   poseBaseName: "Base",
+  poseFilterName: "Base",
   poseVariant: 1,
   isNew: false,
   firstSeenAt: 0,

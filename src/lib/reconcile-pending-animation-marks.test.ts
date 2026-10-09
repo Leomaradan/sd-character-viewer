@@ -41,6 +41,7 @@ const buildImage = (
   characterName: "Anna",
   poseName: "Base",
   poseBaseName: "Base",
+  poseFilterName: "Base",
   poseVariant: 1,
   isNew: false,
   firstSeenAt: 0,

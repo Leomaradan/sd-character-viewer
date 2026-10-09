@@ -264,7 +264,7 @@ export const ImageViewerBody = ({
       const matchesStyle =
         characterDetailStyle === "--all--" ? true : image.style === characterDetailStyle;
       const matchesPose =
-        characterDetailPose === "--all--" ? true : image.poseBaseName === characterDetailPose;
+        characterDetailPose === "--all--" ? true : image.poseFilterName === characterDetailPose;
       return matchesStyle && matchesPose;
     });
 
@@ -285,7 +285,7 @@ export const ImageViewerBody = ({
         normalizedSearchText.length === 0
           ? true
           : image.characterName.toLowerCase().includes(normalizedSearchText) ||
-            image.poseBaseName.toLowerCase().includes(normalizedSearchText);
+            image.poseName.toLowerCase().includes(normalizedSearchText);
       const matchesMetadata = selectedMetadataFilter
         ? (library.characterMetadataFilterIdsByName[image.characterName]?.includes(
             selectedMetadataFilter.id,
@@ -321,7 +321,7 @@ export const ImageViewerBody = ({
         selectedPoses.has(filterId),
       );
       const matchesPose =
-        isAllPosesSelected || selectedPoses.has(image.poseBaseName) || matchesPatternPose;
+        isAllPosesSelected || selectedPoses.has(image.poseFilterName) || matchesPatternPose;
       const matchesStyle =
         effectivePoseViewStyle === "--all--" ? true : image.style === effectivePoseViewStyle;
       const matchesCharacter =

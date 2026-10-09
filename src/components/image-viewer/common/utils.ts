@@ -48,7 +48,7 @@ export const formatStyleLabel = (
 };
 
 export const buildPoseOptions = (images: IImageItem[]): string[] => {
-  const uniquePoses = new Set(images.map((image) => image.poseBaseName));
+  const uniquePoses = new Set(images.map((image) => image.poseFilterName));
   return [...uniquePoses].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 };
 

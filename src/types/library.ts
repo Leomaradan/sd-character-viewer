@@ -14,6 +14,9 @@ export interface IImageItem {
   characterName: string;
   poseName: string;
   poseBaseName: string;
+  // poseBaseName without "[...]" annotations, and for an "Animation (Pose)" video just the pose
+  // part - what the pose filters match against (see getPoseFilterName).
+  poseFilterName: string;
   poseVariant: number;
   relativePath: string;
   isNew: boolean;

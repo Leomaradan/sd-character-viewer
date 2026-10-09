@@ -70,9 +70,9 @@ describe("image-viewer utils", () => {
 
   it("builds sorted unique pose options", () => {
     const options = buildPoseOptions([
-      { poseBaseName: "Pose10" } as never,
-      { poseBaseName: "Pose2" } as never,
-      { poseBaseName: "Pose2" } as never,
+      { poseFilterName: "Pose10" } as never,
+      { poseFilterName: "Pose2" } as never,
+      { poseFilterName: "Pose2" } as never,
     ]);
 
     expect(options).toEqual(["Pose2", "Pose10"]);
