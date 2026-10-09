@@ -4,8 +4,8 @@ import { markImageAsSeen, resolveImageFilePath } from "@/lib/image-library";
 export const dynamic = "force-dynamic";
 
 // Marks an image/video as seen (dismissing its "new" badge and dropping it from the "show new
-// only" filter) as soon as its Details view is opened, rather than waiting out the new-image time
-// window. Unlike upscale/animate marks and delete/rename, this doesn't touch source media or
+// only" filter) when the Details view's "Mark as seen" button is clicked, rather than waiting out
+// the new-image time window. Unlike upscale/animate marks and delete/rename, this doesn't touch source media or
 // require SD_ALLOW_DELETE - it's bookkeeping for a UI affordance, available to any authenticated
 // viewer.
 export const POST = async (request: Request) => {

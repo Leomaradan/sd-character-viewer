@@ -6,6 +6,7 @@ import {
   buildPoseFilterOptions,
   buildPoseOptions,
   filterCharactersByMetadataOption,
+  formatFirstSeenDate,
   formatStyleLabel,
   getImageUrl,
   pickRandomItem,
@@ -200,5 +201,24 @@ describe("filterCharactersByMetadataOption", () => {
     expect(names(" SAGA ")).toEqual(["Bob"]);
     expect(names("blonde")).toEqual(["Cleo"]);
     expect(names("missing")).toEqual([]);
+  });
+});
+
+describe("formatFirstSeenDate", () => {
+  it("returns null for missing timestamps", () => {
+    expect(formatFirstSeenDate(0)).toBeNull();
+    expect(formatFirstSeenDate(-1)).toBeNull();
+    expect(formatFirstSeenDate(Number.NaN)).toBeNull();
+  });
+
+  it("formats a timestamp as a locale date", () => {
+    const timestamp = Date.UTC(2026, 9, 9, 12);
+    expect(formatFirstSeenDate(timestamp)).toBe(
+      new Date(timestamp).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }),
+    );
   });
 });

@@ -33,6 +33,7 @@ interface IPosesViewProps {
   selectedMetadataFilterId: string;
   poseFilteredImages: IImageItem[];
   showNewBadge: boolean;
+  showDate?: boolean;
   mediaTypeFilter: TMediaTypeFilter;
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   onClearPoses: () => void;
@@ -55,6 +56,7 @@ export const PosesView = ({
   selectedMetadataFilterId,
   poseFilteredImages,
   showNewBadge,
+  showDate = false,
   mediaTypeFilter,
   onMediaTypeFilterChange,
   onClearPoses,
@@ -186,6 +188,7 @@ export const PosesView = ({
               key={image.id}
               image={image}
               showNewBadge={showNewBadge}
+              showDate={showDate}
               styleLabel={styleLabel}
               onSelect={onImageSelect}
             />

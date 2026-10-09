@@ -5,8 +5,10 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloseIcon from "@mui/icons-material/Close";
 import InfoIcon from "@mui/icons-material/Info";
 import PhotoIcon from "@mui/icons-material/Photo";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import {
   Box,
+  Button,
   CircularProgress,
   Dialog,
   DialogContent,
@@ -32,6 +34,7 @@ import { ImageDetailMetadata } from "./ImageDetailMetadata";
 // Stable reference for the `animations` default prop - an inline `[]` literal would be
 // re-created on every render, breaking referential equality for anything memoized off it.
 const EMPTY_ANIMATIONS: IAnimationConfig[] = [];
+const MARK_SEEN_BUTTON_SX = { alignSelf: "flex-start" };
 
 const DIALOG_SX = { "& .MuiDialog-paper": { height: "95vh", m: 1 } };
 const DIALOG_CONTENT_SX = { p: 0, bgcolor: "#000", display: "flex", overflow: "hidden" };
@@ -360,21 +363,20 @@ export function ImageDetailModal({
     setVideoControlsState({ path: relativePath ?? null, shown: true });
   }, [relativePath]);
 
-  // Opening Details on a new image/video dismisses its "new" badge and drops it from the "show
-  // new only" filter right away, rather than waiting out the server-side new-image time window -
-  // mirrors the optimistic-then-persisted pattern the mark toggles below use.
-  useEffect(() => {
-    if (!relativePath || !image?.isNew) {
-      return () => {};
+  // The "Mark as seen" button dismisses a new image/video's "new" badge and drops it from the
+  // "show new only" filter right away, rather than waiting out the server-side new-image time
+  // window - mirrors the optimistic-then-persisted pattern the mark toggles below use. Merely
+  // opening Details deliberately doesn't do this, so browsing never clears the "new" state.
+  const handleMarkSeenClick = useCallback(() => {
+    if (!relativePath) {
+      return;
     }
 
     onImageSeen?.(relativePath);
     fetch(`/api/image/seen?path=${encodeURIComponent(relativePath)}`, { method: "POST" }).catch(
       () => {},
     );
-
-    return () => {};
-  }, [relativePath, image?.isNew, onImageSeen]);
+  }, [relativePath, onImageSeen]);
 
   useEffect(() => {
     if (!image || isConfirmOpen || isDeleting || isEditPromptOpen) {
@@ -1018,6 +1020,18 @@ export function ImageDetailModal({
                   {imageActions}
                   <Divider sx={DIVIDER_SX} />
                 </Box>
+              )}
+
+              {image.isNew && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<VisibilityIcon />}
+                  onClick={handleMarkSeenClick}
+                  sx={MARK_SEEN_BUTTON_SX}
+                >
+                  Mark as seen
+                </Button>
               )}
 
               <Box>

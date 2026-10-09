@@ -7,12 +7,13 @@ import { useCallback } from "react";
 
 import type { IImageItem } from "@/types/library";
 
-import { formatStyleLabel } from "@/components/image-viewer/common/utils";
+import { formatFirstSeenDate, formatStyleLabel } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 
 interface IImageCardProps {
   image: IImageItem;
   showNewBadge?: boolean;
+  showDate?: boolean;
   styleLabel?: (style: string) => string;
   onSelect?: (image: IImageItem) => void;
 }
@@ -59,12 +60,15 @@ const CARD_TITLE_SX = {
 export const ImageCard = ({
   image,
   showNewBadge = false,
+  showDate = false,
   styleLabel = formatStyleLabel,
   onSelect,
 }: Readonly<IImageCardProps>) => {
   const handleClick = useCallback(() => {
     onSelect?.(image);
   }, [image, onSelect]);
+
+  const firstSeenDate = showDate ? formatFirstSeenDate(image.firstSeenAt) : null;
 
   return (
     <Card elevation={1}>
@@ -98,6 +102,11 @@ export const ImageCard = ({
           <Typography variant="body2" color="text.secondary" noWrap>
             {styleLabel(image.style)} - {image.poseName}
           </Typography>
+          {firstSeenDate && (
+            <Typography variant="caption" color="text.secondary" noWrap component="p">
+              {firstSeenDate}
+            </Typography>
+          )}
         </CardContent>
       </CardActionArea>
     </Card>

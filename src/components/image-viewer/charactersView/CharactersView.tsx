@@ -178,6 +178,7 @@ export const CharactersView = ({
     return letters.map((letter) => ({ letter, characters: map.get(letter)! }));
   }, [filteredCharacters, characterSortOrder]);
 
+  const showDate = characterSortOrder === "date";
   const showAzBar = characterSortOrder === "name" && groupedCharacters.length > 1;
   const hasActiveMetadataFilters = Boolean(effectiveSelectedMetadataFilterId);
 
@@ -242,6 +243,7 @@ export const CharactersView = ({
                   key={image.id}
                   image={image}
                   showNewBadge={showNewBadge}
+                  showDate={showDate}
                   styleLabel={styleLabel}
                   onSelect={onImageSelect}
                 />
@@ -281,6 +283,7 @@ export const CharactersView = ({
                   defaultStyle={defaultStyle}
                   browseStyle={browseStyle}
                   character={character}
+                  showDate={showDate}
                   onSelectCharacter={onSelectCharacter}
                 />
               ))}
@@ -300,6 +303,7 @@ export const CharactersView = ({
                       defaultStyle={defaultStyle}
                       browseStyle={browseStyle}
                       character={character}
+                      showDate={showDate}
                       onSelectCharacter={onSelectCharacter}
                     />
                   ))}
