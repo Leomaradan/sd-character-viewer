@@ -68,11 +68,29 @@ export interface IDuplicateGroup {
   images: IImageItem[];
 }
 
-export interface IAnimationConfig {
+// Optional generation hints copied verbatim from the chosen animation node into its mark entry,
+// for the external tool that consumes to-animate.json/to-extends.json.
+export interface IAnimationGenerationOptions {
+  lora?: string;
+  trigger?: string;
+  weight?: number;
+}
+
+// `prompt` is always normalized to an array of candidate lines (one is picked at random when an
+// image is marked). An empty array means the node only exists to group its subVersions - one of
+// which is picked at random instead. A node with neither is dropped at normalization time.
+interface IAnimationConfigSubVersion extends IAnimationGenerationOptions {
   key: string;
   name: string;
-  prompt: string;
-  subVersions?: IAnimationConfig[];
+  prompt: string[];
+  subVersions?: IAnimationConfigSubVersion[];
+}
+
+export interface IAnimationConfig extends IAnimationGenerationOptions {
+  key: string;
+  name: string;
+  prompt: string[];
+  subVersions?: IAnimationConfigSubVersion[];
 }
 
 // Persisted once a generated video is matched back to the pending mark that requested it. Not

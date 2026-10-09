@@ -1,12 +1,14 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import { type IVideoLink } from "@/types/library";
+import { type IAnimationGenerationOptions, type IVideoLink } from "@/types/library";
 
 import { getImagesRootPathFromEnv } from "./paths";
 import { isPlainObjectRecord, normalizeRelativePath } from "./shared";
 
-export interface IToAnimateEntry {
+// lora/trigger/weight are copied from the animation node the mark resolved to, and omitted
+// entirely when that node doesn't set them.
+export interface IToAnimateEntry extends IAnimationGenerationOptions {
   metadata: string;
   action: string;
   // Required in the type, but tolerated as missing on read (defaults to "") so pre-existing
@@ -27,9 +29,16 @@ export const VIDEO_LINKS_FILE_NAME = "video-links.json";
 
 // Accepts entries with no prompt field (or a malformed one) at parse time - normalizeToAnimateEntry
 // below is what actually guarantees the IToAnimateEntry contract's prompt: string.
-const isToAnimateEntry = (
-  value: unknown,
-): value is { metadata: string; action: string; prompt?: unknown } => {
+interface IRawToAnimateEntry {
+  metadata: string;
+  action: string;
+  prompt?: unknown;
+  lora?: unknown;
+  trigger?: unknown;
+  weight?: unknown;
+}
+
+const isToAnimateEntry = (value: unknown): value is IRawToAnimateEntry => {
   return (
     isPlainObjectRecord(value) &&
     typeof value.metadata === "string" &&
@@ -37,18 +46,50 @@ const isToAnimateEntry = (
   );
 };
 
-const normalizeToAnimateEntry = (entry: {
-  metadata: string;
-  action: string;
-  prompt?: unknown;
-}): IToAnimateEntry => ({
-  metadata: entry.metadata,
-  action: entry.action,
-  prompt: typeof entry.prompt === "string" ? entry.prompt : "",
-});
+// Always builds the entry in the same key order as buildToAnimateEntry, since
+// removeMarkedImageMapEntryIfUnchanged compares entries by their JSON serialization.
+const normalizeToAnimateEntry = (entry: IRawToAnimateEntry): IToAnimateEntry =>
+  buildToAnimateEntry(
+    entry.metadata,
+    entry.action,
+    typeof entry.prompt === "string" ? entry.prompt : "",
+    {
+      lora: typeof entry.lora === "string" ? entry.lora : undefined,
+      trigger: typeof entry.trigger === "string" ? entry.trigger : undefined,
+      weight: typeof entry.weight === "number" ? entry.weight : undefined,
+    },
+  );
+
+const buildToAnimateEntry = (
+  metadata: string,
+  action: string,
+  prompt: string,
+  options: IAnimationGenerationOptions = {},
+): IToAnimateEntry => {
+  const entry: IToAnimateEntry = { metadata, action, prompt };
+  if (options.lora !== undefined) {
+    entry.lora = options.lora;
+  }
+  if (options.trigger !== undefined) {
+    entry.trigger = options.trigger;
+  }
+  if (options.weight !== undefined) {
+    entry.weight = options.weight;
+  }
+  return entry;
+};
+
+// `options` omitted (undefined) means "preserve whatever this mark already has" - same contract
+// (and same in-lock atomicity reasoning) as setToAnimateEntry's `metadata`, used by Edit
+// Animation, which only ever edits the prompt.
+const resolveGenerationOptions = (
+  options: IAnimationGenerationOptions | undefined,
+  existingEntry: IRawToAnimateEntry | undefined,
+): IAnimationGenerationOptions =>
+  options ?? (existingEntry ? normalizeToAnimateEntry(existingEntry) : {});
 
 const normalizeToAnimateEntries = (
-  entries: Record<string, { metadata: string; action: string; prompt?: unknown }>,
+  entries: Record<string, IRawToAnimateEntry>,
 ): Record<string, IToAnimateEntry> => {
   const normalizedEntries: Record<string, IToAnimateEntry> = {};
   for (const [relativePath, entry] of Object.entries(entries)) {
@@ -168,12 +209,18 @@ export const setToAnimateEntry = async (
   metadata: string | undefined,
   action: string,
   prompt: string,
+  options?: IAnimationGenerationOptions,
 ): Promise<void> => {
   const filePath = path.join(rootPath, TO_ANIMATE_FILE_NAME);
   await withMarkedImageFileLock(filePath, async () => {
     const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
     const resolvedMetadata = metadata ?? entries[relativePath]?.metadata ?? "";
-    entries[relativePath] = { metadata: resolvedMetadata, action, prompt };
+    entries[relativePath] = buildToAnimateEntry(
+      resolvedMetadata,
+      action,
+      prompt,
+      resolveGenerationOptions(options, entries[relativePath]),
+    );
     await writeMarkedImageMap(filePath, entries);
   });
 };
@@ -241,11 +288,17 @@ export const setToExtendEntry = async (
   metadata: string,
   action: string,
   prompt: string,
+  options?: IAnimationGenerationOptions,
 ): Promise<void> => {
   const filePath = path.join(rootPath, TO_EXTEND_FILE_NAME);
   await withMarkedImageFileLock(filePath, async () => {
     const entries = await readMarkedImageMap(filePath, isToAnimateEntry);
-    entries[relativePath] = { metadata, action, prompt };
+    entries[relativePath] = buildToAnimateEntry(
+      metadata,
+      action,
+      prompt,
+      resolveGenerationOptions(options, entries[relativePath]),
+    );
     await writeMarkedImageMap(filePath, entries);
   });
 };

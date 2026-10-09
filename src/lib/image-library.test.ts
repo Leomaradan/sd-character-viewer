@@ -44,6 +44,7 @@ import {
   removeVideoLink,
   resolveImageFilePath,
   resolvePreviewFilePath,
+  selectAnimation,
   setToAnimateEntry,
   setToExtendEntry,
   setToUpscaleEntry,
@@ -464,7 +465,11 @@ describe("readImageLibrary with characters metadata", () => {
           sketch: "Sketch Art",
           "unused-style": "Unused",
         },
-        animations: ["Zoom In", "Zoom In", " Pan ", ""],
+        animations: [
+          { key: "zoom-in", name: "Zoom In", prompt: "zoom in" },
+          { key: "empty", name: "Empty" },
+          { key: "pan", name: "Pan", prompt: ["pan left", "pan right"] },
+        ],
       }),
     );
 
@@ -480,8 +485,8 @@ describe("readImageLibrary with characters metadata", () => {
       "unused-style": "Unused",
     });
     expect(library.animations).toEqual([
-      { key: "Zoom In", name: "Zoom In", prompt: "" },
-      { key: "Pan", name: "Pan", prompt: "" },
+      { key: "zoom-in", name: "Zoom In", prompt: ["zoom in"] },
+      { key: "pan", name: "Pan", prompt: ["pan left", "pan right"] },
     ]);
     expect(library.images).toHaveLength(2);
     expect(library.images.every((image) => ["comic", "sketch"].includes(image.style))).toBe(true);
@@ -989,7 +994,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 7,
+          version: 8,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],
@@ -1030,7 +1035,11 @@ describe("readImageLibrary with characters metadata", () => {
     await fs.writeFile(path.join(characterDir, "Base.png"), "");
     await fs.writeFile(
       path.join(tempRoot, "config.json"),
-      JSON.stringify({ styles: ["3d"], defaultStyle: "3d", animations: ["Zoom In"] }),
+      JSON.stringify({
+        styles: ["3d"],
+        defaultStyle: "3d",
+        animations: [{ key: "Zoom In", name: "Zoom In", prompt: "zoom" }],
+      }),
     );
 
     const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
@@ -1072,7 +1081,7 @@ describe("readImageLibrary with characters metadata", () => {
 
     const library = await readImageLibrary();
 
-    expect(library.animations).toEqual([{ key: "Zoom In", name: "Zoom In", prompt: "" }]);
+    expect(library.animations).toEqual([{ key: "Zoom In", name: "Zoom In", prompt: ["zoom"] }]);
     expect(library.images).toHaveLength(1);
 
     delete process.env.SD_CACHE_DIR;
@@ -1091,7 +1100,7 @@ describe("readImageLibrary with characters metadata", () => {
       JSON.stringify({
         styles: ["3d"],
         defaultStyle: "3d",
-        animations: [{ key: "dance", name: "Dance", prompt: "" }],
+        animations: [{ key: "dance", name: "Dance", prompt: "dance" }],
       }),
     );
 
@@ -1174,20 +1183,41 @@ describe("readImageLibrary with characters metadata", () => {
 });
 
 describe("normalizeAnimationsConfig", () => {
-  it("migrates plain strings to leaf nodes, trimming and deduplicating them", () => {
-    expect(normalizeAnimationsConfig(["Zoom In", "Zoom In", " Pan ", ""])).toEqual([
-      { key: "Zoom In", name: "Zoom In", prompt: "" },
-      { key: "Pan", name: "Pan", prompt: "" },
+  it("skips plain strings, since they carry no prompt", () => {
+    expect(normalizeAnimationsConfig(["Zoom In", " Pan ", ""])).toEqual([]);
+  });
+
+  it("normalizes a string prompt to a one-line array and an array prompt to its non-blank lines", () => {
+    expect(
+      normalizeAnimationsConfig([
+        { key: "zoom", name: "Zoom", prompt: "zoom in" },
+        { key: "pan", name: "Pan", prompt: ["pan left", "", "  ", 42, "pan right"] },
+      ]),
+    ).toEqual([
+      { key: "zoom", name: "Zoom", prompt: ["zoom in"] },
+      { key: "pan", name: "Pan", prompt: ["pan left", "pan right"] },
     ]);
   });
 
-  it("normalizes nested sub-version nodes with prompts", () => {
+  it("skips a node with an empty prompt and no subVersions", () => {
+    expect(
+      normalizeAnimationsConfig([
+        { key: "a", name: "A" },
+        { key: "b", name: "B", prompt: "" },
+        { key: "c", name: "C", prompt: [] },
+        { key: "d", name: "D", prompt: ["", " "] },
+        { key: "e", name: "E", prompt: "   " },
+        { key: "f", name: "F", prompt: "kept" },
+      ]),
+    ).toEqual([{ key: "f", name: "F", prompt: ["kept"] }]);
+  });
+
+  it("keeps a node with an empty prompt when it has subVersions", () => {
     expect(
       normalizeAnimationsConfig([
         {
           key: "dance",
           name: "Dance",
-          prompt: "dancing",
           subVersions: [
             { key: "latin-dance", name: "Latin Dance", prompt: "latin dancing" },
             { key: "sensual-dance", name: "Sensual Dance" },
@@ -1198,12 +1228,45 @@ describe("normalizeAnimationsConfig", () => {
       {
         key: "dance",
         name: "Dance",
-        prompt: "dancing",
-        subVersions: [
-          { key: "latin-dance", name: "Latin Dance", prompt: "latin dancing" },
-          { key: "sensual-dance", name: "Sensual Dance", prompt: "" },
-        ],
+        prompt: [],
+        subVersions: [{ key: "latin-dance", name: "Latin Dance", prompt: ["latin dancing"] }],
       },
+    ]);
+  });
+
+  it("skips a node with an empty prompt whose subVersions are all skipped", () => {
+    expect(
+      normalizeAnimationsConfig([
+        { key: "dance", name: "Dance", subVersions: [{ key: "latin", name: "Latin" }] },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("keeps trimmed lora/trigger and finite weight, ignoring blank or malformed values", () => {
+    expect(
+      normalizeAnimationsConfig([
+        {
+          key: "zoom",
+          name: "Zoom",
+          prompt: "zoom in",
+          lora: " zoom_lora ",
+          trigger: " zoomtrigger ",
+          weight: 0.8,
+        },
+        { key: "pan", name: "Pan", prompt: "pan", lora: "  ", trigger: 1, weight: "0.5" },
+        { key: "tilt", name: "Tilt", prompt: "tilt", weight: Number.NaN },
+      ]),
+    ).toEqual([
+      {
+        key: "zoom",
+        name: "Zoom",
+        prompt: ["zoom in"],
+        lora: "zoom_lora",
+        trigger: "zoomtrigger",
+        weight: 0.8,
+      },
+      { key: "pan", name: "Pan", prompt: ["pan"] },
+      { key: "tilt", name: "Tilt", prompt: ["tilt"] },
     ]);
   });
 
@@ -1213,12 +1276,12 @@ describe("normalizeAnimationsConfig", () => {
         123,
         null,
         {},
-        { key: "only-key" },
-        { name: "only-name" },
-        { key: "", name: "Empty Key" },
-        { key: "valid", name: "Valid" },
+        { key: "only-key", prompt: "p" },
+        { name: "only-name", prompt: "p" },
+        { key: "", name: "Empty Key", prompt: "p" },
+        { key: "valid", name: "Valid", prompt: "p" },
       ]),
-    ).toEqual([{ key: "valid", name: "Valid", prompt: "" }]);
+    ).toEqual([{ key: "valid", name: "Valid", prompt: ["p"] }]);
 
     expect(normalizeAnimationsConfig("not-an-array")).toEqual([]);
     expect(normalizeAnimationsConfig(undefined)).toEqual([]);
@@ -1230,13 +1293,13 @@ describe("normalizeAnimationsConfig", () => {
         { key: "dance", name: "Dance", prompt: "first" },
         { key: "dance", name: "Dance Duplicate", prompt: "second" },
       ]),
-    ).toEqual([{ key: "dance", name: "Dance", prompt: "first" }]);
+    ).toEqual([{ key: "dance", name: "Dance", prompt: ["first"] }]);
   });
 
   it("drops an empty subVersions array rather than keeping it on the node", () => {
-    expect(normalizeAnimationsConfig([{ key: "dance", name: "Dance", subVersions: [] }])).toEqual([
-      { key: "dance", name: "Dance", prompt: "" },
-    ]);
+    expect(
+      normalizeAnimationsConfig([{ key: "dance", name: "Dance", prompt: "p", subVersions: [] }]),
+    ).toEqual([{ key: "dance", name: "Dance", prompt: ["p"] }]);
   });
 
   it("deduplicates a key reused by a nested sub-version, not just among siblings", () => {
@@ -1248,40 +1311,46 @@ describe("normalizeAnimationsConfig", () => {
         {
           key: "dance",
           name: "Dance",
-          subVersions: [{ key: "dance", name: "Duplicate Nested Dance" }],
+          prompt: "p",
+          subVersions: [{ key: "dance", name: "Duplicate Nested Dance", prompt: "p" }],
         },
       ]),
-    ).toEqual([{ key: "dance", name: "Dance", prompt: "" }]);
+    ).toEqual([{ key: "dance", name: "Dance", prompt: ["p"] }]);
   });
 
   it("deduplicates a key reused across different subtrees", () => {
     expect(
       normalizeAnimationsConfig([
-        { key: "a", name: "A", subVersions: [{ key: "shared", name: "First" }] },
-        { key: "b", name: "B", subVersions: [{ key: "shared", name: "Second" }] },
+        { key: "a", name: "A", subVersions: [{ key: "shared", name: "First", prompt: "1" }] },
+        {
+          key: "b",
+          name: "B",
+          prompt: "b",
+          subVersions: [{ key: "shared", name: "Second", prompt: "2" }],
+        },
       ]),
     ).toEqual([
       {
         key: "a",
         name: "A",
-        prompt: "",
-        subVersions: [{ key: "shared", name: "First", prompt: "" }],
+        prompt: [],
+        subVersions: [{ key: "shared", name: "First", prompt: ["1"] }],
       },
-      { key: "b", name: "B", prompt: "" },
+      { key: "b", name: "B", prompt: ["b"] },
     ]);
   });
 });
 
 describe("findAnimationNodeByKey", () => {
   const animations = [
-    { key: "zoom-in", name: "Zoom In", prompt: "" },
+    { key: "zoom-in", name: "Zoom In", prompt: ["zoom"] },
     {
       key: "dance",
       name: "Dance",
-      prompt: "",
+      prompt: [],
       subVersions: [
-        { key: "latin-dance", name: "Latin Dance", prompt: "" },
-        { key: "sensual-dance", name: "Sensual Dance", prompt: "" },
+        { key: "latin-dance", name: "Latin Dance", prompt: ["latin"] },
+        { key: "sensual-dance", name: "Sensual Dance", prompt: ["sensual"] },
       ],
     },
   ];
@@ -1290,7 +1359,7 @@ describe("findAnimationNodeByKey", () => {
     expect(findAnimationNodeByKey(animations, "zoom-in")).toEqual({
       key: "zoom-in",
       name: "Zoom In",
-      prompt: "",
+      prompt: ["zoom"],
     });
   });
 
@@ -1298,12 +1367,124 @@ describe("findAnimationNodeByKey", () => {
     expect(findAnimationNodeByKey(animations, "latin-dance")).toEqual({
       key: "latin-dance",
       name: "Latin Dance",
-      prompt: "",
+      prompt: ["latin"],
     });
   });
 
   it("returns null for an unknown key", () => {
     expect(findAnimationNodeByKey(animations, "unknown")).toBeNull();
+  });
+});
+
+describe("selectAnimation", () => {
+  const leaf = { key: "zoom", name: "Zoom", prompt: ["first", "second", "third"] };
+
+  it("picks a random line of the node's own prompt", () => {
+    expect(selectAnimation(leaf, () => 0)).toEqual({ node: leaf, prompt: "first" });
+    expect(selectAnimation(leaf, () => 0.5)).toEqual({ node: leaf, prompt: "second" });
+    // Guards against a random() implementation returning exactly 1.
+    expect(selectAnimation(leaf, () => 1)).toEqual({ node: leaf, prompt: "third" });
+  });
+
+  it("keeps a node with its own prompt even when it has subVersions", () => {
+    const node = { key: "dance", name: "Dance", prompt: ["dance"], subVersions: [leaf] };
+    expect(selectAnimation(node, () => 0.99)).toEqual({ node, prompt: "dance" });
+  });
+
+  it("descends into a random subVersion (recursively) when the node has no prompt", () => {
+    const latin = { key: "latin", name: "Latin", prompt: ["latin"] };
+    const nested = {
+      key: "nested",
+      name: "Nested",
+      prompt: [],
+      subVersions: [{ key: "deep", name: "Deep", prompt: ["deep"] }],
+    };
+    const node = { key: "dance", name: "Dance", prompt: [], subVersions: [latin, nested] };
+
+    expect(selectAnimation(node, () => 0)).toEqual({ node: latin, prompt: "latin" });
+    expect(selectAnimation(node, () => 0.9)).toEqual({
+      node: nested.subVersions[0],
+      prompt: "deep",
+    });
+  });
+
+  it("falls back to an empty prompt for a node with neither prompt nor subVersions", () => {
+    const empty = { key: "empty", name: "Empty", prompt: [] };
+    expect(selectAnimation(empty)).toEqual({ node: empty, prompt: "" });
+  });
+});
+
+describe("animate/extend mark generation options", () => {
+  const tempRoot = "/tmp/sd-marks-generation-options";
+
+  afterEach(async () => {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  });
+
+  it("stores lora/trigger/weight on animate and extend entries, omitting unset ones", async () => {
+    await fs.mkdir(tempRoot, { recursive: true });
+
+    await setToAnimateEntry(tempRoot, "a.png", "raw", "zoom", "zoom in", {
+      lora: "zoom_lora",
+      trigger: "zoomtrigger",
+      weight: 0.8,
+    });
+    await setToAnimateEntry(tempRoot, "b.png", "raw", "pan", "pan", { weight: 1 });
+    await setToExtendEntry(tempRoot, "a.mp4", "", "zoom", "zoom in", { lora: "zoom_lora" });
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "a.png": {
+        metadata: "raw",
+        action: "zoom",
+        prompt: "zoom in",
+        lora: "zoom_lora",
+        trigger: "zoomtrigger",
+        weight: 0.8,
+      },
+      "b.png": { metadata: "raw", action: "pan", prompt: "pan", weight: 1 },
+    });
+    expect(await readToExtendEntries(tempRoot)).toEqual({
+      "a.mp4": { metadata: "", action: "zoom", prompt: "zoom in", lora: "zoom_lora" },
+    });
+  });
+
+  it("preserves stored lora/trigger/weight when re-set without options (prompt-only edit)", async () => {
+    await fs.mkdir(tempRoot, { recursive: true });
+    const options = { lora: "zoom_lora", trigger: "zoomtrigger", weight: 0.8 };
+    await setToAnimateEntry(tempRoot, "a.png", "raw", "zoom", "zoom in", options);
+    await setToExtendEntry(tempRoot, "a.mp4", "", "zoom", "zoom in", options);
+
+    await setToAnimateEntry(tempRoot, "a.png", undefined, "zoom", "edited");
+    await setToExtendEntry(tempRoot, "a.mp4", "", "zoom", "edited");
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "a.png": { metadata: "raw", action: "zoom", prompt: "edited", ...options },
+    });
+    expect(await readToExtendEntries(tempRoot)).toEqual({
+      "a.mp4": { metadata: "", action: "zoom", prompt: "edited", ...options },
+    });
+
+    // Explicit options (a fresh mark) still replace them, including clearing them with {}.
+    await setToAnimateEntry(tempRoot, "a.png", "raw", "zoom", "zoom in", {});
+    expect((await readToAnimateEntries(tempRoot))["a.png"]).toEqual({
+      metadata: "raw",
+      action: "zoom",
+      prompt: "zoom in",
+    });
+  });
+
+  it("drops malformed lora/trigger/weight values when reading an entry back", async () => {
+    await fs.mkdir(tempRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(tempRoot, "to-animate.json"),
+      JSON.stringify({
+        "a.png": { metadata: "", action: "zoom", prompt: "p", lora: 1, trigger: [], weight: "1" },
+      }),
+    );
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "a.png": { metadata: "", action: "zoom", prompt: "p" },
+    });
   });
 });
 

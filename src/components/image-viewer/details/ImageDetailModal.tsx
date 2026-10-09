@@ -282,6 +282,10 @@ const resolveCameFromLabel = (
   return `Extended from ${sourceLabel} (${actionLabel})`;
 };
 
+// PUT /api/marks (animate/extend) answers with the mark it actually stored.
+const readMarkResponse = async (response: Response): Promise<{ action: string; prompt: string }> =>
+  (await response.json()) as { action: string; prompt: string };
+
 // MUI has no built-in nested Menu, so a two-level animation config is flattened into a single
 // list with depth-based indentation instead.
 const flattenAnimations = (nodes: IAnimationConfig[], depth: number = 0): IFlatAnimationOption[] =>
@@ -660,17 +664,16 @@ export function ImageDetailModal({
 
         // See the matching comment in handleToggleUpscale: merge via functional update so a
         // concurrent upscale toggle isn't clobbered, and drop the response if the user has
-        // since navigated to a different image. A freshly-created mark's prompt mirrors the
-        // server's own default-seed logic (the resolved node's configured prompt), so Edit
-        // Animation doesn't open on a stale empty draft before the next GET round-trip.
+        // since navigated to a different image. A freshly-created mark's action/prompt come from
+        // the server's response, since it may have picked a random subVersion/prompt line, so
+        // Edit Animation doesn't open on a stale draft before the next GET round-trip.
+        const mark = isRemoving ? null : await readMarkResponse(response);
         setMarksState((prev) =>
           prev.path === relativePath
             ? {
                 ...prev,
-                animateAction: isRemoving ? null : action,
-                animatePrompt: isRemoving
-                  ? null
-                  : (findAnimationNodeByKey(animations, action)?.prompt ?? ""),
+                animateAction: mark?.action ?? null,
+                animatePrompt: mark?.prompt ?? null,
               }
             : prev,
         );
@@ -680,7 +683,7 @@ export function ImageDetailModal({
         setIsTogglingAnimate(false);
       }
     },
-    [relativePath, animateAction, rawMetadata, animations],
+    [relativePath, animateAction, rawMetadata],
   );
 
   const handleAnimateMenuItemClick = useCallback(
@@ -764,14 +767,13 @@ export function ImageDetailModal({
           return;
         }
 
+        const mark = isRemoving ? null : await readMarkResponse(response);
         setMarksState((prev) =>
           prev.path === relativePath
             ? {
                 ...prev,
-                extendAction: isRemoving ? null : action,
-                extendPrompt: isRemoving
-                  ? null
-                  : (findAnimationNodeByKey(animations, action)?.prompt ?? ""),
+                extendAction: mark?.action ?? null,
+                extendPrompt: mark?.prompt ?? null,
               }
             : prev,
         );
@@ -781,7 +783,7 @@ export function ImageDetailModal({
         setIsTogglingExtend(false);
       }
     },
-    [relativePath, extendAction, animations],
+    [relativePath, extendAction],
   );
 
   const handleExtendMenuItemClick = useCallback(
