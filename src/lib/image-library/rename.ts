@@ -61,6 +61,12 @@ const renamePreviewSidecar = async (oldFilePath: string, newFilePath: string): P
   }
 };
 
+// Serializes every rename that picks a free name from a folder listing (manual rename, Pose
+// Conformity, Redraw, Duplicate Finder validation): otherwise two of them can pick the same free
+// name from their own listing, and on POSIX the second rename silently replaces the first file.
+export const withFolderRenameLock = <T>(directory: string, task: () => Promise<T>): Promise<T> =>
+  withMarkedImageFileLock(`rename-dir:${directory}`, task);
+
 export interface IRenameMediaFileOptions {
   // Pick the next free numbered name instead of failing when the name is taken.
   incrementOnConflict?: boolean;
@@ -101,11 +107,8 @@ export const renameMediaFile = async (
 
   const directory = path.dirname(filePath);
 
-  // Listing the folder, picking a free name and renaming happen under one per-folder lock:
-  // otherwise two concurrent renames (e.g. two quick Pose Conformity clicks) can both pick the
-  // same free name from their own listing, and on POSIX the second rename silently replaces the
-  // first file.
-  const newFileName = await withMarkedImageFileLock(`rename-dir:${directory}`, async () => {
+  // Listing the folder, picking a free name and renaming happen under the folder's rename lock.
+  const newFileName = await withFolderRenameLock(directory, async () => {
     let entries: string[];
 
     try {

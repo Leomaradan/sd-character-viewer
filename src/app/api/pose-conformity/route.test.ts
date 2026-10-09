@@ -188,6 +188,10 @@ describe("POST /api/pose-conformity", () => {
     expect((await post({ pose: "Casual" })).status).toBe(400);
     expect((await post({ path: "a.png" })).status).toBe(400);
 
+    expect((await post({ path: "characters/3d/Anna/Unknown.png", custom: true })).status).toBe(400);
+    expect(
+      (await post({ path: "extra-roots/00/characters/3d/Anna/Odd.png", custom: true })).status,
+    ).toBe(400);
     expect((await post({ path: "characters/3d/./Anna/Odd.png", custom: true })).status).toBe(400);
     expect((await post({ path: "characters/3d/Bob/../Anna/Odd.png", custom: true })).status).toBe(
       400,

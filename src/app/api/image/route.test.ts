@@ -30,6 +30,7 @@ vi.mock("@/lib/image-library", () => ({
   setToAnimateEntry: vi.fn(),
   setToExtendEntry: vi.fn(),
   renameMediaFile: vi.fn(),
+  withFolderRenameLock: vi.fn((_directory: string, task: () => Promise<unknown>) => task()),
   MediaRenameError: class MediaRenameError extends Error {
     readonly code: string;
     constructor(code: string, message: string) {
