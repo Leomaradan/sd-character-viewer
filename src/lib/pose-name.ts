@@ -5,12 +5,18 @@ import type { TMediaType } from "@/types/library";
 // spaces - see parsePoseName in image-library).
 
 const BRACKET_PART_REGEX = /\s*\[[^\]]*\]\s*/g;
+// "(no lora)" marks a generation variant, not a pose, so it's an annotation like "[...]".
+const NO_LORA_PART_REGEX = /\s*\(\s*no\s+lora\s*\)\s*/gi;
 const ANIMATION_POSE_REGEX = /^(.+?)\s*\(([^()]+)\)$/;
 
-// Drops "[...]" annotations such as "[Upscaled]" or "[Extended]" wherever they appear:
-// "Casual 2 [Upscaled]" -> "Casual 2".
-export const stripBracketParts = (name: string): string => {
-  return name.replaceAll(BRACKET_PART_REGEX, " ").replaceAll(/\s+/g, " ").trim();
+// Drops annotations wherever they appear: "[...]" parts such as "[Upscaled]" or "[Extended]",
+// and "(no lora)": "Casual 2 [Upscaled]" -> "Casual 2", "Dancing (no lora)" -> "Dancing".
+export const stripAnnotations = (name: string): string => {
+  return name
+    .replaceAll(BRACKET_PART_REGEX, " ")
+    .replaceAll(NO_LORA_PART_REGEX, " ")
+    .replaceAll(/\s+/g, " ")
+    .trim();
 };
 
 // Splits a trailing variant number off a name: "Casual 2" -> { base: "Casual", variant: 2 },
@@ -41,12 +47,21 @@ export const splitAnimationPose = (name: string): { animation: string; pose: str
   return animation && pose ? { animation, pose } : null;
 };
 
-// The name an item is filtered by in the pose filters: bracket annotations and the variant
-// number are ignored, and for a video named "Animation (Pose)" only the pose part counts.
+// The whole pose name with annotations and the variant number ignored, but without splitting an
+// "Animation (Pose)" video: what pose-filters.json patterns are matched against, so a pattern
+// like "^with " still sees "With Zelda (Skyward Sword)" in full.
+export const getPoseMatchName = (sanitizedStem: string): string => {
+  const withoutAnnotations = stripAnnotations(sanitizedStem) || sanitizedStem.trim();
+  return splitVariantSuffix(withoutAnnotations).base;
+};
+
+// The name an item is filtered by in the pose filters: annotations and the variant number are
+// ignored, and for a video named "Animation (Pose)" only the pose part counts.
 // "Casual 2 [Upscaled]" -> "Casual"; "Dancing (Casual) 2 [Extended]" (video) -> "Casual".
+// (A file matching a pose-filters.json pattern keeps its full match name instead - see
+// applyPosePatternFilterIds in image-library.)
 export const getPoseFilterName = (sanitizedStem: string, mediaType: TMediaType): string => {
-  const withoutBrackets = stripBracketParts(sanitizedStem) || sanitizedStem.trim();
-  const { base } = splitVariantSuffix(withoutBrackets);
+  const base = getPoseMatchName(sanitizedStem);
 
   if (mediaType === "video") {
     const animationPose = splitAnimationPose(base);

@@ -2,17 +2,23 @@ import { describe, expect, it } from "vitest";
 
 import {
   getPoseFilterName,
+  getPoseMatchName,
   splitAnimationPose,
   splitVariantSuffix,
-  stripBracketParts,
+  stripAnnotations,
 } from "./pose-name";
 
-describe("stripBracketParts", () => {
+describe("stripAnnotations", () => {
   it("removes bracket annotations anywhere in the name", () => {
-    expect(stripBracketParts("Casual [Upscaled]")).toBe("Casual");
-    expect(stripBracketParts("Casual 2 [Upscaled]")).toBe("Casual 2");
-    expect(stripBracketParts("[Extended] Dancing  (Casual) [x2]")).toBe("Dancing (Casual)");
-    expect(stripBracketParts("Casual")).toBe("Casual");
+    expect(stripAnnotations("Casual [Upscaled]")).toBe("Casual");
+    expect(stripAnnotations("Casual 2 [Upscaled]")).toBe("Casual 2");
+    expect(stripAnnotations("[Extended] Dancing  (Casual) [x2]")).toBe("Dancing (Casual)");
+    expect(stripAnnotations("Casual")).toBe("Casual");
+  });
+
+  it("removes (no lora) case-insensitively", () => {
+    expect(stripAnnotations("Dancing (no lora)")).toBe("Dancing");
+    expect(stripAnnotations("Jump (Casual) ( No  LoRA ) [Upscaled]")).toBe("Jump (Casual)");
   });
 });
 
@@ -66,5 +72,22 @@ describe("getPoseFilterName", () => {
 
   it("falls back to the raw name when it is only a bracket annotation", () => {
     expect(getPoseFilterName("[Upscaled]", "image")).toBe("[Upscaled]");
+  });
+});
+
+describe("getPoseMatchName", () => {
+  it("ignores annotations and the variant but keeps parentheses", () => {
+    expect(getPoseMatchName("With Zelda (Skyward Sword) 2 [Upscaled]")).toBe(
+      "With Zelda (Skyward Sword)",
+    );
+    expect(getPoseMatchName("Casual (no lora)")).toBe("Casual");
+  });
+});
+
+describe("getPoseFilterName with (no lora)", () => {
+  it("never uses (no lora) as the pose", () => {
+    expect(getPoseFilterName("Casual (no lora)", "image")).toBe("Casual");
+    expect(getPoseFilterName("Dancing (no lora)", "video")).toBe("Dancing");
+    expect(getPoseFilterName("Jump (Casual) (no lora) 2", "video")).toBe("Casual");
   });
 });

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { SD_IMAGES_ROOT_ENV_KEY } from "@/lib/env-keys";
 import { buildExtraRootRelativePrefix } from "@/lib/extra-image-roots";
-import { getPoseFilterName } from "@/lib/pose-name";
+import { getPoseFilterName, getPoseMatchName } from "@/lib/pose-name";
 import {
   STYLES,
   type IAnimationConfig,
@@ -1101,12 +1101,34 @@ const applyPosePatternFilterIds = (
     .filter((filter): filter is { id: string; regex: RegExp } => filter !== null);
 
   for (const imageItem of imageItems) {
+    // Patterns see the whole name (annotations and variant ignored, but no "Animation (Pose)"
+    // split), and a match takes priority over the split: "With Zelda (Skyward Sword).mp4" stays
+    // a "With Somebody" item instead of becoming a "Skyward Sword" pose.
+    const matchName = getPoseMatchName(imageItem.poseName);
     imageItem.posePatternFilterIds = compiledPatternFilters
       .filter((filter) => {
         filter.regex.lastIndex = 0;
-        return filter.regex.test(imageItem.poseFilterName);
+        return filter.regex.test(matchName);
       })
       .map((filter) => filter.id);
+
+    if (imageItem.posePatternFilterIds.length > 0) {
+      imageItem.poseFilterName = matchName;
+    }
+  }
+};
+
+// Recounts pose summaries and per-character pose sets from the items' final poseFilterName,
+// since applyPosePatternFilterIds can change it after indexing already counted them.
+const rebuildPoseAggregates = (state: ILibraryIndexState): void => {
+  state.poseCounter.clear();
+  for (const accumulator of state.characterMap.values()) {
+    accumulator.poses.clear();
+  }
+
+  for (const imageItem of state.imageItems) {
+    incrementPoseCounter(state.poseCounter, imageItem.poseFilterName);
+    state.characterMap.get(imageItem.characterName)?.poses.add(imageItem.poseFilterName);
   }
 };
 
@@ -1487,6 +1509,7 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
 
   sortImageItems(indexState.imageItems);
   applyPosePatternFilterIds(indexState.imageItems, posePatternFilters);
+  rebuildPoseAggregates(indexState);
   await reconcilePendingAnimationMarks(
     rootPath,
     indexState.imageItems,
