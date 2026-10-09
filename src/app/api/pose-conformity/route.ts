@@ -1,5 +1,7 @@
 import path from "node:path";
 
+import type { ILibraryData } from "@/types/library";
+
 import { invalidateMetadataCacheEntry } from "@/app/api/metadata/route";
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
@@ -71,8 +73,11 @@ const readRequestBody = async (request: Request): Promise<IPoseConformityRequest
   }
 };
 
-const conformToPose = async (relativePath: string, pose: string): Promise<Response> => {
-  const library = await readImageLibrary();
+const conformToPose = async (
+  library: ILibraryData,
+  relativePath: string,
+  pose: string,
+): Promise<Response> => {
   const standardPose = library.standardPoses.find(
     (candidate) => candidate.toLowerCase() === pose.trim().toLowerCase(),
   );
@@ -131,6 +136,14 @@ export const POST = async (request: Request) => {
     return new Response("Invalid image path", { status: 400 });
   }
 
+  // Only the exact relativePath the library lists is accepted: marks and renames are keyed by
+  // it, so an alias that resolves to the same file ("./", in-tree "..", "extra-roots/00/...")
+  // would be stored under a key GET never matches.
+  const library = await readImageLibrary();
+  if (!library.images.some((image) => image.relativePath === relativePath)) {
+    return new Response("Invalid image path", { status: 400 });
+  }
+
   if (body?.custom === true) {
     await setCustomPoseEntry(rootPath, relativePath);
     return new Response(null, { status: 204 });
@@ -140,5 +153,5 @@ export const POST = async (request: Request) => {
     return new Response("Invalid pose request", { status: 400 });
   }
 
-  return conformToPose(relativePath, body.pose);
+  return conformToPose(library, relativePath, body.pose);
 };

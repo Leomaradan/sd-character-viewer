@@ -68,21 +68,10 @@ describe("buildConformedStem", () => {
 });
 
 describe("insertVariantNumber", () => {
-  it("appends the number, before any trailing bracket annotations", () => {
+  it("appends the number at the very end, after annotations", () => {
     expect(insertVariantNumber("Dancing", 2)).toBe("Dancing 2");
-    expect(insertVariantNumber("Casual [Upscaled]", 3)).toBe("Casual 3 [Upscaled]");
-    expect(insertVariantNumber("Casual [Upscaled] [x2]", 2)).toBe("Casual 2 [Upscaled] [x2]");
-  });
-
-  it("places the number before (no lora) too", () => {
-    expect(insertVariantNumber("Casual (no lora)", 2)).toBe("Casual 2 (no lora)");
-    expect(insertVariantNumber("Casual [Upscaled] (no lora)", 3)).toBe(
-      "Casual 3 [Upscaled] (no lora)",
-    );
-    expect(insertVariantNumber("Dancing (Casual)", 2)).toBe("Dancing (Casual) 2");
-  });
-
-  it("treats an unmatched closing bracket as plain text", () => {
-    expect(insertVariantNumber("Odd]", 2)).toBe("Odd] 2");
+    expect(insertVariantNumber("Casual [Upscaled]", 3)).toBe("Casual [Upscaled] 3");
+    expect(insertVariantNumber("Casual (no lora)", 2)).toBe("Casual (no lora) 2");
+    expect(insertVariantNumber("Dancing (Casual) ", 2)).toBe("Dancing (Casual) 2");
   });
 });

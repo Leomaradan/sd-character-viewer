@@ -25,40 +25,6 @@ export const isPoseConforming = (
 
 // Annotations kept verbatim across a rename: "[...]" parts and "(no lora)".
 const ANNOTATION_REGEX = /\[[^\]]*\]|\(\s*no\s+lora\s*\)/gi;
-const NO_LORA_REGEX = /^\(\s*no\s+lora\s*\)$/i;
-
-// Start index of the annotation `name` ends with ("[...]" or "(no lora)"), or -1.
-const findTrailingAnnotationStart = (name: string): number => {
-  if (name.endsWith("]")) {
-    return name.lastIndexOf("[");
-  }
-
-  if (name.endsWith(")")) {
-    const openIndex = name.lastIndexOf("(");
-    return openIndex >= 0 && NO_LORA_REGEX.test(name.slice(openIndex)) ? openIndex : -1;
-  }
-
-  return -1;
-};
-
-// Splits a name into its text and its trailing annotations (kept verbatim):
-// "Casual 2 [Upscaled] (no lora)" -> { head: "Casual 2", annotations: " [Upscaled] (no lora)" }.
-const splitTrailingAnnotations = (name: string): { head: string; annotations: string } => {
-  let head = name.trimEnd();
-  let annotations = "";
-
-  for (
-    let annotationStart = findTrailingAnnotationStart(head);
-    annotationStart >= 0;
-    annotationStart = findTrailingAnnotationStart(head)
-  ) {
-    annotations = `${head.slice(annotationStart)}${annotations ? ` ${annotations}` : ""}`;
-    head = head.slice(0, annotationStart).trimEnd();
-  }
-
-  return { head, annotations: annotations ? ` ${annotations}` : "" };
-};
-
 const collectAnnotations = (name: string): string[] => {
   return [...name.matchAll(ANNOTATION_REGEX)].map((match) => match[0]);
 };
@@ -85,9 +51,9 @@ export const buildConformedStem = (
   return annotations.length > 0 ? `${core} ${annotations.join(" ")}` : core;
 };
 
-// Numbers a stem for a conflict-free name, before any trailing annotations:
-// ("Casual [Upscaled]", 2) -> "Casual 2 [Upscaled]", ("Casual (no lora)", 2) -> "Casual 2 (no lora)".
+// Numbers a stem for a conflict-free name, after everything else (annotations included):
+// ("Casual [Upscaled]", 2) -> "Casual [Upscaled] 2". The number stays the name's trailing variant
+// number, so the Duplicate Finder groups "Casual [Upscaled] 2" with "Casual [Upscaled]".
 export const insertVariantNumber = (stem: string, variant: number): string => {
-  const { head, annotations } = splitTrailingAnnotations(stem);
-  return `${head} ${variant}${annotations}`;
+  return `${stem.trimEnd()} ${variant}`;
 };

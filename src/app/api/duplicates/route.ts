@@ -20,6 +20,7 @@ import {
   resolveImageFilePath,
   resolvePreviewFilePath,
   TEMPORARY_RENAME_FILE_PREFIX,
+  withFolderRenameLock,
   writeReviewedDuplicateGroups,
   type IReviewedDuplicateGroup,
 } from "@/lib/image-library";
@@ -353,61 +354,65 @@ export const POST = async (request: Request) => {
   // Everything below reads and mutates this character's folder plus the shared
   // duplicate-reviews.json, so it runs under the lock to stay atomic with respect to any other
   // concurrent validation against the same root path.
-  return withDuplicateFinderLock(rootPath, async () => {
-    let directoryEntries: string[];
-    try {
-      directoryEntries = (await fs.readdir(directory)).filter((entry) =>
-        entry.toLowerCase().endsWith(".png"),
-      );
-    } catch {
-      return new Response("Could not read character folder", { status: 500 });
-    }
-
-    const groupFileNames = directoryEntries.filter(
-      (entry) => parsePoseName(entry).poseBaseName === poseBaseName,
-    );
-
-    if (keptFileNames.some((fileName) => !groupFileNames.includes(fileName))) {
-      return new Response("Selected images do not belong to this pose group", { status: 400 });
-    }
-
-    try {
-      // Each rejected file is independent (distinct path, distinct cache entry), so deleting
-      // them can run concurrently rather than one at a time.
-      await Promise.all(
-        groupFileNames
-          .filter((fileName) => !keptFileNameSet.has(fileName))
-          .map(async (fileName) => {
-            const filePath = path.join(directory, fileName);
-            await fs.unlink(filePath);
-            await fs.unlink(resolvePreviewFilePath(filePath)).catch(() => {});
-
-            const relativePath = toRelativePath(fileName);
-            invalidateMetadataCacheEntry(relativePath);
-            await removeFirstSeenCacheEntry(relativePath);
-          }),
-      );
-
-      await removeLibraryIndexCache();
-
-      if (rejectAll) {
-        return Response.json({ style, characterName, poseBaseName, fileNames: [] });
+  // The folder rename lock additionally keeps manual/Pose Conformity renames and Redraw in this
+  // folder from picking a name this validation is about to use (or vice versa).
+  return withDuplicateFinderLock(rootPath, () =>
+    withFolderRenameLock(directory, async () => {
+      let directoryEntries: string[];
+      try {
+        directoryEntries = (await fs.readdir(directory)).filter((entry) =>
+          entry.toLowerCase().endsWith(".png"),
+        );
+      } catch {
+        return new Response("Could not read character folder", { status: 500 });
       }
 
-      return await finalizeKeptFiles({
-        rootPath,
-        directory,
-        primaryFilePath,
-        additionalFilePaths,
-        poseBaseName,
-        style,
-        characterName,
-        toRelativePath,
-        relativePathPrefix,
-      });
-    } catch (error) {
-      console.error("Error validating duplicate group:", error);
-      return new Response("Could not validate duplicate group", { status: 500 });
-    }
-  });
+      const groupFileNames = directoryEntries.filter(
+        (entry) => parsePoseName(entry).poseBaseName === poseBaseName,
+      );
+
+      if (keptFileNames.some((fileName) => !groupFileNames.includes(fileName))) {
+        return new Response("Selected images do not belong to this pose group", { status: 400 });
+      }
+
+      try {
+        // Each rejected file is independent (distinct path, distinct cache entry), so deleting
+        // them can run concurrently rather than one at a time.
+        await Promise.all(
+          groupFileNames
+            .filter((fileName) => !keptFileNameSet.has(fileName))
+            .map(async (fileName) => {
+              const filePath = path.join(directory, fileName);
+              await fs.unlink(filePath);
+              await fs.unlink(resolvePreviewFilePath(filePath)).catch(() => {});
+
+              const relativePath = toRelativePath(fileName);
+              invalidateMetadataCacheEntry(relativePath);
+              await removeFirstSeenCacheEntry(relativePath);
+            }),
+        );
+
+        await removeLibraryIndexCache();
+
+        if (rejectAll) {
+          return Response.json({ style, characterName, poseBaseName, fileNames: [] });
+        }
+
+        return await finalizeKeptFiles({
+          rootPath,
+          directory,
+          primaryFilePath,
+          additionalFilePaths,
+          poseBaseName,
+          style,
+          characterName,
+          toRelativePath,
+          relativePathPrefix,
+        });
+      } catch (error) {
+        console.error("Error validating duplicate group:", error);
+        return new Response("Could not validate duplicate group", { status: 500 });
+      }
+    }),
+  );
 };

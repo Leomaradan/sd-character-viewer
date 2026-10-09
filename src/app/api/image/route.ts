@@ -15,6 +15,7 @@ import {
   removeLibraryIndexCache,
   removeMarkedActionEntries,
   renameMediaFile,
+  withFolderRenameLock,
   resolveImageFilePath,
   resolvePreviewFilePath,
   setToAnimateEntry,
@@ -396,14 +397,20 @@ export const PATCH = async (request: Request) => {
     const extension = path.extname(fileName);
     const baseName = fileName.slice(0, Math.max(0, fileName.length - extension.length));
 
-    const nextNumber = await findNextAvailableNumber(directory, baseName, extension);
-    const newFileName = `${baseName} ${nextNumber}${extension}`;
-    const newFilePath = path.join(directory, newFileName);
+    // Same folder lock as manual/Pose Conformity renames, so a concurrent one can't pick the
+    // same free name and get overwritten.
+    const newFileName = await withFolderRenameLock(directory, async () => {
+      const nextNumber = await findNextAvailableNumber(directory, baseName, extension);
+      const candidateFileName = `${baseName} ${nextNumber}${extension}`;
+      const newFilePath = path.join(directory, candidateFileName);
 
-    await fs.rename(filePath, newFilePath);
-    await fs
-      .rename(resolvePreviewFilePath(filePath), resolvePreviewFilePath(newFilePath))
-      .catch(() => {});
+      await fs.rename(filePath, newFilePath);
+      await fs
+        .rename(resolvePreviewFilePath(filePath), resolvePreviewFilePath(newFilePath))
+        .catch(() => {});
+
+      return candidateFileName;
+    });
 
     const oldRelativePath = requestedPath;
     const newRelativePath =
