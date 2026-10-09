@@ -626,6 +626,48 @@ describe("/api/marks PUT", () => {
     await expect(response.json()).resolves.toEqual({ action: "sensual-dance", prompt: "sensual" });
   });
 
+  it("keeps a group node's own key when Edit Animation sends an explicit prompt", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [
+        {
+          key: "dance",
+          name: "Dance",
+          prompt: [],
+          lora: "dance_lora",
+          subVersions: [{ key: "latin-dance", name: "Latin Dance", prompt: ["latin"] }],
+        },
+      ],
+    } as never);
+    vi.mocked(setToAnimateEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.png",
+        type: "animate",
+        action: "dance",
+        prompt: "edited by user",
+      }),
+    );
+
+    expect(setToAnimateEntry).toHaveBeenCalledWith(
+      "/tmp",
+      "a.png",
+      undefined,
+      "dance",
+      "edited by user",
+      {
+        lora: "dance_lora",
+      },
+    );
+    await expect(response.json()).resolves.toEqual({ action: "dance", prompt: "edited by user" });
+  });
+
   it("passes the node's lora/trigger/weight through to an extend mark", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);

@@ -140,14 +140,17 @@ interface IResolvedMark {
 
 // Resolves the requested node to what actually gets marked (see selectAnimation): a random
 // subVersion when the node has no prompt of its own, and a random line of its prompt. Edit
-// Animation reuses this same PUT upsert with an explicit `prompt`, which then wins over the
-// randomly-picked line - omitting it (as the initial mark-creation flow does) keeps the pick.
+// Animation reuses this same PUT upsert with an explicit `prompt`: that edits the existing mark
+// as-is, so no random pick happens - otherwise a mark on a group node (one created before its
+// prompt was emptied) would silently switch to a random child's key while the client keeps
+// showing the original action.
 const resolveMark = (rawPrompt: unknown, node: IAnimationConfig): IResolvedMark => {
-  const selection = selectAnimation(node);
+  const selection =
+    typeof rawPrompt === "string" ? { node, prompt: rawPrompt } : selectAnimation(node);
   const { lora, trigger, weight } = selection.node;
   return {
     action: selection.node.key,
-    prompt: typeof rawPrompt === "string" ? rawPrompt : selection.prompt,
+    prompt: selection.prompt,
     options: { lora, trigger, weight },
   };
 };
