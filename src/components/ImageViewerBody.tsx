@@ -15,7 +15,12 @@ import type {
 
 import { CharactersView } from "@/components/image-viewer/charactersView/CharactersView";
 import { DEFAULT_LIBRARY } from "@/components/image-viewer/common/constants";
-import { buildPoseOptions, formatStyleLabel } from "@/components/image-viewer/common/utils";
+import {
+  buildPoseOptions,
+  filterCharactersByMetadataOption,
+  formatStyleLabel,
+  pickRandomItem,
+} from "@/components/image-viewer/common/utils";
 import { EmptyState } from "@/components/image-viewer/layout/EmptyState";
 import { PosesView } from "@/components/image-viewer/posesView/PosesView";
 import { StylesView } from "@/components/image-viewer/stylesView/StylesView";
@@ -33,6 +38,8 @@ interface IImageViewerBodyProps {
   characterDetailStyle: string;
   characterDetailPose: string;
   reloadToken: number;
+  // Bumped by the app bar's random button; each new value picks one random item from the current view.
+  randomRequestToken?: number;
   onImageSelect: (image: IImageItem, filteredImages: IImageItem[]) => void;
   onLibraryLoad: (library: ILibraryData) => void;
 
@@ -66,6 +73,7 @@ export const ImageViewerBody = ({
   characterDetailStyle,
   characterDetailPose,
   reloadToken,
+  randomRequestToken = 0,
   onImageSelect,
   onLibraryLoad,
   setSelectedCharacter,
@@ -384,6 +392,52 @@ export const ImageViewerBody = ({
     },
     [onImageSelect, poseFilteredImages],
   );
+
+  const handledRandomRequestTokenRef = useRef(randomRequestToken);
+
+  useEffect(() => {
+    if (randomRequestToken === handledRandomRequestTokenRef.current) {
+      return;
+    }
+    handledRandomRequestTokenRef.current = randomRequestToken;
+
+    if (majorFilter === "character" && !selectedCharacter) {
+      const randomCharacter = pickRandomItem(
+        filterCharactersByMetadataOption(
+          charactersForBrowseStyle,
+          metadataFilterById.get(effectiveStyleMetadataFilterId),
+        ),
+      );
+      if (randomCharacter) {
+        setSelectedCharacter(randomCharacter.name);
+      }
+      return;
+    }
+
+    let pool = poseFilteredImages;
+    if (majorFilter === "character") {
+      pool = visibleCharacterDetailImages;
+    } else if (majorFilter === "style") {
+      pool = styleFilteredImages;
+    }
+
+    const randomImage = pickRandomItem(pool);
+    if (randomImage) {
+      onImageSelect(randomImage, pool);
+    }
+  }, [
+    randomRequestToken,
+    majorFilter,
+    selectedCharacter,
+    charactersForBrowseStyle,
+    metadataFilterById,
+    effectiveStyleMetadataFilterId,
+    setSelectedCharacter,
+    visibleCharacterDetailImages,
+    styleFilteredImages,
+    poseFilteredImages,
+    onImageSelect,
+  ]);
 
   if (isLoading) {
     return (

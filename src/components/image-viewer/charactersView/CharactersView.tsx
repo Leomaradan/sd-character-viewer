@@ -16,6 +16,7 @@ import { ImageCard } from "@/components/image-viewer/image/ImageCard";
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
 import { MediaTypeFilter } from "../common/MediaTypeFilter";
+import { filterCharactersByMetadataOption } from "../common/utils";
 import { PoseView } from "../posesView/PoseView";
 import { StyleView } from "../stylesView/StyleView";
 import { CharacterView } from "./CharacterView";
@@ -133,15 +134,10 @@ export const CharactersView = ({
   }, [selectedMetadataFilterId, metadataFilterById]);
 
   const filteredCharacters = useMemo(() => {
-    const selectedOption = metadataFilterById.get(effectiveSelectedMetadataFilterId);
-    const matchingCharacters = selectedOption
-      ? charactersForBrowseStyle.filter((character) => {
-          const selectedValue = selectedOption.value.trim().toLowerCase();
-          return [character.category, character.serie, ...character.tags].some(
-            (value) => value?.trim().toLowerCase() === selectedValue,
-          );
-        })
-      : charactersForBrowseStyle;
+    const matchingCharacters = filterCharactersByMetadataOption(
+      charactersForBrowseStyle,
+      metadataFilterById.get(effectiveSelectedMetadataFilterId),
+    );
 
     if (characterSortOrder === "date") {
       return [...matchingCharacters].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
