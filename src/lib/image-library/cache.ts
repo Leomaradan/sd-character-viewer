@@ -408,6 +408,36 @@ export const removeFirstSeenCacheEntry = async (relativePath: string): Promise<v
   });
 };
 
+// Called after a manual rename, so the renamed file keeps its discovery date (and "new"/seen
+// state) instead of being re-discovered as new under its new path on the next rebuild. Same
+// locked read-modify-write as removeFirstSeenCacheEntry above.
+export const migrateFirstSeenCacheEntry = async (
+  oldRelativePath: string,
+  newRelativePath: string,
+): Promise<void> => {
+  const rootPath = getImagesRootPathFromEnv();
+
+  if (!rootPath) {
+    return;
+  }
+
+  const normalizedOldPath = normalizeRelativePath(oldRelativePath);
+  const normalizedNewPath = normalizeRelativePath(newRelativePath);
+
+  await withMarkedImageFileLock(getFirstSeenCachePath(rootPath), async () => {
+    const { cache: firstSeenCache } = await loadFirstSeenCache(rootPath);
+    const firstSeenAt = firstSeenCache.get(normalizedOldPath);
+
+    if (firstSeenAt === undefined) {
+      return;
+    }
+
+    firstSeenCache.delete(normalizedOldPath);
+    firstSeenCache.set(normalizedNewPath, firstSeenAt);
+    await persistFirstSeenCache(rootPath, firstSeenCache);
+  });
+};
+
 // Called when an image/video's Details view is opened, so it drops out of `isNew` (and the "show
 // new only" filter) immediately rather than waiting out NEW_IMAGE_WINDOW_MS. Sets firstSeenAt to
 // 0 rather than deleting the cache entry - a delete would re-seed it at "now" on the next

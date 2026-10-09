@@ -57,6 +57,7 @@ export * from "./animations";
 export * from "./cache";
 export * from "./marks";
 export * from "./paths";
+export * from "./rename";
 
 const DEFAULT_STYLE: string = "3d";
 const DUPLICATE_REVIEW_CONFIG_FILE_NAME = "duplicate-reviews.json";

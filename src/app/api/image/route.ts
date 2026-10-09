@@ -9,10 +9,12 @@ import { SD_ALLOW_DELETE_ENV_KEY } from "@/lib/env-keys";
 import {
   getImagesRootPathFromEnv,
   isVideoFilePath,
+  MediaRenameError,
   migrateVideoLink,
   removeFirstSeenCacheEntry,
   removeLibraryIndexCache,
   removeMarkedActionEntries,
+  renameMediaFile,
   resolveImageFilePath,
   resolvePreviewFilePath,
   setToAnimateEntry,
@@ -307,6 +309,49 @@ const requeueVideoLinkMark = async (
   }
 };
 
+const MEDIA_RENAME_ERROR_STATUS: Record<MediaRenameError["code"], number> = {
+  "invalid-path": 400,
+  "invalid-name": 400,
+  "not-found": 404,
+  conflict: 409,
+};
+
+// Reads PATCH's optional JSON body: `{ "newName": "..." }` selects a manual rename, while an
+// empty body keeps the original Redraw behavior. Returns undefined for "no body", null for a
+// body that isn't a valid rename request.
+const readManualRenameName = async (request: Request): Promise<string | null | undefined> => {
+  const rawBody = await request.text().catch(() => "");
+
+  if (rawBody.trim() === "") {
+    return undefined;
+  }
+
+  try {
+    const parsedBody: unknown = JSON.parse(rawBody);
+    const newName =
+      typeof parsedBody === "object" && parsedBody !== null && "newName" in parsedBody
+        ? parsedBody.newName
+        : undefined;
+    return typeof newName === "string" ? newName : null;
+  } catch {
+    return null;
+  }
+};
+
+const handleManualRename = async (requestedPath: string, newName: string): Promise<Response> => {
+  try {
+    const newRelativePath = await renameMediaFile(requestedPath, newName);
+    invalidateMetadataCacheEntry(requestedPath);
+    invalidateMetadataCacheEntry(newRelativePath);
+    return Response.json({ newPath: newRelativePath }, { status: 200 });
+  } catch (error) {
+    if (error instanceof MediaRenameError) {
+      return new Response(error.message, { status: MEDIA_RENAME_ERROR_STATUS[error.code] });
+    }
+    return new Response("Could not rename image", { status: 500 });
+  }
+};
+
 export const PATCH = async (request: Request) => {
   if (isMisconfigured()) {
     return Response.json({ misconfigured: true, required: true, authenticated: false });
@@ -327,6 +372,16 @@ export const PATCH = async (request: Request) => {
 
   if (!filePath) {
     return new Response("Invalid image path", { status: 400 });
+  }
+
+  const manualRenameName = await readManualRenameName(request);
+
+  if (manualRenameName === null) {
+    return new Response("Invalid rename request", { status: 400 });
+  }
+
+  if (manualRenameName !== undefined) {
+    return handleManualRename(requestedPath, manualRenameName);
   }
 
   try {

@@ -413,3 +413,95 @@ export const removeMarkedActionEntries = async (relativePath: string): Promise<v
     // Ignore: see comment above.
   }
 };
+
+const migrateMarkedImageMapKey = async <T>(
+  filePath: string,
+  isValidEntry: (value: unknown) => value is T,
+  oldRelativePath: string,
+  newRelativePath: string,
+): Promise<void> => {
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isValidEntry);
+    if (!(oldRelativePath in entries)) {
+      return;
+    }
+
+    entries[newRelativePath] = entries[oldRelativePath];
+    delete entries[oldRelativePath];
+    await writeMarkedImageMap(filePath, entries);
+  });
+};
+
+// Repoints video links whose *source* is the renamed file, so a generated video keeps showing
+// where it came from after its source image/video is renamed.
+const migrateVideoLinkSources = async (
+  rootPath: string,
+  oldRelativePath: string,
+  newRelativePath: string,
+): Promise<void> => {
+  const filePath = path.join(rootPath, VIDEO_LINKS_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isVideoLink);
+    let hasChanges = false;
+    for (const link of Object.values(entries)) {
+      if (link.sourceRelativePath === oldRelativePath) {
+        link.sourceRelativePath = newRelativePath;
+        hasChanges = true;
+      }
+    }
+    if (hasChanges) {
+      await writeMarkedImageMap(filePath, entries);
+    }
+  });
+};
+
+// Called after a manual rename: unlike Redraw (which frees the old name for a regeneration and
+// so drops its marks), a rename is the same media under a new name, so every pending mark, the
+// file's own video link, and any link sourced from it follow it to the new path. Best-effort for
+// the same reason as removeMarkedActionEntries: the rename has already happened on disk.
+export const migrateMarkedActionEntries = async (
+  oldRelativePath: string,
+  newRelativePath: string,
+): Promise<void> => {
+  const rootPath = getImagesRootPathFromEnv();
+
+  if (!rootPath) {
+    return;
+  }
+
+  const normalizedOldPath = normalizeRelativePath(oldRelativePath);
+  const normalizedNewPath = normalizeRelativePath(newRelativePath);
+
+  try {
+    await Promise.all([
+      migrateMarkedImageMapKey(
+        path.join(rootPath, TO_UPSCALE_FILE_NAME),
+        isRawMetadataEntry,
+        normalizedOldPath,
+        normalizedNewPath,
+      ),
+      migrateMarkedImageMapKey(
+        path.join(rootPath, TO_ANIMATE_FILE_NAME),
+        isToAnimateEntry,
+        normalizedOldPath,
+        normalizedNewPath,
+      ),
+      migrateMarkedImageMapKey(
+        path.join(rootPath, TO_EXTEND_FILE_NAME),
+        isToAnimateEntry,
+        normalizedOldPath,
+        normalizedNewPath,
+      ),
+      migrateMarkedImageMapKey(
+        path.join(rootPath, TO_UPSCALE_VIDEO_FILE_NAME),
+        isRawMetadataEntry,
+        normalizedOldPath,
+        normalizedNewPath,
+      ),
+      migrateVideoLink(rootPath, normalizedOldPath, normalizedNewPath),
+      migrateVideoLinkSources(rootPath, normalizedOldPath, normalizedNewPath),
+    ]);
+  } catch {
+    // Ignore: see comment above.
+  }
+};
