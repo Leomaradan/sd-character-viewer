@@ -1420,6 +1420,27 @@ describe("readImageLibrary in-memory cache", () => {
     expect(cacheFile.startsWith('{"version":')).toBe(true);
   });
 
+  it("drops the index cache file when an in-app change lands while it's being written", async () => {
+    const { tempRoot } = await setUpLibrary("change-during-write");
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const cacheFilePath = path.join(
+      "/tmp/sd-cache-memory-change-during-write",
+      `${rootHash}.library-index.json`,
+    );
+    const originalWriteFile = fs.writeFile.bind(fs);
+    vi.spyOn(fs, "writeFile").mockImplementation(async (file, data, options) => {
+      if (file === cacheFilePath) {
+        // The change's own unlink runs before the file exists.
+        await removeLibraryIndexCache();
+      }
+      return originalWriteFile(file, data, options);
+    });
+
+    await readImageLibrary();
+
+    await expect(fs.stat(cacheFilePath)).rejects.toThrow();
+  });
+
   it("serves from memory after a disk cache hit", async () => {
     const { characterDir } = await setUpLibrary("disk-hit");
 

@@ -414,14 +414,18 @@ export const writeLibraryIndexCache = async (
     await fs.mkdir(path.dirname(cachePath), { recursive: true });
     // Compact JSON: it's only ever read back by this module, and is a few MB for a big library.
     await fs.writeFile(cachePath, JSON.stringify(cacheFile), "utf8");
-    if (generation === getLibraryCacheGeneration()) {
-      await rememberLibrary(
-        cachePath,
-        extraRootPaths,
-        { configFiles, directories, extraDirectories },
-        library,
-      );
+    // An in-app change landed while the snapshots were taken or the file written: its own unlink
+    // may have run before this write, so drop the file here (the next read rebuilds).
+    if (generation !== getLibraryCacheGeneration()) {
+      await fs.unlink(cachePath).catch(() => {});
+      return true;
     }
+    await rememberLibrary(
+      cachePath,
+      extraRootPaths,
+      { configFiles, directories, extraDirectories },
+      library,
+    );
     return true;
   } catch {
     return false;
