@@ -23,7 +23,7 @@ vi.mock("@/lib/image-library", () => ({
   resolvePreviewFilePath: vi.fn((filePath: string) => filePath.replace(/\.png$/i, ".preview.jpg")),
   removeFirstSeenCacheEntry: vi.fn(),
   removeMarkedActionEntries: vi.fn(),
-  removeLibraryIndexCache: vi.fn(),
+  refreshLibraryAfterChange: vi.fn(),
   isVideoFilePath: vi.fn((filePath: string) => filePath.toLowerCase().endsWith(".mp4")),
   getImagesRootPathFromEnv: vi.fn(),
   migrateVideoLink: vi.fn(),
@@ -59,7 +59,7 @@ import {
   resolveImageFilePath,
   removeFirstSeenCacheEntry,
   removeMarkedActionEntries,
-  removeLibraryIndexCache,
+  refreshLibraryAfterChange,
   getImagesRootPathFromEnv,
   migrateVideoLink,
   setToAnimateEntry,
@@ -427,7 +427,7 @@ describe("/api/image", () => {
     const invalidateMetadataCacheEntryMock = vi.mocked(invalidateMetadataCacheEntry);
     const removeFirstSeenCacheEntryMock = vi.mocked(removeFirstSeenCacheEntry);
     const removeMarkedActionEntriesMock = vi.mocked(removeMarkedActionEntries);
-    const removeLibraryIndexCacheMock = vi.mocked(removeLibraryIndexCache);
+    const refreshLibraryAfterChangeMock = vi.mocked(refreshLibraryAfterChange);
     isMisconfiguredMock.mockReturnValue(false);
     isPasswordProtectionEnabledMock.mockReturnValue(false);
     readBooleanEnvFlagMock.mockReturnValue(true);
@@ -435,7 +435,7 @@ describe("/api/image", () => {
     unlinkMock.mockResolvedValue(undefined);
     removeFirstSeenCacheEntryMock.mockResolvedValue(undefined);
     removeMarkedActionEntriesMock.mockResolvedValue(undefined);
-    removeLibraryIndexCacheMock.mockResolvedValue(undefined);
+    refreshLibraryAfterChangeMock.mockResolvedValue(undefined);
 
     const response = await DELETE(new Request("http://localhost/api/image?path=ok.png"));
 
@@ -444,7 +444,7 @@ describe("/api/image", () => {
     expect(invalidateMetadataCacheEntryMock).toHaveBeenCalledWith("ok.png");
     expect(removeFirstSeenCacheEntryMock).toHaveBeenCalledWith("ok.png");
     expect(removeMarkedActionEntriesMock).toHaveBeenCalledWith("ok.png");
-    expect(removeLibraryIndexCacheMock).toHaveBeenCalledTimes(1);
+    expect(refreshLibraryAfterChangeMock).toHaveBeenCalledWith(["ok.png"]);
     expect(response.status).toBe(204);
   });
 
@@ -551,7 +551,7 @@ describe("/api/image PATCH", () => {
 
     const removeFirstSeenCacheEntryMock = vi.mocked(removeFirstSeenCacheEntry);
     const removeMarkedActionEntriesMock = vi.mocked(removeMarkedActionEntries);
-    const removeLibraryIndexCacheMock = vi.mocked(removeLibraryIndexCache);
+    const refreshLibraryAfterChangeMock = vi.mocked(refreshLibraryAfterChange);
     isMisconfiguredMock.mockReturnValue(false);
     isPasswordProtectionEnabledMock.mockReturnValue(false);
     readBooleanEnvFlagMock.mockReturnValue(true);
@@ -560,7 +560,7 @@ describe("/api/image PATCH", () => {
     readdirMock.mockResolvedValue([]);
     removeFirstSeenCacheEntryMock.mockResolvedValue(undefined);
     removeMarkedActionEntriesMock.mockResolvedValue(undefined);
-    removeLibraryIndexCacheMock.mockResolvedValue(undefined);
+    refreshLibraryAfterChangeMock.mockResolvedValue(undefined);
 
     const response = await PATCH(new Request("http://localhost/api/image?path=ImageA.png"));
 
@@ -568,7 +568,7 @@ describe("/api/image PATCH", () => {
     expect(renameMock).toHaveBeenCalledWith("/tmp/ImageA.png", "/tmp/ImageA 2.png");
     expect(renameMock).toHaveBeenCalledWith("/tmp/ImageA.preview.jpg", "/tmp/ImageA 2.preview.jpg");
     expect(removeMarkedActionEntriesMock).toHaveBeenCalledWith("ImageA.png");
-    expect(removeLibraryIndexCacheMock).toHaveBeenCalledTimes(1);
+    expect(refreshLibraryAfterChangeMock).toHaveBeenCalledWith(["ImageA.png"]);
     const data = (await response.json()) as { newPath: string };
     expect(data.newPath).toBe("ImageA 2.png");
   });
@@ -821,6 +821,7 @@ describe("/api/image PATCH manual rename", () => {
     expect(await response.json()).toEqual({ newPath: "characters/3d/Anna/Casual.png" });
     expect(invalidateMetadataCacheEntry).toHaveBeenCalledWith("characters/3d/Anna/Casul.png");
     expect(invalidateMetadataCacheEntry).toHaveBeenCalledWith("characters/3d/Anna/Casual.png");
+    expect(refreshLibraryAfterChange).toHaveBeenCalledWith(["characters/3d/Anna/Casul.png"]);
     expect(fs.rename).not.toHaveBeenCalled();
   });
 

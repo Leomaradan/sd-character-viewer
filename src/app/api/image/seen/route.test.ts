@@ -8,11 +8,16 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/image-library", () => ({
   markImageAsSeen: vi.fn(),
+  refreshLibraryAfterChange: vi.fn(),
   resolveImageFilePath: vi.fn(),
 }));
 
 import * as auth from "@/lib/auth";
-import { markImageAsSeen, resolveImageFilePath } from "@/lib/image-library";
+import {
+  markImageAsSeen,
+  refreshLibraryAfterChange,
+  resolveImageFilePath,
+} from "@/lib/image-library";
 
 import { POST } from "./route";
 
@@ -23,6 +28,7 @@ describe("/api/image/seen POST", () => {
     vi.mocked(auth.isAuthenticatedRequest).mockReset();
     vi.mocked(resolveImageFilePath).mockReset();
     vi.mocked(markImageAsSeen).mockReset();
+    vi.mocked(refreshLibraryAfterChange).mockReset();
   });
 
   it("returns misconfigured payload", async () => {
@@ -84,7 +90,7 @@ describe("/api/image/seen POST", () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
     vi.mocked(resolveImageFilePath).mockReturnValue("/root/characters/3d/Anna/Base.png");
-    vi.mocked(markImageAsSeen).mockResolvedValue(undefined);
+    vi.mocked(markImageAsSeen).mockResolvedValue(true);
 
     const response = await POST(
       new Request("http://localhost/api/image/seen?path=characters/3d/Anna/Base.png", {
@@ -93,6 +99,23 @@ describe("/api/image/seen POST", () => {
     );
 
     expect(markImageAsSeen).toHaveBeenCalledWith("characters/3d/Anna/Base.png");
+    expect(refreshLibraryAfterChange).toHaveBeenCalledWith([]);
     expect(response.status).toBe(204);
+  });
+
+  it("doesn't refresh the library when the image was already seen", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/root/characters/3d/Anna/Base.png");
+    vi.mocked(markImageAsSeen).mockResolvedValue(false);
+
+    const response = await POST(
+      new Request("http://localhost/api/image/seen?path=characters/3d/Anna/Base.png", {
+        method: "POST",
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(refreshLibraryAfterChange).not.toHaveBeenCalled();
   });
 });

@@ -33,6 +33,7 @@ import {
   readToUpscaleEntries,
   readToUpscaleVideoEntries,
   readVideoLinks,
+  refreshLibraryAfterChange,
   removeFirstSeenCacheEntry,
   removeLibraryIndexCache,
   removeMarkedActionEntries,
@@ -1456,6 +1457,279 @@ describe("readImageLibrary in-memory cache", () => {
   });
 });
 
+describe("refreshLibraryAfterChange", () => {
+  const setUpLibrary = async (name: string) => {
+    const tempRoot = `/tmp/sd-library-refresh-${name}`;
+    const cacheDir = `/tmp/sd-cache-refresh-${name}`;
+    const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
+    const beaDir = path.join(tempRoot, "characters", "3d", "Bea");
+    await fs.mkdir(annaDir, { recursive: true });
+    await fs.mkdir(beaDir, { recursive: true });
+    await fs.writeFile(path.join(annaDir, "Base.png"), "");
+    await fs.writeFile(path.join(annaDir, "Jump.png"), "");
+    await fs.writeFile(path.join(beaDir, "Base.png"), "");
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = cacheDir;
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const indexCachePath = path.join(cacheDir, `${rootHash}.library-index.json`);
+    return { tempRoot, annaDir, beaDir, indexCachePath };
+  };
+
+  const fileNames = (library: ILibraryData) =>
+    library.images.map((image) => image.relativePath.split("/").slice(-2).join("/"));
+
+  const indexCacheExists = (indexCachePath: string) =>
+    fs.stat(indexCachePath).then(
+      () => true,
+      () => false,
+    );
+
+  it("re-reads only the changed folder after a delete", async () => {
+    const { annaDir, beaDir, indexCachePath } = await setUpLibrary("delete");
+    await readImageLibrary();
+
+    await fs.unlink(path.join(annaDir, "Jump.png"));
+    // Added outside the app in another folder: only picked up by the next full directory check.
+    await fs.writeFile(path.join(beaDir, "Wave.png"), "");
+    await refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]);
+
+    const library = await readImageLibrary();
+    expect(fileNames(library)).toEqual(["Anna/Base.png", "Bea/Base.png"]);
+    expect(library.characters.find((character) => character.name === "Anna")).toMatchObject({
+      imageCount: 1,
+      poseCount: 1,
+    });
+    expect(library.poses.map((pose) => pose.name)).toEqual(["Base"]);
+    expect(await indexCacheExists(indexCachePath)).toBe(true);
+  });
+
+  it("picks up a renamed file as a new image", async () => {
+    const { annaDir } = await setUpLibrary("rename");
+    await readImageLibrary();
+
+    await fs.rename(path.join(annaDir, "Jump.png"), path.join(annaDir, "Jump 2.png"));
+    await refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]);
+
+    const library = await readImageLibrary();
+    expect(fileNames(library)).toEqual(["Anna/Base.png", "Anna/Jump 2.png", "Bea/Base.png"]);
+    expect(library.images.find((image) => image.poseVariant === 2)?.isNew).toBe(true);
+  });
+
+  it("applies Mark as seen without re-reading any folder", async () => {
+    const { beaDir } = await setUpLibrary("seen");
+    await readImageLibrary();
+
+    await fs.writeFile(path.join(beaDir, "Wave.png"), "");
+    expect(await markImageAsSeen("characters/3d/Anna/Jump.png")).toBe(true);
+    await refreshLibraryAfterChange([]);
+
+    const library = await readImageLibrary();
+    expect(library.images.find((image) => image.poseName === "Jump")).toMatchObject({
+      isNew: false,
+      firstSeenAt: 0,
+    });
+    expect(fileNames(library)).not.toContain("Bea/Wave.png");
+  });
+
+  it("applies two concurrent refreshes", async () => {
+    const { annaDir, beaDir } = await setUpLibrary("concurrent");
+    await readImageLibrary();
+
+    await fs.unlink(path.join(annaDir, "Jump.png"));
+    await fs.writeFile(path.join(beaDir, "Wave.png"), "");
+    await Promise.all([
+      refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]),
+      refreshLibraryAfterChange(["characters/3d/Bea/Wave.png"]),
+    ]);
+
+    expect(fileNames(await readImageLibrary())).toEqual([
+      "Anna/Base.png",
+      "Bea/Base.png",
+      "Bea/Wave.png",
+    ]);
+  });
+
+  it("re-reads a folder of an extra root", async () => {
+    const { tempRoot } = await setUpLibrary("extra");
+    const extraRoot = "/tmp/sd-library-refresh-extra-root";
+    const cidDir = path.join(extraRoot, "characters", "3d", "Cid");
+    await fs.mkdir(cidDir, { recursive: true });
+    await fs.writeFile(path.join(cidDir, "Base.png"), "");
+    await fs.writeFile(path.join(cidDir, "Jump.png"), "");
+    process.env.SD_EXTRA_IMAGES_ROOT = extraRoot;
+    await readImageLibrary();
+
+    await fs.unlink(path.join(cidDir, "Jump.png"));
+    await fs.writeFile(path.join(tempRoot, "characters", "3d", "Bea", "Wave.png"), "");
+    await refreshLibraryAfterChange(["extra-roots/0/characters/3d/Cid/Jump.png"]);
+
+    const library = await readImageLibrary();
+    expect(library.images.map((image) => image.relativePath)).toEqual([
+      "characters/3d/Anna/Base.png",
+      "characters/3d/Anna/Jump.png",
+      "characters/3d/Bea/Base.png",
+      "extra-roots/0/characters/3d/Cid/Base.png",
+    ]);
+    delete process.env.SD_EXTRA_IMAGES_ROOT;
+  });
+
+  it("matches a video found in a re-read folder with its pending animation mark", async () => {
+    const { tempRoot, annaDir } = await setUpLibrary("reconcile");
+    await fs.writeFile(
+      path.join(tempRoot, "config.json"),
+      JSON.stringify({
+        styles: ["3d"],
+        defaultStyle: "3d",
+        animations: [{ key: "dance", name: "Dance", prompt: "dance" }],
+      }),
+    );
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Base.png", "raw", "dance", "");
+    await readImageLibrary();
+
+    await fs.writeFile(path.join(annaDir, "Dance.mp4"), "");
+    await refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]);
+
+    expect(await readVideoLinks(tempRoot)).toEqual({
+      "characters/3d/Anna/Dance.mp4": expect.objectContaining({
+        sourceRelativePath: "characters/3d/Anna/Base.png",
+      }),
+    });
+    expect(fileNames(await readImageLibrary())).toContain("Anna/Dance.mp4");
+  });
+
+  it("uses Base.png rather than a numbered Base as the thumbnail", async () => {
+    const { annaDir } = await setUpLibrary("thumbnail");
+    await fs.writeFile(path.join(annaDir, "Base 2.png"), "");
+
+    const library = await readImageLibrary();
+    expect(
+      library.characters.find((character) => character.name === "Anna")?.thumbnailsByStyle["3d"],
+    ).toBe("characters/3d/Anna/Base.png");
+
+    await fs.unlink(path.join(annaDir, "Jump.png"));
+    await refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]);
+    expect(
+      (await readImageLibrary()).characters.find((character) => character.name === "Anna")
+        ?.thumbnailsByStyle["3d"],
+    ).toBe("characters/3d/Anna/Base.png");
+  });
+
+  it("keeps a folder of an unconfigured style out, like a full build", async () => {
+    const { tempRoot, indexCachePath } = await setUpLibrary("unconfigured-style");
+    await fs.writeFile(
+      path.join(tempRoot, "config.json"),
+      JSON.stringify({ styles: ["3d"], defaultStyle: "3d" }),
+    );
+    const zedDir = path.join(tempRoot, "characters", "sketch", "Zed");
+    await fs.mkdir(zedDir, { recursive: true });
+    await fs.writeFile(path.join(zedDir, "Base.png"), "");
+    await readImageLibrary();
+
+    await fs.writeFile(path.join(zedDir, "Jump.png"), "");
+    await refreshLibraryAfterChange(["characters/sketch/Zed/Jump.png"]);
+
+    expect(await indexCacheExists(indexCachePath)).toBe(true);
+    expect(fileNames(await readImageLibrary())).not.toContain("Zed/Jump.png");
+  });
+
+  it("doesn't postpone the directory check of the folders it didn't re-read", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const { annaDir, beaDir } = await setUpLibrary("ttl");
+    await readImageLibrary();
+
+    vi.setSystemTime(new Date("2026-01-01T00:01:30.000Z"));
+    await fs.writeFile(path.join(beaDir, "Wave.png"), "");
+    await fs.unlink(path.join(annaDir, "Jump.png"));
+    await refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]);
+    expect(fileNames(await readImageLibrary())).not.toContain("Bea/Wave.png");
+
+    // Two minutes after the last full check, not after the refresh.
+    vi.setSystemTime(new Date("2026-01-01T00:02:00.000Z"));
+    expect(fileNames(await readImageLibrary())).toContain("Bea/Wave.png");
+  });
+
+  it("makes a read that arrives during a refresh wait for it", async () => {
+    const { annaDir } = await setUpLibrary("read-during");
+    await readImageLibrary();
+
+    await fs.unlink(path.join(annaDir, "Jump.png"));
+    const refresh = refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]);
+    const library = await readImageLibrary();
+    await refresh;
+
+    expect(fileNames(library)).not.toContain("Anna/Jump.png");
+  });
+
+  it("doesn't record a config file edited during the refresh as current", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const { tempRoot, annaDir } = await setUpLibrary("config-during");
+    await readImageLibrary();
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:10.000Z"));
+    const originalReaddir = fs.readdir.bind(fs);
+    vi.spyOn(fs, "readdir").mockImplementation((async (...args: Parameters<typeof fs.readdir>) => {
+      if (args[0] === annaDir) {
+        await fs.writeFile(path.join(tempRoot, "config.json"), JSON.stringify({ poses: ["Jump"] }));
+      }
+      return originalReaddir(...args);
+    }) as typeof fs.readdir);
+    await refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]);
+    vi.mocked(fs.readdir).mockRestore();
+
+    expect((await readImageLibrary()).standardPoses).toEqual(["Jump"]);
+  });
+
+  it("falls back to a full rebuild when nothing is kept in memory", async () => {
+    const { beaDir, indexCachePath } = await setUpLibrary("no-memory");
+    await readImageLibrary();
+    Reflect.deleteProperty(globalThis, Symbol.for("sd-character-viewer.library-cache"));
+
+    await fs.writeFile(path.join(beaDir, "Wave.png"), "");
+    await refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]);
+
+    expect(await indexCacheExists(indexCachePath)).toBe(false);
+    expect(fileNames(await readImageLibrary())).toContain("Bea/Wave.png");
+  });
+
+  it("falls back to a full rebuild when a config file changed", async () => {
+    const { tempRoot, indexCachePath } = await setUpLibrary("config");
+    await readImageLibrary();
+
+    await fs.writeFile(path.join(tempRoot, "config.json"), JSON.stringify({ poses: ["Jump"] }));
+    await refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]);
+
+    expect(await indexCacheExists(indexCachePath)).toBe(false);
+    expect((await readImageLibrary()).standardPoses).toEqual(["Jump"]);
+  });
+
+  it("falls back to a full rebuild for a path outside a character folder or a new folder", async () => {
+    const { tempRoot, indexCachePath } = await setUpLibrary("fallback-paths");
+
+    await readImageLibrary();
+    await refreshLibraryAfterChange(["characters/3d/Anna.png"]);
+    expect(await indexCacheExists(indexCachePath)).toBe(false);
+
+    await readImageLibrary();
+    await refreshLibraryAfterChange(["extra-roots/3/characters/3d/Cid/Base.png"]);
+    expect(await indexCacheExists(indexCachePath)).toBe(false);
+
+    await readImageLibrary();
+    await fs.mkdir(path.join(tempRoot, "characters", "3d", "Dan"), { recursive: true });
+    await fs.writeFile(path.join(tempRoot, "characters", "3d", "Dan", "Base.png"), "");
+    await refreshLibraryAfterChange(["characters/3d/Dan/Base.png"]);
+    expect(await indexCacheExists(indexCachePath)).toBe(false);
+    expect(fileNames(await readImageLibrary())).toContain("Dan/Base.png");
+  });
+
+  it("drops the index when no images root is configured", async () => {
+    delete process.env.SD_IMAGES_ROOT;
+
+    await expect(refreshLibraryAfterChange([])).resolves.toBeUndefined();
+  });
+});
+
 describe("normalizeAnimationsConfig", () => {
   it("skips plain strings, since they carry no prompt", () => {
     expect(normalizeAnimationsConfig(["Zoom In", " Pan ", ""])).toEqual([]);
@@ -2513,10 +2787,10 @@ describe("markImageAsSeen", () => {
   it("is a no-op when no images root is configured", async () => {
     delete process.env.SD_IMAGES_ROOT;
 
-    await expect(markImageAsSeen("characters/3d/Anna/Base.png")).resolves.toBeUndefined();
+    await expect(markImageAsSeen("characters/3d/Anna/Base.png")).resolves.toBe(false);
   });
 
-  it("sets firstSeenAt to 0 so the image no longer reads as new, and invalidates the library index cache", async () => {
+  it("sets firstSeenAt to 0 so the image no longer reads as new, and reports the change", async () => {
     const tempRoot = "/tmp/sd-mark-seen";
     await fs.mkdir(tempRoot, { recursive: true });
     process.env.SD_IMAGES_ROOT = tempRoot;
@@ -2528,7 +2802,7 @@ describe("markImageAsSeen", () => {
     const libraryIndexCachePath = path.join(cacheDirPath, `${rootHash}.library-index.json`);
     await fs.writeFile(libraryIndexCachePath, "{}", "utf8");
 
-    await markImageAsSeen("characters/3d/Anna/Base.png");
+    await expect(markImageAsSeen("characters/3d/Anna/Base.png")).resolves.toBe(true);
 
     const firstSeenCachePath = path.join(cacheDirPath, `${rootHash}.first-seen.json`);
     const persisted = JSON.parse(await fs.readFile(firstSeenCachePath, "utf8")) as Record<
@@ -2536,7 +2810,8 @@ describe("markImageAsSeen", () => {
       number
     >;
     expect(persisted["characters/3d/Anna/Base.png"]).toBe(0);
-    await expect(fs.access(libraryIndexCachePath)).rejects.toThrow("ENOENT");
+    // Refreshing the library index is the caller's job (refreshLibraryAfterChange).
+    await expect(fs.access(libraryIndexCachePath)).resolves.toBeUndefined();
   });
 
   it("is idempotent - a second call for an already-seen path makes no further writes", async () => {
@@ -2547,7 +2822,7 @@ describe("markImageAsSeen", () => {
     await markImageAsSeen("characters/3d/Anna/Base.png");
     const writeFileSpy = vi.spyOn(fs, "writeFile");
 
-    await markImageAsSeen("characters/3d/Anna/Base.png");
+    await expect(markImageAsSeen("characters/3d/Anna/Base.png")).resolves.toBe(false);
 
     expect(writeFileSpy).not.toHaveBeenCalled();
     writeFileSpy.mockRestore();

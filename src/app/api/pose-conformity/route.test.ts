@@ -20,6 +20,7 @@ vi.mock("@/lib/image-library", () => ({
   isVideoFilePath: vi.fn((filePath: string) => filePath.toLowerCase().endsWith(".mp4")),
   readCustomPoseEntries: vi.fn(),
   readImageLibrary: vi.fn(),
+  refreshLibraryAfterChange: vi.fn(),
   renameMediaFile: vi.fn(),
   resolveImageFilePath: vi.fn(),
   setCustomPoseEntry: vi.fn(),
@@ -42,6 +43,7 @@ import {
   MediaRenameError,
   readCustomPoseEntries,
   readImageLibrary,
+  refreshLibraryAfterChange,
   renameMediaFile,
   resolveImageFilePath,
   setCustomPoseEntry,
@@ -231,6 +233,7 @@ describe("POST /api/pose-conformity", () => {
       incrementOnConflict: true,
     });
     expect(invalidateMetadataCacheEntry).toHaveBeenCalledWith("characters/3d/Anna/Casual 2.png");
+    expect(refreshLibraryAfterChange).toHaveBeenCalledWith(["characters/3d/Anna/Casul.png"]);
   });
 
   it("replaces only the pose part of an animation video", async () => {

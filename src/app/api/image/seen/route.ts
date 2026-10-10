@@ -1,5 +1,9 @@
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
-import { markImageAsSeen, resolveImageFilePath } from "@/lib/image-library";
+import {
+  markImageAsSeen,
+  refreshLibraryAfterChange,
+  resolveImageFilePath,
+} from "@/lib/image-library";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +29,8 @@ export const POST = async (request: Request) => {
     return new Response("Invalid image path", { status: 400 });
   }
 
-  await markImageAsSeen(requestedPath);
+  if (await markImageAsSeen(requestedPath)) {
+    await refreshLibraryAfterChange([]);
+  }
   return new Response(null, { status: 204 });
 };
