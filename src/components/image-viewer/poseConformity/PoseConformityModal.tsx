@@ -148,14 +148,17 @@ export function PoseConformityModal({
   styleLabel = formatStyleLabel,
 }: Readonly<IPoseConformityModalProps>) {
   const [items, setItems] = useState<IImageItem[]>([]);
+  // Bumped on every fresh list from the server, which brings the grid back to its first page.
+  const [loadCount, setLoadCount] = useState(0);
   const [standardPoses, setStandardPoses] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingPaths, setPendingPaths] = useState<ReadonlySet<string>>(new Set());
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
-  // Rendered a page at a time: a big library can have thousands of non-conforming files. Handled
-  // cards are removed from `items`, so the list never needs to reset to its first page.
-  const { visibleItems, hasMore, showMore } = useIncrementalList(items, "pose-conformity");
+  // Rendered a page at a time: a big library can have thousands of non-conforming files. Removing
+  // a handled card keeps the current page count; only a fresh load (e.g. reopening the dialog,
+  // which stays mounted while closed) goes back to the first page.
+  const { visibleItems, hasMore, showMore } = useIncrementalList(items, String(loadCount));
   // Bumped on every load and whenever the dialog closes, so a stale response is ignored.
   const loadRequestIdRef = useRef(0);
 
@@ -182,6 +185,7 @@ export function PoseConformityModal({
       }
 
       setItems(data.items);
+      setLoadCount((count) => count + 1);
       setStandardPoses(data.standardPoses);
       setItemErrors({});
     } catch {
