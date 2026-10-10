@@ -6,7 +6,7 @@ import { SD_CACHE_DIR_ENV_KEY, SD_LIBRARY_CACHE_TTL_SECONDS_ENV_KEY } from "@/li
 import { type IImageItem, type ILibraryData } from "@/types/library";
 
 import { TO_ANIMATE_FILE_NAME, TO_EXTEND_FILE_NAME, withMarkedImageFileLock } from "./marks";
-import { getImagesRootPathFromEnv } from "./paths";
+import { getImagesRootPathFromEnv, parseExtraRootRelativePath } from "./paths";
 import { compareNatural, normalizeRelativePath } from "./shared";
 
 export const LIBRARY_CONFIG_FILE_NAME = "config.json";
@@ -39,7 +39,7 @@ interface ILibraryIndexCacheFile {
   library: ILibraryData;
 }
 
-interface ILibraryIndexSnapshot {
+export interface ILibraryIndexSnapshot {
   configFiles: ICacheFileSnapshot[];
   directories: ICacheFileSnapshot[];
   extraDirectories: ICacheFileSnapshot[];
@@ -376,14 +376,15 @@ export const readLibraryIndexCache = async (
   }
 };
 
-// `generation` is getLibraryCacheGeneration() from before the library was built: when an in-app
-// change happened since, the result may predate it, so it's neither written nor kept in memory
-// (the next read rebuilds).
-export const writeLibraryIndexCache = async (
+// Writes the index cache file for `library` with `snapshot`'s directories (config files are
+// re-collected here) and keeps it in memory. `generation` is getLibraryCacheGeneration() from
+// before the library was built: when an in-app change happened since, the result may predate it,
+// so it's neither written nor kept in memory (the next read rebuilds).
+export const storeLibraryIndexCache = async (
   rootPath: string,
-  charactersRootPath: string,
   extraRootPaths: string[],
   library: ILibraryData,
+  { directories, extraDirectories }: Omit<ILibraryIndexSnapshot, "configFiles">,
   generation: number,
 ): Promise<boolean> => {
   const cachePath = getLibraryIndexCachePath(rootPath);
@@ -393,10 +394,7 @@ export const writeLibraryIndexCache = async (
   }
 
   try {
-    const [configFiles, { directories, extraDirectories }] = await Promise.all([
-      collectConfigFileSnapshots(rootPath),
-      collectDirectoryTreeSnapshots(rootPath, charactersRootPath, extraRootPaths),
-    ]);
+    const configFiles = await collectConfigFileSnapshots(rootPath);
     const cacheFile: ILibraryIndexCacheFile = {
       version: LIBRARY_INDEX_CACHE_VERSION,
       rootPath: path.resolve(rootPath),
@@ -430,6 +428,87 @@ export const writeLibraryIndexCache = async (
   } catch {
     return false;
   }
+};
+
+export const writeLibraryIndexCache = async (
+  rootPath: string,
+  charactersRootPath: string,
+  extraRootPaths: string[],
+  library: ILibraryData,
+  generation: number,
+): Promise<boolean> => {
+  if (generation !== getLibraryCacheGeneration()) {
+    return true;
+  }
+
+  try {
+    const directorySnapshots = await collectDirectoryTreeSnapshots(
+      rootPath,
+      charactersRootPath,
+      extraRootPaths,
+    );
+    return await storeLibraryIndexCache(
+      rootPath,
+      extraRootPaths,
+      library,
+      directorySnapshots,
+      generation,
+    );
+  } catch {
+    return false;
+  }
+};
+
+// For an in-app change (see refreshLibraryAfterChange): stops in-flight full builds from being
+// stored, like removeLibraryIndexCache, but keeps the library in memory to be patched.
+export const bumpLibraryCacheGeneration = (): number => {
+  const state = getLibraryCacheState();
+  state.generation += 1;
+  return state.generation;
+};
+
+// The library kept in memory for this root and its snapshot, when it still matches the index
+// cache file and the config files on disk; null when it can't be patched (full rebuild needed).
+export const getRememberedLibrary = async (
+  rootPath: string,
+  extraRootPaths: string[],
+): Promise<{ library: ILibraryData; snapshot: ILibraryIndexSnapshot } | null> => {
+  const cachePath = getLibraryIndexCachePath(rootPath);
+  const { memory } = getLibraryCacheState();
+
+  if (
+    memory?.cachePath !== cachePath ||
+    !areStringArraysEqual(memory.extraRootPaths, extraRootPaths) ||
+    (await getFileModifiedAt(cachePath)) !== memory.cacheFileModifiedAt ||
+    !areSnapshotsEqual(await collectConfigFileSnapshots(rootPath), memory.snapshot.configFiles)
+  ) {
+    return null;
+  }
+
+  return { library: memory.library, snapshot: memory.snapshot };
+};
+
+// Returns `snapshot` with one character folder's mtime replaced. `folderRelativePath` is in
+// library form ("characters/3d/Anna" or "extra-roots/00/characters/3d/Anna"). Null when the
+// folder isn't in the snapshot (a new or removed folder needs a full rebuild).
+export const withDirectorySnapshot = (
+  snapshot: Omit<ILibraryIndexSnapshot, "configFiles">,
+  folderRelativePath: string,
+  modifiedAt: number,
+): Omit<ILibraryIndexSnapshot, "configFiles"> | null => {
+  const extraRoot = parseExtraRootRelativePath(folderRelativePath);
+  const key = extraRoot ? `${extraRoot.extraRootIndex}/${extraRoot.remainder}` : folderRelativePath;
+  const list = extraRoot ? snapshot.extraDirectories : snapshot.directories;
+  if (!list.some((entry) => entry.relativePath === key)) {
+    return null;
+  }
+
+  const updated = list.map((entry) =>
+    entry.relativePath === key ? { relativePath: key, modifiedAt: Math.trunc(modifiedAt) } : entry,
+  );
+  return extraRoot
+    ? { ...snapshot, extraDirectories: updated }
+    : { ...snapshot, directories: updated };
 };
 
 export const removeLibraryIndexCache = async (): Promise<void> => {
@@ -614,15 +693,14 @@ export const migrateFirstSeenCacheEntry = async (
 // new only" filter) immediately rather than waiting out NEW_IMAGE_WINDOW_MS. Sets firstSeenAt to
 // 0 rather than deleting the cache entry - a delete would re-seed it at "now" on the next
 // uncached rebuild (markNewImages treats a missing entry as freshly discovered), making the image
-// look new again instead of seen. Also drops the library index cache: a cache hit recomputes
-// `isNew` from the *cached* image's firstSeenAt (see refreshCachedLibrary) rather than re-reading
-// this file, so without invalidating it the change wouldn't be visible until something else
-// happened to trigger a rebuild.
-export const markImageAsSeen = async (relativePath: string): Promise<void> => {
+// look new again instead of seen. Returns whether anything changed: the caller then refreshes the
+// library index (refreshLibraryAfterChange), since a cache hit recomputes `isNew` from the
+// *cached* image's firstSeenAt (see refreshCachedLibrary) rather than re-reading this file.
+export const markImageAsSeen = async (relativePath: string): Promise<boolean> => {
   const rootPath = getImagesRootPathFromEnv();
 
   if (!rootPath) {
-    return;
+    return false;
   }
 
   const normalizedPath = normalizeRelativePath(relativePath);
@@ -642,7 +720,5 @@ export const markImageAsSeen = async (relativePath: string): Promise<void> => {
     return true;
   });
 
-  if (didChange) {
-    await removeLibraryIndexCache();
-  }
+  return didChange;
 };

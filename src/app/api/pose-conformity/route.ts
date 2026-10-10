@@ -12,6 +12,7 @@ import {
   MediaRenameError,
   readCustomPoseEntries,
   readImageLibrary,
+  refreshLibraryAfterChange,
   renameMediaFile,
   resolveImageFilePath,
   setCustomPoseEntry,
@@ -100,6 +101,7 @@ const conformToPose = async (
     });
     invalidateMetadataCacheEntry(relativePath);
     invalidateMetadataCacheEntry(newRelativePath);
+    await refreshLibraryAfterChange([relativePath]);
     return Response.json({ newPath: newRelativePath }, { status: 200 });
   } catch (error) {
     if (error instanceof MediaRenameError) {

@@ -15,6 +15,7 @@ import {
   parsePoseName,
   readImageLibrary,
   readReviewedDuplicateGroups,
+  refreshLibraryAfterChange,
   removeLibraryIndexCache,
   removeFirstSeenCacheEntry,
   resolveImageFilePath,
@@ -392,13 +393,12 @@ export const POST = async (request: Request) => {
             }),
         );
 
-        await removeLibraryIndexCache();
-
         if (rejectAll) {
+          await refreshLibraryAfterChange([toRelativePath(path.basename(primaryFilePath))]);
           return Response.json({ style, characterName, poseBaseName, fileNames: [] });
         }
 
-        return await finalizeKeptFiles({
+        const response = await finalizeKeptFiles({
           rootPath,
           directory,
           primaryFilePath,
@@ -409,8 +409,12 @@ export const POST = async (request: Request) => {
           toRelativePath,
           relativePathPrefix,
         });
+        await refreshLibraryAfterChange([toRelativePath(path.basename(primaryFilePath))]);
+        return response;
       } catch (error) {
         console.error("Error validating duplicate group:", error);
+        // Some files may already have been deleted or renamed: rebuild on the next read.
+        await removeLibraryIndexCache();
         return new Response("Could not validate duplicate group", { status: 500 });
       }
     }),

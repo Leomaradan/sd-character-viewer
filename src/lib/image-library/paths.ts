@@ -18,7 +18,7 @@ const PREVIEW_FILE_SUFFIX = ".preview.jpg";
 // (via ffmpeg) or an operator can provide one.
 const VIDEO_PREVIEW_FILE_SUFFIX = ".preview.png";
 
-const parseExtraRootRelativePath = (
+export const parseExtraRootRelativePath = (
   relativePath: string,
 ): { extraRootIndex: number; remainder: string } | null => {
   const match = new RegExp(String.raw`^${EXTRA_ROOT_PATH_SEGMENT}/(\d+)/(.+)$`).exec(relativePath);

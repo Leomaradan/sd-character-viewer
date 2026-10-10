@@ -22,12 +22,18 @@ import {
 
 import { findAnimationNodeByKey, normalizeAnimationsConfig } from "./animations";
 import {
+  bumpLibraryCacheGeneration,
   CHARACTERS_CONFIG_FILE_NAME,
   getLibraryCacheGeneration,
+  getRememberedLibrary,
+  type ILibraryIndexSnapshot,
   LIBRARY_CONFIG_FILE_NAME,
   POSE_FILTERS_FILE_NAME,
   readLibraryIndexCache,
+  removeLibraryIndexCache,
+  storeLibraryIndexCache,
   syncFirstSeenCache,
+  withDirectorySnapshot,
   writeLibraryIndexCache,
 } from "./cache";
 import {
@@ -52,6 +58,7 @@ import {
   isPreviewSidecarFileName,
   isTemporaryRenameFileName,
   MEDIA_EXTENSIONS,
+  parseExtraRootRelativePath,
 } from "./paths";
 import { compareNatural, normalizeRelativePath } from "./shared";
 
@@ -1119,17 +1126,17 @@ const applyPosePatternFilterIds = (
   }
 };
 
-// Recounts pose summaries and per-character pose sets from the items' final poseFilterName,
-// since applyPosePatternFilterIds can change it after indexing already counted them.
-const rebuildPoseAggregates = (state: ILibraryIndexState): void => {
+// Builds the character summaries' accumulators and the pose counts from the final, sorted item
+// list (after applyPosePatternFilterIds, which can change poseFilterName). Sorted order makes
+// the thumbnail choice deterministic - "Base.png" before "Base 2.png" - so a full rebuild and a
+// partial refresh (refreshLibraryAfterChange) always agree on it.
+const rebuildAggregates = (state: ILibraryIndexState): void => {
+  state.characterMap.clear();
   state.poseCounter.clear();
-  for (const accumulator of state.characterMap.values()) {
-    accumulator.poses.clear();
-  }
 
   for (const imageItem of state.imageItems) {
+    updateCharacterAccumulator(state.characterMap, imageItem);
     incrementPoseCounter(state.poseCounter, imageItem.poseFilterName);
-    state.characterMap.get(imageItem.characterName)?.poses.add(imageItem.poseFilterName);
   }
 };
 
@@ -1238,8 +1245,6 @@ const incrementPoseCounter = (poseCounter: Map<string, number>, poseName: string
 const mergeIndexState = (target: ILibraryIndexState, source: ILibraryIndexState): void => {
   for (const imageItem of source.imageItems) {
     target.imageItems.push(imageItem);
-    updateCharacterAccumulator(target.characterMap, imageItem);
-    incrementPoseCounter(target.poseCounter, imageItem.poseFilterName);
   }
 };
 
@@ -1281,8 +1286,6 @@ const indexCharacterFolder = async (
       rootContext.relativePathPrefix,
     );
     state.imageItems.push(imageItem);
-    updateCharacterAccumulator(state.characterMap, imageItem);
-    incrementPoseCounter(state.poseCounter, imageItem.poseFilterName);
   }
 };
 
@@ -1512,7 +1515,7 @@ const buildImageLibrary = async (): Promise<ILibraryData> => {
 
   sortImageItems(indexState.imageItems);
   applyPosePatternFilterIds(indexState.imageItems, posePatternFilters);
-  rebuildPoseAggregates(indexState);
+  rebuildAggregates(indexState);
   await reconcilePendingAnimationMarks(
     rootPath,
     indexState.imageItems,
@@ -1568,4 +1571,180 @@ export const readImageLibrary = (): Promise<ILibraryData> => {
   });
   inFlightState[IN_FLIGHT_LIBRARY_READ_KEY] = { generation, promise };
   return promise;
+};
+
+interface IChangedFolder {
+  // Library form: "characters/3d/Anna" or "extra-roots/00/characters/3d/Anna".
+  relativePath: string;
+  absolutePath: string;
+  style: string;
+  characterName: string;
+  rootContext: IImageRootContext;
+}
+
+// Resolves the character folder holding a changed media path; null for anything else (the caller
+// then falls back to a full rebuild).
+const resolveChangedFolder = (
+  rootPath: string,
+  extraRootPaths: string[],
+  changedRelativePath: string,
+): IChangedFolder | null => {
+  const relativePath = path.posix.dirname(normalizeRelativePath(changedRelativePath));
+  const extraRoot = parseExtraRootRelativePath(relativePath);
+  const rootRelativePath = extraRoot ? extraRoot.remainder : relativePath;
+  const segments = rootRelativePath.split("/");
+  const baseRootPath = extraRoot ? extraRootPaths[extraRoot.extraRootIndex] : rootPath;
+
+  if (
+    !baseRootPath ||
+    segments.length !== 3 ||
+    segments[0] !== "characters" ||
+    segments.some((segment) => segment === "" || segment === "." || segment === "..")
+  ) {
+    return null;
+  }
+
+  return {
+    relativePath,
+    absolutePath: path.join(baseRootPath, ...segments),
+    style: segments[1],
+    characterName: segments[2],
+    rootContext: extraRoot
+      ? {
+          rootKey: `extra-${extraRoot.extraRootIndex}`,
+          relativePathPrefix: buildExtraRootRelativePrefix(extraRoot.extraRootIndex),
+        }
+      : MAIN_ROOT_CONTEXT,
+  };
+};
+
+// The character metadata (characters.json) a library was built with, read back from its
+// summaries, so a refresh doesn't need to re-read the file (a change to it rebuilds anyway).
+const readMetadataFromLibrary = (library: ILibraryData): Map<string, ICharacterMetadataSummary> => {
+  const metadataByCharacter = new Map<string, ICharacterMetadataSummary>();
+  for (const character of library.characters) {
+    if (character.category !== null) {
+      metadataByCharacter.set(normalizeCharacterNameKey(character.name), {
+        category: character.category,
+        serie: character.serie,
+        tags: character.tags,
+      });
+    }
+  }
+  return metadataByCharacter;
+};
+
+const refreshRememberedLibrary = async (
+  rootPath: string,
+  changedRelativePaths: string[],
+): Promise<boolean> => {
+  const extraRootPaths = getExtraImagesRootPathsFromEnv();
+  const generation = bumpLibraryCacheGeneration();
+  const remembered = await getRememberedLibrary(rootPath, extraRootPaths);
+  if (!remembered) {
+    return false;
+  }
+
+  const foldersByPath = new Map<string, IChangedFolder>();
+  for (const changedRelativePath of changedRelativePaths) {
+    const folder = resolveChangedFolder(rootPath, extraRootPaths, changedRelativePath);
+    if (!folder) {
+      return false;
+    }
+    foldersByPath.set(folder.relativePath, folder);
+  }
+
+  const { library } = remembered;
+  let directorySnapshots: Omit<ILibraryIndexSnapshot, "configFiles"> = remembered.snapshot;
+  // Copies: the remembered items are shared with libraries already handed out, and the steps
+  // below (pattern filters, first-seen sync) update items in place.
+  const state = createLibraryIndexState();
+  for (const image of library.images) {
+    if (!foldersByPath.has(path.posix.dirname(image.relativePath))) {
+      state.imageItems.push({ ...image });
+    }
+  }
+
+  for (const folder of foldersByPath.values()) {
+    // Stat before listing: a file added while the folder is read changes its mtime again, so the
+    // next directory check still catches it.
+    const folderStat = await fs.stat(folder.absolutePath);
+    const updatedSnapshots = withDirectorySnapshot(
+      directorySnapshots,
+      folder.relativePath,
+      folderStat.mtimeMs,
+    );
+    if (!updatedSnapshots) {
+      return false;
+    }
+    directorySnapshots = updatedSnapshots;
+    await indexCharacterFolder(
+      folder.style,
+      folder.characterName,
+      folder.absolutePath,
+      state,
+      folder.rootContext,
+    );
+  }
+
+  const styleConfig: IStyleConfig = {
+    styles: library.styles,
+    defaultStyle: library.defaultStyle,
+    styleLabels: library.styleLabels ?? {},
+    animations: library.animations,
+    standardPoses: library.standardPoses,
+  };
+
+  sortImageItems(state.imageItems);
+  applyPosePatternFilterIds(state.imageItems, library.posePatternFilters);
+  rebuildAggregates(state);
+  // A rescanned folder can hold a video generated since the last full build; its folder is now
+  // up to date in the snapshot, so this is its only chance to be matched with its mark.
+  await reconcilePendingAnimationMarks(rootPath, state.imageItems, styleConfig.animations);
+  const { available: cacheAvailable } = await syncFirstSeenCache(rootPath, state.imageItems);
+
+  const refreshedLibrary = toLibraryData(
+    rootPath,
+    styleConfig,
+    state,
+    readMetadataFromLibrary(library),
+    library.posePatternFilters,
+    cacheAvailable,
+  );
+
+  return storeLibraryIndexCache(
+    rootPath,
+    extraRootPaths,
+    refreshedLibrary,
+    directorySnapshots,
+    generation,
+  );
+};
+
+const LIBRARY_REFRESH_QUEUE_KEY = Symbol.for("sd-character-viewer.library-refresh");
+const refreshQueueState = globalThis as typeof globalThis & {
+  [LIBRARY_REFRESH_QUEUE_KEY]?: Promise<unknown>;
+};
+
+// Called after an in-app change (delete, rename, Redraw, Duplicate Finder, Mark as seen) instead
+// of dropping the whole index: re-reads only the character folders holding
+// `changedRelativePaths` (their old and/or new paths; none for a first-seen-only change) on top
+// of the library kept in memory, so the next request doesn't rescan the whole library. Falls back
+// to removeLibraryIndexCache (full rebuild on the next read) whenever that isn't possible.
+// Refreshes run one at a time, so two quick changes can't each patch the same older copy.
+export const refreshLibraryAfterChange = (changedRelativePaths: string[]): Promise<void> => {
+  const run = async () => {
+    const rootPath = getImagesRootPathFromEnv();
+    const refreshed =
+      rootPath !== null &&
+      (await refreshRememberedLibrary(rootPath, changedRelativePaths).catch(() => false));
+    if (!refreshed) {
+      await removeLibraryIndexCache();
+    }
+  };
+
+  const previous = refreshQueueState[LIBRARY_REFRESH_QUEUE_KEY] ?? Promise.resolve();
+  const next = previous.then(run, run);
+  refreshQueueState[LIBRARY_REFRESH_QUEUE_KEY] = next;
+  return next;
 };

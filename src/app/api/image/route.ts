@@ -12,7 +12,7 @@ import {
   MediaRenameError,
   migrateVideoLink,
   removeFirstSeenCacheEntry,
-  removeLibraryIndexCache,
+  refreshLibraryAfterChange,
   removeMarkedActionEntries,
   renameMediaFile,
   withFolderRenameLock,
@@ -233,7 +233,7 @@ export const DELETE = async (request: Request) => {
     invalidateMetadataCacheEntry(requestedPath);
     await removeFirstSeenCacheEntry(requestedPath);
     await removeMarkedActionEntries(requestedPath);
-    await removeLibraryIndexCache();
+    await refreshLibraryAfterChange([requestedPath]);
 
     return new Response(null, { status: 204 });
   } catch {
@@ -350,6 +350,7 @@ const handleManualRename = async (requestedPath: string, newName: string): Promi
     const newRelativePath = await renameMediaFile(requestedPath, newName);
     invalidateMetadataCacheEntry(requestedPath);
     invalidateMetadataCacheEntry(newRelativePath);
+    await refreshLibraryAfterChange([requestedPath]);
     return Response.json({ newPath: newRelativePath }, { status: 200 });
   } catch (error) {
     if (error instanceof MediaRenameError) {
@@ -420,7 +421,7 @@ export const PATCH = async (request: Request) => {
     invalidateMetadataCacheEntry(newRelativePath);
     await removeFirstSeenCacheEntry(oldRelativePath);
     await removeMarkedActionEntries(oldRelativePath);
-    await removeLibraryIndexCache();
+    await refreshLibraryAfterChange([oldRelativePath]);
 
     const requeued = isVideoFilePath(filePath)
       ? await requeueVideoLinkMark(oldRelativePath, newRelativePath)

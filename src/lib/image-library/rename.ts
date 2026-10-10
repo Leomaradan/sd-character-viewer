@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { insertVariantNumber } from "@/lib/pose-conformity";
 
-import { migrateFirstSeenCacheEntry, removeLibraryIndexCache } from "./cache";
+import { migrateFirstSeenCacheEntry } from "./cache";
 import { migrateMarkedActionEntries, withMarkedImageFileLock } from "./marks";
 import {
   isPreviewSidecarFileName,
@@ -77,7 +77,8 @@ export interface IRenameMediaFileOptions {
 // the path/name is invalid, the file is gone, or another file already uses the target name
 // (compared case-insensitively, so it also holds on case-insensitive filesystems) - unless
 // `incrementOnConflict` is set, which numbers the name instead. Returns the new relativePath
-// (unchanged when the name didn't change).
+// (unchanged when the name didn't change). The caller refreshes the library index
+// (refreshLibraryAfterChange) once it's done with its own bookkeeping.
 export const renameMediaFile = async (
   relativePath: string,
   newStem: string,
@@ -161,7 +162,6 @@ export const renameMediaFile = async (
   // already moved, so a bookkeeping failure must not surface as a failed rename.
   await migrateFirstSeenCacheEntry(relativePath, newRelativePath);
   await migrateMarkedActionEntries(relativePath, newRelativePath);
-  await removeLibraryIndexCache();
 
   return newRelativePath;
 };
