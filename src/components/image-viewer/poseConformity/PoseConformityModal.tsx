@@ -22,6 +22,8 @@ import { formatStyleLabel } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 
 import { GRID } from "../common/constants";
+import { LoadMoreSentinel } from "../common/LoadMoreSentinel";
+import { useIncrementalList } from "../common/useIncrementalList";
 
 interface IPoseConformityModalProps {
   open: boolean;
@@ -151,6 +153,9 @@ export function PoseConformityModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingPaths, setPendingPaths] = useState<ReadonlySet<string>>(new Set());
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
+  // Rendered a page at a time: a big library can have thousands of non-conforming files. Handled
+  // cards are removed from `items`, so the list never needs to reset to its first page.
+  const { visibleItems, hasMore, showMore } = useIncrementalList(items, "pose-conformity");
   // Bumped on every load and whenever the dialog closes, so a stale response is ignored.
   const loadRequestIdRef = useRef(0);
 
@@ -276,20 +281,23 @@ export function PoseConformityModal({
     );
   } else {
     content = (
-      <Box sx={GRID}>
-        {items.map((item) => (
-          <PoseConformityCard
-            key={item.relativePath}
-            item={item}
-            standardPoses={standardPoses}
-            isPending={pendingPaths.has(item.relativePath)}
-            error={itemErrors[item.relativePath]}
-            styleLabel={styleLabel}
-            onPickPose={handlePickPose}
-            onMarkCustom={handleMarkCustom}
-          />
-        ))}
-      </Box>
+      <>
+        <Box sx={GRID}>
+          {visibleItems.map((item) => (
+            <PoseConformityCard
+              key={item.relativePath}
+              item={item}
+              standardPoses={standardPoses}
+              isPending={pendingPaths.has(item.relativePath)}
+              error={itemErrors[item.relativePath]}
+              styleLabel={styleLabel}
+              onPickPose={handlePickPose}
+              onMarkCustom={handleMarkCustom}
+            />
+          ))}
+        </Box>
+        {hasMore && <LoadMoreSentinel key={visibleItems.length} onVisible={showMore} />}
+      </>
     );
   }
 
