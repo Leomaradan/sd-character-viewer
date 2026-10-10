@@ -23,6 +23,7 @@ import {
 import { findAnimationNodeByKey, normalizeAnimationsConfig } from "./animations";
 import {
   CHARACTERS_CONFIG_FILE_NAME,
+  getLibraryCacheGeneration,
   LIBRARY_CONFIG_FILE_NAME,
   POSE_FILTERS_FILE_NAME,
   readLibraryIndexCache,
@@ -1434,7 +1435,7 @@ const toLibraryData = (
   };
 };
 
-export const readImageLibrary = async (): Promise<ILibraryData> => {
+const buildImageLibrary = async (): Promise<ILibraryData> => {
   const rootPath = getImagesRootPathFromEnv();
   const fallbackStyleConfig: IStyleConfig = {
     styles: [...STYLES],
@@ -1453,16 +1454,18 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
     );
   }
 
-  const styleConfig = await readStyleConfig(rootPath);
   const charactersRootPath = path.join(rootPath, "characters");
-  let metadataByCharacter = new Map<string, ICharacterMetadataSummary>();
-  const posePatternFilters = await readPosePatternFilters(rootPath);
   const extraRootPaths = getExtraImagesRootPathsFromEnv();
 
   const cachedLibrary = await readLibraryIndexCache(rootPath, charactersRootPath, extraRootPaths);
   if (cachedLibrary) {
     return cachedLibrary;
   }
+
+  const cacheGeneration = getLibraryCacheGeneration();
+  const styleConfig = await readStyleConfig(rootPath);
+  let metadataByCharacter = new Map<string, ICharacterMetadataSummary>();
+  const posePatternFilters = await readPosePatternFilters(rootPath);
 
   try {
     metadataByCharacter = await readCharactersMetadata(rootPath);
@@ -1531,7 +1534,38 @@ export const readImageLibrary = async (): Promise<ILibraryData> => {
     charactersRootPath,
     extraRootPaths,
     library,
+    cacheGeneration,
   );
 
   return { ...library, cacheAvailable: cacheAvailable && libraryCacheWritable };
+};
+
+interface IInFlightLibraryRead {
+  generation: number;
+  promise: Promise<ILibraryData>;
+}
+
+// Shared like the library cache itself (see cache.ts): one per server process, not per bundle.
+const IN_FLIGHT_LIBRARY_READ_KEY = Symbol.for("sd-character-viewer.library-read");
+const inFlightState = globalThis as typeof globalThis & {
+  [IN_FLIGHT_LIBRARY_READ_KEY]?: IInFlightLibraryRead | null;
+};
+
+// Concurrent callers (the page's /api/library plus a tool's request, or several tabs) share one
+// read, so a big library is never rebuilt several times in parallel. A read started before an
+// in-app change (see removeLibraryIndexCache) isn't shared with callers arriving after it.
+export const readImageLibrary = (): Promise<ILibraryData> => {
+  const generation = getLibraryCacheGeneration();
+  const inFlight = inFlightState[IN_FLIGHT_LIBRARY_READ_KEY];
+  if (inFlight?.generation === generation) {
+    return inFlight.promise;
+  }
+
+  const promise = buildImageLibrary().finally(() => {
+    if (inFlightState[IN_FLIGHT_LIBRARY_READ_KEY]?.promise === promise) {
+      inFlightState[IN_FLIGHT_LIBRARY_READ_KEY] = null;
+    }
+  });
+  inFlightState[IN_FLIGHT_LIBRARY_READ_KEY] = { generation, promise };
+  return promise;
 };

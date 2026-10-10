@@ -913,6 +913,8 @@ describe("readImageLibrary with characters metadata", () => {
     expect(oldImage?.isNew).toBe(false);
 
     await fs.writeFile(path.join(characterDir, "Jump.png"), "");
+    // A file added outside the app is picked up once the in-memory library's TTL has run out.
+    vi.setSystemTime(new Date("2026-01-05T00:05:00.000Z"));
 
     const thirdRead = await readImageLibrary();
     const discoveredLaterImage = thirdRead.images.find((image) =>
@@ -1294,6 +1296,163 @@ describe("readImageLibrary with characters metadata", () => {
     await expect(fs.stat(cacheFilePath)).rejects.toThrow("ENOENT: no such file or directory");
 
     delete process.env.SD_CACHE_DIR;
+  });
+});
+
+describe("readImageLibrary in-memory cache", () => {
+  const setUpLibrary = async (name: string) => {
+    const tempRoot = `/tmp/sd-library-memory-${name}`;
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = `/tmp/sd-cache-memory-${name}`;
+    return { tempRoot, characterDir };
+  };
+
+  const hasImage = (library: ILibraryData, fileName: string) =>
+    library.images.some((image) => image.relativePath.endsWith(`/${fileName}`));
+
+  afterEach(() => {
+    delete process.env.SD_LIBRARY_CACHE_TTL_SECONDS;
+  });
+
+  it("serves the library from memory and only rescans directories once the TTL has run out", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const { characterDir } = await setUpLibrary("ttl");
+
+    expect(hasImage(await readImageLibrary(), "Base.png")).toBe(true);
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:30.000Z"));
+    await fs.writeFile(path.join(characterDir, "Jump.png"), "");
+    const readFileSpy = vi.spyOn(fs, "readFile");
+
+    vi.setSystemTime(new Date("2026-01-01T00:01:59.000Z"));
+    expect(hasImage(await readImageLibrary(), "Jump.png")).toBe(false);
+    // Neither the index cache file nor any config file was read back.
+    expect(readFileSpy).not.toHaveBeenCalled();
+
+    vi.setSystemTime(new Date("2026-01-01T00:02:00.000Z"));
+    expect(hasImage(await readImageLibrary(), "Jump.png")).toBe(true);
+  });
+
+  it("keeps serving from memory past the TTL while the directories are unchanged", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    await setUpLibrary("ttl-unchanged");
+
+    await readImageLibrary();
+    const readFileSpy = vi.spyOn(fs, "readFile");
+
+    vi.setSystemTime(new Date("2026-01-01T00:05:00.000Z"));
+    expect(hasImage(await readImageLibrary(), "Base.png")).toBe(true);
+    expect(readFileSpy).not.toHaveBeenCalled();
+  });
+
+  it("rescans on every read with SD_LIBRARY_CACHE_TTL_SECONDS=0", async () => {
+    process.env.SD_LIBRARY_CACHE_TTL_SECONDS = "0";
+    const { characterDir } = await setUpLibrary("ttl-zero");
+
+    await readImageLibrary();
+    await fs.mkdir(path.join(characterDir, "..", "Bea"), { recursive: true });
+    await fs.writeFile(path.join(characterDir, "..", "Bea", "Base.png"), "");
+
+    const library = await readImageLibrary();
+    expect(library.characters.map((character) => character.name)).toContain("Bea");
+  });
+
+  it("falls back to the default TTL for an invalid SD_LIBRARY_CACHE_TTL_SECONDS", async () => {
+    process.env.SD_LIBRARY_CACHE_TTL_SECONDS = "soon";
+    const { characterDir } = await setUpLibrary("ttl-invalid");
+
+    await readImageLibrary();
+    await fs.writeFile(path.join(characterDir, "Jump.png"), "");
+
+    expect(hasImage(await readImageLibrary(), "Jump.png")).toBe(false);
+  });
+
+  it("picks up a config file change immediately", async () => {
+    const { tempRoot } = await setUpLibrary("config");
+
+    expect((await readImageLibrary()).standardPoses).toEqual([]);
+    await fs.writeFile(path.join(tempRoot, "config.json"), JSON.stringify({ poses: ["Casual"] }));
+
+    expect((await readImageLibrary()).standardPoses).toEqual(["Casual"]);
+  });
+
+  it("drops the in-memory library on removeLibraryIndexCache (in-app changes)", async () => {
+    const { characterDir } = await setUpLibrary("invalidate");
+
+    await readImageLibrary();
+    await fs.writeFile(path.join(characterDir, "Jump.png"), "");
+    await removeLibraryIndexCache();
+
+    expect(hasImage(await readImageLibrary(), "Jump.png")).toBe(true);
+  });
+
+  it("shares one read between concurrent callers", async () => {
+    await setUpLibrary("shared");
+
+    const [first, second] = await Promise.all([readImageLibrary(), readImageLibrary()]);
+
+    expect(second).toBe(first);
+  });
+
+  it("doesn't keep a rebuild that started before an in-app change", async () => {
+    const { tempRoot, characterDir } = await setUpLibrary("stale-rebuild");
+
+    const staleRead = readImageLibrary();
+    await removeLibraryIndexCache();
+    const freshRead = readImageLibrary();
+    expect(freshRead).not.toBe(staleRead);
+    await Promise.all([staleRead, freshRead]);
+
+    await fs.writeFile(path.join(characterDir, "Jump.png"), "");
+    await removeLibraryIndexCache();
+    expect(hasImage(await readImageLibrary(), "Jump.png")).toBe(true);
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const cacheFile = await fs.readFile(
+      path.join(`/tmp/sd-cache-memory-stale-rebuild`, `${rootHash}.library-index.json`),
+      "utf8",
+    );
+    // Written compact, not pretty-printed.
+    expect(cacheFile.startsWith('{"version":')).toBe(true);
+  });
+
+  it("drops the index cache file when an in-app change lands while it's being written", async () => {
+    const { tempRoot } = await setUpLibrary("change-during-write");
+    const rootHash = Buffer.from(path.resolve(tempRoot)).toString("base64url");
+    const cacheFilePath = path.join(
+      "/tmp/sd-cache-memory-change-during-write",
+      `${rootHash}.library-index.json`,
+    );
+    const originalWriteFile = fs.writeFile.bind(fs);
+    vi.spyOn(fs, "writeFile").mockImplementation(async (file, data, options) => {
+      if (file === cacheFilePath) {
+        // The change's own unlink runs before the file exists.
+        await removeLibraryIndexCache();
+      }
+      return originalWriteFile(file, data, options);
+    });
+
+    await readImageLibrary();
+
+    await expect(fs.stat(cacheFilePath)).rejects.toThrow();
+  });
+
+  it("serves from memory after a disk cache hit", async () => {
+    const { characterDir } = await setUpLibrary("disk-hit");
+
+    await readImageLibrary();
+    // A fresh process: nothing in memory, so the disk cache file answers and is remembered.
+    Reflect.deleteProperty(globalThis, Symbol.for("sd-character-viewer.library-cache"));
+    expect(hasImage(await readImageLibrary(), "Base.png")).toBe(true);
+
+    await fs.writeFile(path.join(characterDir, "Jump.png"), "");
+    const readFileSpy = vi.spyOn(fs, "readFile");
+    expect(hasImage(await readImageLibrary(), "Jump.png")).toBe(false);
+    expect(readFileSpy).not.toHaveBeenCalled();
   });
 });
 
