@@ -40,6 +40,8 @@ interface IImageViewerBodyProps {
   reloadToken: number;
   // Bumped by the app bar's random button; each new value picks one random item from the current view.
   randomRequestToken?: number;
+  // Images marked as seen since the library was loaded (applied on top of the loaded data).
+  seenRelativePaths?: ReadonlySet<string>;
   onImageSelect: (image: IImageItem, filteredImages: IImageItem[]) => void;
   onLibraryLoad: (library: ILibraryData) => void;
 
@@ -52,6 +54,8 @@ interface IImageViewerBodyProps {
   setCharacterDetailPose: (pose: string) => void;
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
 }
+
+const NO_SEEN_PATHS: ReadonlySet<string> = new Set();
 
 const PROGRESS_CONTAINER = {
   display: "flex",
@@ -74,6 +78,7 @@ export const ImageViewerBody = ({
   characterDetailPose,
   reloadToken,
   randomRequestToken = 0,
+  seenRelativePaths = NO_SEEN_PATHS,
   onImageSelect,
   onLibraryLoad,
   setSelectedCharacter,
@@ -134,6 +139,9 @@ export const ImageViewerBody = ({
     [],
   );
 
+  // Fetches the library only on mount and when a reload is requested (after a delete/rename/
+  // mark...). Filter changes are pure client-side: refetching here on every pose chip or
+  // category click made each click re-download and re-render the whole library.
   useEffect(() => {
     let isMounted = true;
 
@@ -152,28 +160,10 @@ export const ImageViewerBody = ({
         const data: ILibraryData = await response.json();
 
         if (isMounted) {
-          const { nextMetadataFilterId, nextPoseFilters } = validateFilters(
-            data,
-            selectedMetadataFilterId,
-            selectedPoseFilters,
-          );
-
           setLibrary(data);
           onLibraryLoad(data);
           setRequestError(null);
           hasLoadedOnceRef.current = true;
-
-          if (nextMetadataFilterId !== selectedMetadataFilterId) {
-            setSelectedMetadataFilterId(nextMetadataFilterId);
-          }
-
-          if (
-            nextPoseFilters.length !== selectedPoseFilters.length ||
-            !nextPoseFilters.every((pose, idx) => pose === selectedPoseFilters[idx])
-          ) {
-            setSelectedPoseFilters(nextPoseFilters);
-          }
-
           setIsLoading(false);
         }
       } catch (error) {
@@ -189,26 +179,57 @@ export const ImageViewerBody = ({
     return () => {
       isMounted = false;
     };
-  }, [
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
-    reloadToken,
+  }, [reloadToken, onLibraryLoad]);
+
+  // Drops selected filters that no longer exist in the loaded library (e.g. a bookmarked pose
+  // whose files were renamed). Only calls the setters when something is actually invalid.
+  useEffect(() => {
+    if (!hasLoadedOnceRef.current) {
+      return;
+    }
+
+    const { nextMetadataFilterId, nextPoseFilters } = validateFilters(
+      library,
+      selectedMetadataFilterId,
+      selectedPoseFilters,
+    );
+
+    if (nextMetadataFilterId !== selectedMetadataFilterId) {
+      setSelectedMetadataFilterId(nextMetadataFilterId);
+    }
+
+    if (nextPoseFilters.length !== selectedPoseFilters.length) {
+      setSelectedPoseFilters(nextPoseFilters);
+    }
+  }, [
+    library,
     validateFilters,
     selectedMetadataFilterId,
     selectedPoseFilters,
     setSelectedMetadataFilterId,
     setSelectedPoseFilters,
-    onLibraryLoad,
   ]);
+
+  const libraryImages = useMemo(() => {
+    if (seenRelativePaths.size === 0) {
+      return library.images;
+    }
+
+    return library.images.map((image) =>
+      image.isNew && seenRelativePaths.has(image.relativePath) ? { ...image, isNew: false } : image,
+    );
+  }, [library.images, seenRelativePaths]);
 
   const filteredImages = useMemo(() => {
     const newOnlyImages = showOnlyNewImages
-      ? library.images.filter((image) => image.isNew)
-      : library.images;
+      ? libraryImages.filter((image) => image.isNew)
+      : libraryImages;
 
     return mediaTypeFilter === "both"
       ? newOnlyImages
       : newOnlyImages.filter((image) => image.mediaType === mediaTypeFilter);
-  }, [library.images, showOnlyNewImages, mediaTypeFilter]);
+  }, [libraryImages, showOnlyNewImages, mediaTypeFilter]);
 
   const charactersForBrowseStyle = useMemo(() => {
     const visibleCharacterNames = new Set(filteredImages.map((image) => image.characterName));

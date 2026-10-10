@@ -1,14 +1,14 @@
 "use client";
 
-import { Box, Chip, type SelectChangeEvent, Stack, TextField, Typography } from "@mui/material";
+import { Chip, type SelectChangeEvent, Stack, TextField, Typography } from "@mui/material";
 import { useCallback, useMemo } from "react";
 
 import type { IImageItem, IMetadataFilterOption, TMediaTypeFilter } from "@/types/library";
 
-import { ImageCard } from "@/components/image-viewer/image/ImageCard";
+import { ImageGrid } from "@/components/image-viewer/image/ImageGrid";
 
 import { CategoryFilter } from "../common/CategoryFilter";
-import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
+import { FLEXWRAP, STACK_SPACING } from "../common/constants";
 import { MediaTypeFilter } from "../common/MediaTypeFilter";
 import { SearchField } from "../common/SearchField";
 import { TagPicker } from "../common/TagPicker";
@@ -182,18 +182,22 @@ export const PosesView = ({
           No images match the current filters.
         </Typography>
       ) : (
-        <Box sx={GRID}>
-          {poseFilteredImages.map((image) => (
-            <ImageCard
-              key={image.id}
-              image={image}
-              showNewBadge={showNewBadge}
-              showDate={showDate}
-              styleLabel={styleLabel}
-              onSelect={onImageSelect}
-            />
-          ))}
-        </Box>
+        <ImageGrid
+          images={poseFilteredImages}
+          resetKey={[
+            poseViewSelectedPoses.join(","),
+            poseViewStyle,
+            poseViewCharacterSearch,
+            selectedMetadataFilterId,
+            mediaTypeFilter,
+            showDate,
+            showNewBadge,
+          ].join("|")}
+          showNewBadge={showNewBadge}
+          showDate={showDate}
+          styleLabel={styleLabel}
+          onImageSelect={onImageSelect}
+        />
       )}
     </Stack>
   );

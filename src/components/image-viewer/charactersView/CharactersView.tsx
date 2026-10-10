@@ -11,7 +11,7 @@ import type {
   TMediaTypeFilter,
 } from "@/types/library";
 
-import { ImageCard } from "@/components/image-viewer/image/ImageCard";
+import { ImageGrid } from "@/components/image-viewer/image/ImageGrid";
 
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
@@ -237,18 +237,21 @@ export const CharactersView = ({
               No images match the current filters.
             </Typography>
           ) : (
-            <Box sx={GRID}>
-              {visibleCharacterDetailImages.map((image) => (
-                <ImageCard
-                  key={image.id}
-                  image={image}
-                  showNewBadge={showNewBadge}
-                  showDate={showDate}
-                  styleLabel={styleLabel}
-                  onSelect={onImageSelect}
-                />
-              ))}
-            </Box>
+            <ImageGrid
+              images={visibleCharacterDetailImages}
+              resetKey={[
+                selectedCharacter,
+                characterDetailStyle,
+                characterDetailPose,
+                mediaTypeFilter,
+                characterSortOrder,
+                showNewBadge,
+              ].join("|")}
+              showNewBadge={showNewBadge}
+              showDate={showDate}
+              styleLabel={styleLabel}
+              onImageSelect={onImageSelect}
+            />
           )}
         </>
       ) : (

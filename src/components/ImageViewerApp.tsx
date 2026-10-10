@@ -164,6 +164,9 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const modalHistoryPushed = useRef(false);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
   const [randomRequestToken, setRandomRequestToken] = useState(0);
+  // Images marked as seen since the last library load, so the grids (which keep their own copy of
+  // the library) drop their "new" state without refetching it.
+  const [seenRelativePaths, setSeenRelativePaths] = useState<ReadonlySet<string>>(new Set());
   const [authStatus, setAuthStatus] = useState<TAuthStatus>("checking");
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -291,6 +294,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
       images: currentLibrary.images.map(markSeen),
     }));
     setModalFilteredImages((currentImages) => currentImages.map(markSeen));
+    setSeenRelativePaths((current) => new Set(current).add(relativePath));
     setSelectedImageForModal((currentImage) =>
       currentImage?.relativePath === relativePath
         ? { ...currentImage, isNew: false }
@@ -722,6 +726,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           characterDetailPose={characterDetailPose}
           reloadToken={libraryRefreshToken}
           randomRequestToken={randomRequestToken}
+          seenRelativePaths={seenRelativePaths}
           setSelectedCharacter={handleSelectCharacter}
           setSelectedPoseFilters={handlePoseFiltersChange}
           setSelectedMetadataFilterId={handleMetadataFilterChange}
