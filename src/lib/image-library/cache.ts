@@ -1,7 +1,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import { SD_CACHE_DIR_ENV_KEY } from "@/lib/env-keys";
+import { ensureLocalEnvLoaded } from "@/lib/env";
+import { SD_CACHE_DIR_ENV_KEY, SD_LIBRARY_CACHE_TTL_SECONDS_ENV_KEY } from "@/lib/env-keys";
 import { type IImageItem, type ILibraryData } from "@/types/library";
 
 import { TO_ANIMATE_FILE_NAME, TO_EXTEND_FILE_NAME, withMarkedImageFileLock } from "./marks";
@@ -20,6 +21,7 @@ const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
 // than being returned as-is with the new field silently undefined.
 const LIBRARY_INDEX_CACHE_VERSION = 11;
 const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+const DEFAULT_LIBRARY_CACHE_TTL_SECONDS = 120;
 
 interface ICacheFileSnapshot {
   relativePath: string;
@@ -36,6 +38,57 @@ interface ILibraryIndexCacheFile {
   extraDirectories: ICacheFileSnapshot[];
   library: ILibraryData;
 }
+
+interface ILibraryIndexSnapshot {
+  configFiles: ICacheFileSnapshot[];
+  directories: ICacheFileSnapshot[];
+  extraDirectories: ICacheFileSnapshot[];
+}
+
+// The last library read or built, kept in memory so a request doesn't have to re-read and parse
+// the (multi-MB) index cache file, nor walk every character directory: within the TTL only the
+// config files and the index cache file itself are stat()ed. `cacheFileModifiedAt` ties it to the
+// file on disk, so deleting or rewriting that file (removeLibraryIndexCache, another process)
+// drops it too.
+interface ILibraryMemoryCache {
+  cachePath: string;
+  extraRootPaths: string[];
+  cacheFileModifiedAt: number;
+  snapshot: ILibraryIndexSnapshot;
+  library: ILibraryData;
+  checkedAt: number;
+}
+
+interface ILibraryCacheState {
+  memory: ILibraryMemoryCache | null;
+  // Bumped by removeLibraryIndexCache, so a rebuild that started before an in-app change doesn't
+  // store its (possibly stale) result.
+  generation: number;
+}
+
+// On globalThis rather than module scope: Next.js can load this module once per route bundle, and
+// every API route must share one cache.
+const LIBRARY_CACHE_STATE_KEY = Symbol.for("sd-character-viewer.library-cache");
+const getLibraryCacheState = (): ILibraryCacheState => {
+  const globalState = globalThis as typeof globalThis & {
+    [LIBRARY_CACHE_STATE_KEY]?: ILibraryCacheState;
+  };
+  globalState[LIBRARY_CACHE_STATE_KEY] ??= { memory: null, generation: 0 };
+  return globalState[LIBRARY_CACHE_STATE_KEY];
+};
+
+export const getLibraryCacheGeneration = (): number => getLibraryCacheState().generation;
+
+// How long a library kept in memory is trusted before every character directory is stat()ed
+// again to pick up files added/removed outside the app. 0 checks on every request.
+const getLibraryCacheTtlMs = (): number => {
+  ensureLocalEnvLoaded();
+  const rawValue = process.env[SD_LIBRARY_CACHE_TTL_SECONDS_ENV_KEY]?.trim();
+  const seconds = rawValue ? Number(rawValue) : Number.NaN;
+  return (
+    (Number.isFinite(seconds) && seconds >= 0 ? seconds : DEFAULT_LIBRARY_CACHE_TTL_SECONDS) * 1000
+  );
+};
 
 const toCacheFileNameForRoot = (rootPath: string, suffix: string): string => {
   const rootHash = Buffer.from(path.resolve(rootPath)).toString("base64url");
@@ -187,6 +240,86 @@ const refreshCachedLibrary = (library: ILibraryData): ILibraryData => {
   };
 };
 
+const collectDirectoryTreeSnapshots = async (
+  rootPath: string,
+  charactersRootPath: string,
+  extraRootPaths: string[],
+): Promise<Omit<ILibraryIndexSnapshot, "configFiles">> => {
+  const [directories, extraDirectories] = await Promise.all([
+    collectDirectorySnapshots(rootPath, charactersRootPath),
+    collectExtraDirectorySnapshots(extraRootPaths),
+  ]);
+  return { directories, extraDirectories };
+};
+
+const getFileModifiedAt = async (filePath: string): Promise<number | null> => {
+  const stat = await fs.stat(filePath).catch(() => null);
+  return stat?.isFile() ? stat.mtimeMs : null;
+};
+
+const rememberLibrary = async (
+  cachePath: string,
+  extraRootPaths: string[],
+  snapshot: ILibraryIndexSnapshot,
+  library: ILibraryData,
+): Promise<void> => {
+  const cacheFileModifiedAt = await getFileModifiedAt(cachePath);
+  const state = getLibraryCacheState();
+  state.memory =
+    cacheFileModifiedAt === null
+      ? null
+      : {
+          cachePath,
+          extraRootPaths,
+          cacheFileModifiedAt,
+          snapshot,
+          library,
+          checkedAt: Date.now(),
+        };
+};
+
+// Answers from the in-memory library when it still matches this root and the index cache file:
+// a hit, or `null` (rebuild needed) when a config file or - once the TTL has run out - a
+// directory changed. `undefined` means there's nothing usable in memory, so the disk cache file
+// decides.
+const readLibraryMemoryCache = async (
+  rootPath: string,
+  charactersRootPath: string,
+  extraRootPaths: string[],
+  cachePath: string,
+): Promise<ILibraryData | null | undefined> => {
+  const { memory } = getLibraryCacheState();
+  if (
+    memory?.cachePath !== cachePath ||
+    !areStringArraysEqual(memory.extraRootPaths, extraRootPaths) ||
+    (await getFileModifiedAt(cachePath)) !== memory.cacheFileModifiedAt
+  ) {
+    return undefined;
+  }
+
+  const configFiles = await collectConfigFileSnapshots(rootPath);
+  if (!areSnapshotsEqual(configFiles, memory.snapshot.configFiles)) {
+    return null;
+  }
+
+  if (Date.now() - memory.checkedAt >= getLibraryCacheTtlMs()) {
+    const { directories, extraDirectories } = await collectDirectoryTreeSnapshots(
+      rootPath,
+      charactersRootPath,
+      extraRootPaths,
+    );
+    if (
+      !areSnapshotsEqual(directories, memory.snapshot.directories) ||
+      !areSnapshotsEqual(extraDirectories, memory.snapshot.extraDirectories)
+    ) {
+      return null;
+    }
+    memory.checkedAt = Date.now();
+  }
+
+  return refreshCachedLibrary(memory.library);
+};
+
 export const readLibraryIndexCache = async (
   rootPath: string,
   charactersRootPath: string,
@@ -195,6 +328,16 @@ export const readLibraryIndexCache = async (
   const cachePath = getLibraryIndexCachePath(rootPath);
 
   try {
+    const memoryResult = await readLibraryMemoryCache(
+      rootPath,
+      charactersRootPath,
+      extraRootPaths,
+      cachePath,
+    );
+    if (memoryResult !== undefined) {
+      return memoryResult;
+    }
+
     const rawContent = await fs.readFile(cachePath, "utf8");
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const cacheFile = JSON.parse(rawContent) as ILibraryIndexCacheFile;
@@ -208,10 +351,9 @@ export const readLibraryIndexCache = async (
       return null;
     }
 
-    const [configFiles, directories, extraDirectories] = await Promise.all([
+    const [configFiles, { directories, extraDirectories }] = await Promise.all([
       collectConfigFileSnapshots(rootPath),
-      collectDirectorySnapshots(rootPath, charactersRootPath),
-      collectExtraDirectorySnapshots(extraRootPaths),
+      collectDirectoryTreeSnapshots(rootPath, charactersRootPath, extraRootPaths),
     ]);
 
     if (
@@ -222,25 +364,38 @@ export const readLibraryIndexCache = async (
       return null;
     }
 
+    await rememberLibrary(
+      cachePath,
+      extraRootPaths,
+      { configFiles, directories, extraDirectories },
+      cacheFile.library,
+    );
     return refreshCachedLibrary(cacheFile.library);
   } catch {
     return null;
   }
 };
 
+// `generation` is getLibraryCacheGeneration() from before the library was built: when an in-app
+// change happened since, the result may predate it, so it's neither written nor kept in memory
+// (the next read rebuilds).
 export const writeLibraryIndexCache = async (
   rootPath: string,
   charactersRootPath: string,
   extraRootPaths: string[],
   library: ILibraryData,
+  generation: number,
 ): Promise<boolean> => {
   const cachePath = getLibraryIndexCachePath(rootPath);
 
+  if (generation !== getLibraryCacheGeneration()) {
+    return true;
+  }
+
   try {
-    const [configFiles, directories, extraDirectories] = await Promise.all([
+    const [configFiles, { directories, extraDirectories }] = await Promise.all([
       collectConfigFileSnapshots(rootPath),
-      collectDirectorySnapshots(rootPath, charactersRootPath),
-      collectExtraDirectorySnapshots(extraRootPaths),
+      collectDirectoryTreeSnapshots(rootPath, charactersRootPath, extraRootPaths),
     ]);
     const cacheFile: ILibraryIndexCacheFile = {
       version: LIBRARY_INDEX_CACHE_VERSION,
@@ -257,7 +412,16 @@ export const writeLibraryIndexCache = async (
     };
 
     await fs.mkdir(path.dirname(cachePath), { recursive: true });
-    await fs.writeFile(cachePath, `${JSON.stringify(cacheFile, null, 2)}\n`, "utf8");
+    // Compact JSON: it's only ever read back by this module, and is a few MB for a big library.
+    await fs.writeFile(cachePath, JSON.stringify(cacheFile), "utf8");
+    if (generation === getLibraryCacheGeneration()) {
+      await rememberLibrary(
+        cachePath,
+        extraRootPaths,
+        { configFiles, directories, extraDirectories },
+        library,
+      );
+    }
     return true;
   } catch {
     return false;
@@ -265,6 +429,10 @@ export const writeLibraryIndexCache = async (
 };
 
 export const removeLibraryIndexCache = async (): Promise<void> => {
+  const state = getLibraryCacheState();
+  state.memory = null;
+  state.generation += 1;
+
   const rootPath = getImagesRootPathFromEnv();
 
   if (!rootPath) {
