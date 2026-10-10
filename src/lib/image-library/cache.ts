@@ -138,7 +138,9 @@ const getFileSnapshot = async (
   };
 };
 
-const collectConfigFileSnapshots = async (rootPath: string): Promise<ICacheFileSnapshot[]> => {
+export const collectConfigFileSnapshots = async (
+  rootPath: string,
+): Promise<ICacheFileSnapshot[]> => {
   const configPaths = [
     path.join(rootPath, LIBRARY_CONFIG_FILE_NAME),
     path.join(rootPath, POSE_FILTERS_FILE_NAME),
@@ -262,6 +264,7 @@ const rememberLibrary = async (
   extraRootPaths: string[],
   snapshot: ILibraryIndexSnapshot,
   library: ILibraryData,
+  checkedAt: number,
 ): Promise<void> => {
   const cacheFileModifiedAt = await getFileModifiedAt(cachePath);
   const state = getLibraryCacheState();
@@ -274,7 +277,7 @@ const rememberLibrary = async (
           cacheFileModifiedAt,
           snapshot,
           library,
-          checkedAt: Date.now(),
+          checkedAt,
         };
 };
 
@@ -369,6 +372,7 @@ export const readLibraryIndexCache = async (
       extraRootPaths,
       { configFiles, directories, extraDirectories },
       cacheFile.library,
+      Date.now(),
     );
     return refreshCachedLibrary(cacheFile.library);
   } catch {
@@ -376,16 +380,20 @@ export const readLibraryIndexCache = async (
   }
 };
 
-// Writes the index cache file for `library` with `snapshot`'s directories (config files are
-// re-collected here) and keeps it in memory. `generation` is getLibraryCacheGeneration() from
+// Writes the index cache file for `library` with `snapshot` and keeps it in memory. The snapshot's
+// config files must be taken *before* the library read them: a config edit landing while it's
+// built then still shows as a change on the next read, instead of being recorded as current. `generation` is getLibraryCacheGeneration() from
 // before the library was built: when an in-app change happened since, the result may predate it,
-// so it's neither written nor kept in memory (the next read rebuilds).
+// so it's neither written nor kept in memory (the next read rebuilds). `checkedAt` is when every
+// directory was last checked (a partial refresh passes the previous time, so the TTL check of
+// the folders it didn't touch isn't postponed).
 export const storeLibraryIndexCache = async (
   rootPath: string,
   extraRootPaths: string[],
   library: ILibraryData,
-  { directories, extraDirectories }: Omit<ILibraryIndexSnapshot, "configFiles">,
+  { configFiles, directories, extraDirectories }: ILibraryIndexSnapshot,
   generation: number,
+  checkedAt: number = Date.now(),
 ): Promise<boolean> => {
   const cachePath = getLibraryIndexCachePath(rootPath);
 
@@ -394,7 +402,6 @@ export const storeLibraryIndexCache = async (
   }
 
   try {
-    const configFiles = await collectConfigFileSnapshots(rootPath);
     const cacheFile: ILibraryIndexCacheFile = {
       version: LIBRARY_INDEX_CACHE_VERSION,
       rootPath: path.resolve(rootPath),
@@ -423,6 +430,7 @@ export const storeLibraryIndexCache = async (
       extraRootPaths,
       { configFiles, directories, extraDirectories },
       library,
+      checkedAt,
     );
     return true;
   } catch {
@@ -435,6 +443,7 @@ export const writeLibraryIndexCache = async (
   charactersRootPath: string,
   extraRootPaths: string[],
   library: ILibraryData,
+  configFiles: ICacheFileSnapshot[],
   generation: number,
 ): Promise<boolean> => {
   if (generation !== getLibraryCacheGeneration()) {
@@ -451,7 +460,7 @@ export const writeLibraryIndexCache = async (
       rootPath,
       extraRootPaths,
       library,
-      directorySnapshots,
+      { configFiles, ...directorySnapshots },
       generation,
     );
   } catch {
@@ -472,7 +481,11 @@ export const bumpLibraryCacheGeneration = (): number => {
 export const getRememberedLibrary = async (
   rootPath: string,
   extraRootPaths: string[],
-): Promise<{ library: ILibraryData; snapshot: ILibraryIndexSnapshot } | null> => {
+): Promise<{
+  library: ILibraryData;
+  snapshot: ILibraryIndexSnapshot;
+  checkedAt: number;
+} | null> => {
   const cachePath = getLibraryIndexCachePath(rootPath);
   const { memory } = getLibraryCacheState();
 
@@ -485,17 +498,17 @@ export const getRememberedLibrary = async (
     return null;
   }
 
-  return { library: memory.library, snapshot: memory.snapshot };
+  return { library: memory.library, snapshot: memory.snapshot, checkedAt: memory.checkedAt };
 };
 
 // Returns `snapshot` with one character folder's mtime replaced. `folderRelativePath` is in
 // library form ("characters/3d/Anna" or "extra-roots/00/characters/3d/Anna"). Null when the
 // folder isn't in the snapshot (a new or removed folder needs a full rebuild).
 export const withDirectorySnapshot = (
-  snapshot: Omit<ILibraryIndexSnapshot, "configFiles">,
+  snapshot: ILibraryIndexSnapshot,
   folderRelativePath: string,
   modifiedAt: number,
-): Omit<ILibraryIndexSnapshot, "configFiles"> | null => {
+): ILibraryIndexSnapshot | null => {
   const extraRoot = parseExtraRootRelativePath(folderRelativePath);
   const key = extraRoot ? `${extraRoot.extraRootIndex}/${extraRoot.remainder}` : folderRelativePath;
   const list = extraRoot ? snapshot.extraDirectories : snapshot.directories;

@@ -24,6 +24,7 @@ import { findAnimationNodeByKey, normalizeAnimationsConfig } from "./animations"
 import {
   bumpLibraryCacheGeneration,
   CHARACTERS_CONFIG_FILE_NAME,
+  collectConfigFileSnapshots,
   getLibraryCacheGeneration,
   getRememberedLibrary,
   type ILibraryIndexSnapshot,
@@ -1466,6 +1467,7 @@ const buildImageLibrary = async (): Promise<ILibraryData> => {
   }
 
   const cacheGeneration = getLibraryCacheGeneration();
+  const configFileSnapshots = await collectConfigFileSnapshots(rootPath);
   const styleConfig = await readStyleConfig(rootPath);
   let metadataByCharacter = new Map<string, ICharacterMetadataSummary>();
   const posePatternFilters = await readPosePatternFilters(rootPath);
@@ -1537,6 +1539,7 @@ const buildImageLibrary = async (): Promise<ILibraryData> => {
     charactersRootPath,
     extraRootPaths,
     library,
+    configFileSnapshots,
     cacheGeneration,
   );
 
@@ -1547,6 +1550,11 @@ interface IInFlightLibraryRead {
   generation: number;
   promise: Promise<ILibraryData>;
 }
+
+const LIBRARY_REFRESH_QUEUE_KEY = Symbol.for("sd-character-viewer.library-refresh");
+const refreshQueueState = globalThis as typeof globalThis & {
+  [LIBRARY_REFRESH_QUEUE_KEY]?: Promise<unknown>;
+};
 
 // Shared like the library cache itself (see cache.ts): one per server process, not per bundle.
 const IN_FLIGHT_LIBRARY_READ_KEY = Symbol.for("sd-character-viewer.library-read");
@@ -1564,7 +1572,10 @@ export const readImageLibrary = (): Promise<ILibraryData> => {
     return inFlight.promise;
   }
 
-  const promise = buildImageLibrary().finally(() => {
+  // A read arriving while refreshLibraryAfterChange runs waits for it rather than being served
+  // the library from before the change.
+  const pendingRefresh = refreshQueueState[LIBRARY_REFRESH_QUEUE_KEY] ?? Promise.resolve();
+  const promise = pendingRefresh.then(buildImageLibrary, buildImageLibrary).finally(() => {
     if (inFlightState[IN_FLIGHT_LIBRARY_READ_KEY]?.promise === promise) {
       inFlightState[IN_FLIGHT_LIBRARY_READ_KEY] = null;
     }
@@ -1655,7 +1666,8 @@ const refreshRememberedLibrary = async (
   }
 
   const { library } = remembered;
-  let directorySnapshots: Omit<ILibraryIndexSnapshot, "configFiles"> = remembered.snapshot;
+  // Config files as checked by getRememberedLibrary, before anything below read them.
+  let directorySnapshots: ILibraryIndexSnapshot = remembered.snapshot;
   // Copies: the remembered items are shared with libraries already handed out, and the steps
   // below (pattern filters, first-seen sync) update items in place.
   const state = createLibraryIndexState();
@@ -1678,6 +1690,10 @@ const refreshRememberedLibrary = async (
       return false;
     }
     directorySnapshots = updatedSnapshots;
+    // A full build only indexes the configured styles; keep a folder of any other style out too.
+    if (!library.styles.includes(folder.style)) {
+      continue;
+    }
     await indexCharacterFolder(
       folder.style,
       folder.characterName,
@@ -1718,12 +1734,8 @@ const refreshRememberedLibrary = async (
     refreshedLibrary,
     directorySnapshots,
     generation,
+    remembered.checkedAt,
   );
-};
-
-const LIBRARY_REFRESH_QUEUE_KEY = Symbol.for("sd-character-viewer.library-refresh");
-const refreshQueueState = globalThis as typeof globalThis & {
-  [LIBRARY_REFRESH_QUEUE_KEY]?: Promise<unknown>;
 };
 
 // Called after an in-app change (delete, rename, Redraw, Duplicate Finder, Mark as seen) instead

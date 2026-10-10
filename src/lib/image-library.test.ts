@@ -1614,6 +1614,73 @@ describe("refreshLibraryAfterChange", () => {
     ).toBe("characters/3d/Anna/Base.png");
   });
 
+  it("keeps a folder of an unconfigured style out, like a full build", async () => {
+    const { tempRoot, indexCachePath } = await setUpLibrary("unconfigured-style");
+    await fs.writeFile(
+      path.join(tempRoot, "config.json"),
+      JSON.stringify({ styles: ["3d"], defaultStyle: "3d" }),
+    );
+    const zedDir = path.join(tempRoot, "characters", "sketch", "Zed");
+    await fs.mkdir(zedDir, { recursive: true });
+    await fs.writeFile(path.join(zedDir, "Base.png"), "");
+    await readImageLibrary();
+
+    await fs.writeFile(path.join(zedDir, "Jump.png"), "");
+    await refreshLibraryAfterChange(["characters/sketch/Zed/Jump.png"]);
+
+    expect(await indexCacheExists(indexCachePath)).toBe(true);
+    expect(fileNames(await readImageLibrary())).not.toContain("Zed/Jump.png");
+  });
+
+  it("doesn't postpone the directory check of the folders it didn't re-read", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const { annaDir, beaDir } = await setUpLibrary("ttl");
+    await readImageLibrary();
+
+    vi.setSystemTime(new Date("2026-01-01T00:01:30.000Z"));
+    await fs.writeFile(path.join(beaDir, "Wave.png"), "");
+    await fs.unlink(path.join(annaDir, "Jump.png"));
+    await refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]);
+    expect(fileNames(await readImageLibrary())).not.toContain("Bea/Wave.png");
+
+    // Two minutes after the last full check, not after the refresh.
+    vi.setSystemTime(new Date("2026-01-01T00:02:00.000Z"));
+    expect(fileNames(await readImageLibrary())).toContain("Bea/Wave.png");
+  });
+
+  it("makes a read that arrives during a refresh wait for it", async () => {
+    const { annaDir } = await setUpLibrary("read-during");
+    await readImageLibrary();
+
+    await fs.unlink(path.join(annaDir, "Jump.png"));
+    const refresh = refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]);
+    const library = await readImageLibrary();
+    await refresh;
+
+    expect(fileNames(library)).not.toContain("Anna/Jump.png");
+  });
+
+  it("doesn't record a config file edited during the refresh as current", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const { tempRoot, annaDir } = await setUpLibrary("config-during");
+    await readImageLibrary();
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:10.000Z"));
+    const originalReaddir = fs.readdir.bind(fs);
+    vi.spyOn(fs, "readdir").mockImplementation((async (...args: Parameters<typeof fs.readdir>) => {
+      if (args[0] === annaDir) {
+        await fs.writeFile(path.join(tempRoot, "config.json"), JSON.stringify({ poses: ["Jump"] }));
+      }
+      return originalReaddir(...args);
+    }) as typeof fs.readdir);
+    await refreshLibraryAfterChange(["characters/3d/Anna/Jump.png"]);
+    vi.mocked(fs.readdir).mockRestore();
+
+    expect((await readImageLibrary()).standardPoses).toEqual(["Jump"]);
+  });
+
   it("falls back to a full rebuild when nothing is kept in memory", async () => {
     const { beaDir, indexCachePath } = await setUpLibrary("no-memory");
     await readImageLibrary();
