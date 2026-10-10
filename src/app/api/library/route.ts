@@ -8,10 +8,13 @@ export const dynamic = "force-dynamic";
 
 const gzipAsync = promisify(gzip);
 
+// "gzip" listed with a non-zero quality ("gzip;q=0" refuses it).
 const acceptsGzip = (request: Request): boolean =>
-  (request.headers.get("accept-encoding") ?? "")
-    .split(",")
-    .some((encoding) => encoding.trim().split(";")[0]?.trim().toLowerCase() === "gzip");
+  (request.headers.get("accept-encoding") ?? "").split(",").some((entry) => {
+    const [name = "", ...params] = entry.split(";").map((part) => part.trim().toLowerCase());
+    const quality = params.find((param) => param.startsWith("q="));
+    return name === "gzip" && (quality === undefined || Number(quality.slice(2)) > 0);
+  });
 
 export const GET = async (request: Request) => {
   if (isMisconfigured()) {

@@ -89,5 +89,12 @@ describe("GET /api/library", () => {
 
     expect(response.headers.get("content-encoding")).toBeNull();
     expect(response.headers.get("content-type")).toBe("application/json");
+
+    const refused = await GET(
+      new Request("http://localhost/api/library", {
+        headers: { "Accept-Encoding": "br, gzip;q=0" },
+      }),
+    );
+    expect(refused.headers.get("content-encoding")).toBeNull();
   });
 });
