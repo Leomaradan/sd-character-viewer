@@ -29,7 +29,7 @@ const buildImage = (index: number): IImageItem => ({
   mediaType: "image",
 });
 
-const images = Array.from({ length: 130 }, (_, index) => buildImage(index));
+const images = Array.from({ length: 5 }, (_, index) => buildImage(index));
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -41,17 +41,18 @@ describe("ImageGrid", () => {
       <ImageGrid
         images={images}
         resetKey="a"
+        pageSize={3}
         showNewBadge={false}
         styleLabel={String}
         onImageSelect={vi.fn()}
       />,
     );
 
-    expect(screen.getAllByTestId("lazy-image")).toHaveLength(120);
+    expect(screen.getAllByTestId("lazy-image")).toHaveLength(3);
 
     fireEvent.click(screen.getByRole("button", { name: "Show more" }));
 
-    expect(screen.getAllByTestId("lazy-image")).toHaveLength(130);
+    expect(screen.getAllByTestId("lazy-image")).toHaveLength(5);
     expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
   });
 
@@ -75,6 +76,7 @@ describe("ImageGrid", () => {
       <ImageGrid
         images={images}
         resetKey="a"
+        pageSize={3}
         showNewBadge={false}
         styleLabel={String}
         onImageSelect={vi.fn()}
@@ -84,12 +86,12 @@ describe("ImageGrid", () => {
     act(() => {
       trigger?.([{ isIntersecting: false }]);
     });
-    expect(screen.getAllByTestId("lazy-image")).toHaveLength(120);
+    expect(screen.getAllByTestId("lazy-image")).toHaveLength(3);
 
     act(() => {
       trigger?.([{ isIntersecting: true }]);
     });
-    expect(screen.getAllByTestId("lazy-image")).toHaveLength(130);
+    expect(screen.getAllByTestId("lazy-image")).toHaveLength(5);
     expect(disconnect).toHaveBeenCalled();
   });
 });

@@ -15,6 +15,7 @@ interface IImageGridProps {
   // Changes whenever the grid shows a different selection (filters, style, sort...), which
   // brings it back to its first page.
   resetKey: string;
+  pageSize?: number;
   showNewBadge: boolean;
   showDate?: boolean;
   styleLabel: (style: string) => string;
@@ -27,12 +28,13 @@ interface IImageGridProps {
 export const ImageGrid = ({
   images,
   resetKey,
+  pageSize,
   showNewBadge,
   showDate = false,
   styleLabel,
   onImageSelect,
 }: Readonly<IImageGridProps>) => {
-  const { visibleItems, hasMore, showMore } = useIncrementalList(images, resetKey);
+  const { visibleItems, hasMore, showMore } = useIncrementalList(images, resetKey, pageSize);
 
   return (
     <>
