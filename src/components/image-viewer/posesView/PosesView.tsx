@@ -191,6 +191,7 @@ export const PosesView = ({
             selectedMetadataFilterId,
             mediaTypeFilter,
             showDate,
+            showNewBadge,
           ].join("|")}
           showNewBadge={showNewBadge}
           showDate={showDate}

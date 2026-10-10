@@ -40,6 +40,8 @@ interface IImageViewerBodyProps {
   reloadToken: number;
   // Bumped by the app bar's random button; each new value picks one random item from the current view.
   randomRequestToken?: number;
+  // Images marked as seen since the library was loaded (applied on top of the loaded data).
+  seenRelativePaths?: ReadonlySet<string>;
   onImageSelect: (image: IImageItem, filteredImages: IImageItem[]) => void;
   onLibraryLoad: (library: ILibraryData) => void;
 
@@ -52,6 +54,8 @@ interface IImageViewerBodyProps {
   setCharacterDetailPose: (pose: string) => void;
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
 }
+
+const NO_SEEN_PATHS: ReadonlySet<string> = new Set();
 
 const PROGRESS_CONTAINER = {
   display: "flex",
@@ -74,6 +78,7 @@ export const ImageViewerBody = ({
   characterDetailPose,
   reloadToken,
   randomRequestToken = 0,
+  seenRelativePaths = NO_SEEN_PATHS,
   onImageSelect,
   onLibraryLoad,
   setSelectedCharacter,
@@ -206,15 +211,25 @@ export const ImageViewerBody = ({
     setSelectedPoseFilters,
   ]);
 
+  const libraryImages = useMemo(() => {
+    if (seenRelativePaths.size === 0) {
+      return library.images;
+    }
+
+    return library.images.map((image) =>
+      image.isNew && seenRelativePaths.has(image.relativePath) ? { ...image, isNew: false } : image,
+    );
+  }, [library.images, seenRelativePaths]);
+
   const filteredImages = useMemo(() => {
     const newOnlyImages = showOnlyNewImages
-      ? library.images.filter((image) => image.isNew)
-      : library.images;
+      ? libraryImages.filter((image) => image.isNew)
+      : libraryImages;
 
     return mediaTypeFilter === "both"
       ? newOnlyImages
       : newOnlyImages.filter((image) => image.mediaType === mediaTypeFilter);
-  }, [library.images, showOnlyNewImages, mediaTypeFilter]);
+  }, [libraryImages, showOnlyNewImages, mediaTypeFilter]);
 
   const charactersForBrowseStyle = useMemo(() => {
     const visibleCharacterNames = new Set(filteredImages.map((image) => image.characterName));

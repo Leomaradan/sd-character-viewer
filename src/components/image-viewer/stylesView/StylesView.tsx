@@ -116,6 +116,7 @@ export const StylesView = ({
             selectedMetadataFilterId,
             mediaTypeFilter,
             showDate,
+            showNewBadge,
           ].join("|")}
           showNewBadge={showNewBadge}
           showDate={showDate}

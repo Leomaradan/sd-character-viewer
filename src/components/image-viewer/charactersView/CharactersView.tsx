@@ -245,6 +245,7 @@ export const CharactersView = ({
                 characterDetailPose,
                 mediaTypeFilter,
                 characterSortOrder,
+                showNewBadge,
               ].join("|")}
               showNewBadge={showNewBadge}
               showDate={showDate}
