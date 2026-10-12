@@ -17,20 +17,16 @@ import {
   DialogContentText,
   DialogTitle,
   Divider,
-  FormControl,
   FormControlLabel,
   IconButton,
-  InputLabel,
-  MenuItem,
   Radio,
-  Select,
-  type SelectChangeEvent,
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 import type { IDuplicateGroup, IImageItem } from "@/types/library";
 
+import { StyleSelectFilter } from "@/components/image-viewer/common/StyleSelectFilter";
 import { formatStyleLabel } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 
@@ -47,7 +43,6 @@ const EMPTY_STATE_SX = {
 };
 const LOADING_SX = { display: "flex", justifyContent: "center", py: 6 };
 const FILTER_BAR_SX = { mb: 3, display: "flex", alignItems: "center", gap: 2 };
-const STYLE_FILTER_SX = { minWidth: 220 };
 const GROUP_BOX_SX = { pb: 3, mb: 3 };
 const GROUP_HEADER_SX = {
   mb: 1.5,
@@ -115,6 +110,8 @@ interface IDuplicateFinderModalProps {
   onClose: () => void;
   onChangesApplied?: () => void;
   styleLabel?: (style: string) => string;
+  // Style the filter starts on each time the dialog opens ("" = all styles).
+  initialStyle?: string;
 }
 
 interface IGroupSelection {
@@ -348,6 +345,7 @@ export function DuplicateFinderModal({
   onClose,
   onChangesApplied,
   styleLabel = formatStyleLabel,
+  initialStyle = "",
 }: Readonly<IDuplicateFinderModalProps>) {
   const [groups, setGroups] = useState<IDuplicateGroup[]>([]);
   const [selections, setSelections] = useState<Record<string, IGroupSelection>>({});
@@ -357,7 +355,15 @@ export function DuplicateFinderModal({
   const [redrawingGroupId, setRedrawingGroupId] = useState<string | null>(null);
   const [groupErrors, setGroupErrors] = useState<Record<string, string>>({});
   const [pendingRejectGroup, setPendingRejectGroup] = useState<IDuplicateGroup | null>(null);
-  const [selectedStyle, setSelectedStyle] = useState("");
+  const [selectedStyle, setSelectedStyle] = useState(initialStyle);
+  // The filter restarts from the current view each time the dialog opens (it stays mounted).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setSelectedStyle(initialStyle);
+    }
+  }
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<ReadonlySet<string>>(new Set());
   // Bumped on every new load and whenever the dialog closes, so a response for a superseded
   // (or since-closed) request can be detected and ignored instead of overwriting fresher state.
@@ -608,10 +614,6 @@ export function DuplicateFinderModal({
     [groups, effectiveSelectedStyle],
   );
 
-  const handleStyleFilterChange = useCallback((event: SelectChangeEvent) => {
-    setSelectedStyle(event.target.value);
-  }, []);
-
   const groupCount = groups.length;
   const visibleGroupCount = visibleGroups.length;
 
@@ -634,22 +636,12 @@ export function DuplicateFinderModal({
 
         {!isLoading && !loadError && groupCount > 0 && styleOptions.length > 1 && (
           <Box sx={FILTER_BAR_SX}>
-            <FormControl size="small" sx={STYLE_FILTER_SX}>
-              <InputLabel id="duplicate-style-filter-label">Style</InputLabel>
-              <Select
-                labelId="duplicate-style-filter-label"
-                value={effectiveSelectedStyle}
-                label="Style"
-                onChange={handleStyleFilterChange}
-              >
-                <MenuItem value="">All styles</MenuItem>
-                {styleOptions.map((style) => (
-                  <MenuItem key={style} value={style}>
-                    {styleLabel(style)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <StyleSelectFilter
+              styles={styleOptions}
+              selectedStyle={effectiveSelectedStyle}
+              onStyleChange={setSelectedStyle}
+              styleLabel={styleLabel}
+            />
           </Box>
         )}
 

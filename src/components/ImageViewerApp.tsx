@@ -559,6 +559,15 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     setLibrary(loadedLibrary);
   }, []);
 
+  // The Library Toolbox tools start on the style shown by the Styles view (same fallback as
+  // ImageViewerBody), and on all styles from any other view.
+  let toolInitialStyle = "";
+  if (majorFilter === "style") {
+    toolInitialStyle = library.styles.includes(styleViewStyle)
+      ? styleViewStyle
+      : library.defaultStyle;
+  }
+
   const styleLabel = useCallback(
     (style: string) => formatStyleLabel(style, library.styleLabels),
     [library.styleLabels],
@@ -765,6 +774,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         onClose={handleCloseDuplicateFinder}
         onChangesApplied={handleDuplicateChangesApplied}
         styleLabel={styleLabel}
+        initialStyle={toolInitialStyle}
       />
 
       <PoseConformityModal
@@ -772,6 +782,8 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         onClose={handleClosePoseConformity}
         onChangesApplied={handleDuplicateChangesApplied}
         styleLabel={styleLabel}
+        initialStyle={toolInitialStyle}
+        initialMediaTypeFilter={mediaTypeFilter}
       />
 
       <ScrollToTopButton />
