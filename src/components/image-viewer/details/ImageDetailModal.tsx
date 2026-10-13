@@ -325,7 +325,11 @@ export function ImageDetailModal({
   const [isRedrawing, setIsRedrawing] = useState(false);
   const [redrawError, setRedrawError] = useState<string | null>(null);
   const [isRating, setIsRating] = useState(false);
-  const [ratingError, setRatingError] = useState<string | null>(null);
+  // Remembers the file it was raised for, so it's cleared on previous/next navigation.
+  const [ratingErrorState, setRatingErrorState] = useState<{
+    path: string;
+    message: string;
+  } | null>(null);
   const [marksState, setMarksState] = useState<IMarksState>({
     path: null,
     upscale: false,
@@ -590,6 +594,11 @@ export function ImageDetailModal({
   }, [relativePath, onDeleteSuccess]);
 
   const currentRating = image?.rating ?? null;
+  // Moving to another file (previous/next) drops an earlier failure's message.
+  if (ratingErrorState && ratingErrorState.path !== relativePath) {
+    setRatingErrorState(null);
+  }
+  const ratingError = ratingErrorState?.message ?? null;
 
   // OK/Good; clicking the active rating again clears it. (Bad is Redraw.)
   const handleRate = useCallback(
@@ -600,7 +609,7 @@ export function ImageDetailModal({
 
       const nextRating = currentRating === rating ? null : rating;
       setIsRating(true);
-      setRatingError(null);
+      setRatingErrorState(null);
 
       try {
         const response = await fetch(`/api/rating?path=${encodeURIComponent(relativePath)}`, {
@@ -610,13 +619,19 @@ export function ImageDetailModal({
         });
 
         if (!response.ok) {
-          setRatingError("Could not save the rating. Try again.");
+          setRatingErrorState({
+            path: relativePath,
+            message: "Could not save the rating. Try again.",
+          });
           return;
         }
 
         onImageRated?.(relativePath, nextRating);
       } catch {
-        setRatingError("Could not save the rating. Try again.");
+        setRatingErrorState({
+          path: relativePath,
+          message: "Could not save the rating. Try again.",
+        });
       } finally {
         setIsRating(false);
       }
