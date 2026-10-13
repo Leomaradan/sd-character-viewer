@@ -3,13 +3,19 @@
 import { type SelectChangeEvent, Stack, TextField, Typography } from "@mui/material";
 import { useCallback, useMemo } from "react";
 
-import type { IImageItem, IMetadataFilterOption, TMediaTypeFilter } from "@/types/library";
+import type {
+  IImageItem,
+  IMetadataFilterOption,
+  TMediaTypeFilter,
+  TRatingFilter,
+} from "@/types/library";
 
 import { ImageGrid } from "@/components/image-viewer/image/ImageGrid";
 
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, STACK_SPACING } from "../common/constants";
 import { MediaTypeFilter } from "../common/MediaTypeFilter";
+import { RatingFilter } from "../common/RatingFilter";
 import { SearchField } from "../common/SearchField";
 import { StyleView } from "./StyleView";
 
@@ -25,6 +31,8 @@ interface IStylesViewProps {
   showDate?: boolean;
   mediaTypeFilter: TMediaTypeFilter;
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
+  ratingFilter: TRatingFilter;
+  onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
   onStyleSelect: (style: string) => void;
   onMetadataFilterChange: (event: SelectChangeEvent) => void;
   onClearMetadataFilter: () => void;
@@ -44,6 +52,8 @@ export const StylesView = ({
   showDate = false,
   mediaTypeFilter,
   onMediaTypeFilterChange,
+  ratingFilter,
+  onRatingFilterChange,
   onStyleSelect,
   onMetadataFilterChange,
   onClearMetadataFilter,
@@ -84,6 +94,7 @@ export const StylesView = ({
           mediaTypeFilter={mediaTypeFilter}
           onMediaTypeFilterChange={onMediaTypeFilterChange}
         />
+        <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
       </Stack>
 
       <TextField
@@ -115,6 +126,7 @@ export const StylesView = ({
             styleViewSearchText,
             selectedMetadataFilterId,
             mediaTypeFilter,
+            ratingFilter,
             showDate,
             showNewBadge,
           ].join("|")}

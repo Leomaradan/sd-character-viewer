@@ -8,6 +8,11 @@ export type TMediaType = "image" | "video";
 
 export type TMediaTypeFilter = TMediaType | "both";
 
+// "Bad" isn't stored: it's the Redraw action (the file is renamed to free its pose name).
+export type TRating = "ok" | "good";
+
+export type TRatingFilter = "unrated" | "good" | "all";
+
 export interface IImageItem {
   id: string;
   style: string;
@@ -24,6 +29,8 @@ export interface IImageItem {
   modifiedAt: number;
   posePatternFilterIds: string[];
   mediaType: TMediaType;
+  // From ratings.json; absent when the file hasn't been rated.
+  rating?: TRating;
 }
 
 export interface ICharacterSummary {

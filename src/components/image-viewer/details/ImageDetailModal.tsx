@@ -22,7 +22,7 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { IAnimationConfig, IImageItem, IVideoLink } from "@/types/library";
+import type { IAnimationConfig, IImageItem, IVideoLink, TRating } from "@/types/library";
 
 import { formatStyleLabel, getImageUrl } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
@@ -139,6 +139,7 @@ interface IImageDetailModalProps {
   onClose: () => void;
   onDeleteSuccess?: () => void;
   onImageSeen?: (relativePath: string) => void;
+  onImageRated?: (relativePath: string, rating: TRating | null) => void;
   canNavigatePrevious?: boolean;
   canNavigateNext?: boolean;
   onNavigatePrevious?: () => void;
@@ -308,6 +309,7 @@ export function ImageDetailModal({
   onClose,
   onDeleteSuccess,
   onImageSeen,
+  onImageRated,
   canNavigatePrevious = false,
   canNavigateNext = false,
   onNavigatePrevious,
@@ -322,6 +324,8 @@ export function ImageDetailModal({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isRedrawing, setIsRedrawing] = useState(false);
   const [redrawError, setRedrawError] = useState<string | null>(null);
+  const [isRating, setIsRating] = useState(false);
+  const [ratingError, setRatingError] = useState<string | null>(null);
   const [marksState, setMarksState] = useState<IMarksState>({
     path: null,
     upscale: false,
@@ -584,6 +588,41 @@ export function ImageDetailModal({
       setIsRedrawing(false);
     }
   }, [relativePath, onDeleteSuccess]);
+
+  const currentRating = image?.rating ?? null;
+
+  // OK/Good; clicking the active rating again clears it. (Bad is Redraw.)
+  const handleRate = useCallback(
+    async (rating: TRating) => {
+      if (!relativePath) {
+        return;
+      }
+
+      const nextRating = currentRating === rating ? null : rating;
+      setIsRating(true);
+      setRatingError(null);
+
+      try {
+        const response = await fetch(`/api/rating?path=${encodeURIComponent(relativePath)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rating: nextRating }),
+        });
+
+        if (!response.ok) {
+          setRatingError("Could not save the rating. Try again.");
+          return;
+        }
+
+        onImageRated?.(relativePath, nextRating);
+      } catch {
+        setRatingError("Could not save the rating. Try again.");
+      } finally {
+        setIsRating(false);
+      }
+    },
+    [relativePath, currentRating, onImageRated],
+  );
 
   const {
     isUpscaleMarked,
@@ -948,6 +987,10 @@ export function ImageDetailModal({
       hasAnimations={animations.length > 0}
       isRedrawing={isRedrawing}
       onRedraw={handleRedrawClick}
+      rating={currentRating}
+      isRating={isRating}
+      ratingError={ratingError}
+      onRate={handleRate}
       isTogglingUpscale={isTogglingUpscale}
       isUpscaleMarked={isUpscaleMarked}
       onToggleUpscale={handleToggleUpscale}

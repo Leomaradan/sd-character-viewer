@@ -3,13 +3,19 @@
 import { Chip, type SelectChangeEvent, Stack, TextField, Typography } from "@mui/material";
 import { useCallback, useMemo } from "react";
 
-import type { IImageItem, IMetadataFilterOption, TMediaTypeFilter } from "@/types/library";
+import type {
+  IImageItem,
+  IMetadataFilterOption,
+  TMediaTypeFilter,
+  TRatingFilter,
+} from "@/types/library";
 
 import { ImageGrid } from "@/components/image-viewer/image/ImageGrid";
 
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, STACK_SPACING } from "../common/constants";
 import { MediaTypeFilter } from "../common/MediaTypeFilter";
+import { RatingFilter } from "../common/RatingFilter";
 import { SearchField } from "../common/SearchField";
 import { TagPicker } from "../common/TagPicker";
 import { StyleView } from "../stylesView/StyleView";
@@ -36,6 +42,8 @@ interface IPosesViewProps {
   showDate?: boolean;
   mediaTypeFilter: TMediaTypeFilter;
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
+  ratingFilter: TRatingFilter;
+  onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
   onClearPoses: () => void;
   onTogglePose: (pose: string) => void;
   onPoseStyleChange: (style: string) => void;
@@ -59,6 +67,8 @@ export const PosesView = ({
   showDate = false,
   mediaTypeFilter,
   onMediaTypeFilterChange,
+  ratingFilter,
+  onRatingFilterChange,
   onClearPoses,
   onTogglePose,
   onPoseStyleChange,
@@ -158,6 +168,7 @@ export const PosesView = ({
           mediaTypeFilter={mediaTypeFilter}
           onMediaTypeFilterChange={onMediaTypeFilterChange}
         />
+        <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
       </Stack>
 
       <TextField
@@ -190,6 +201,7 @@ export const PosesView = ({
             poseViewCharacterSearch,
             selectedMetadataFilterId,
             mediaTypeFilter,
+            ratingFilter,
             showDate,
             showNewBadge,
           ].join("|")}

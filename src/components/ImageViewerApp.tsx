@@ -38,6 +38,8 @@ import type {
   TCharacterSortOrder,
   TMajorFilter,
   TMediaTypeFilter,
+  TRating,
+  TRatingFilter,
 } from "@/types/library";
 
 import { SIDEBAR_WIDTH, DEFAULT_LIBRARY } from "@/components/image-viewer/common/constants";
@@ -47,13 +49,14 @@ import {
   normalizePoseFilters,
   parseCharacterSortOrder,
   parseMediaTypeFilter,
+  parseRatingFilter,
   parsePoseViewStyle,
   parseShowOnlyNewImages,
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
   parseStyleViewStyle,
 } from "@/components/image-viewer/common/persistent-filters";
-import { formatStyleLabel } from "@/components/image-viewer/common/utils";
+import { applyRatingOverride, formatStyleLabel } from "@/components/image-viewer/common/utils";
 import { ImageDetailModal } from "@/components/image-viewer/details/ImageDetailModal";
 import { DuplicateFinderModal } from "@/components/image-viewer/duplicateFinder/DuplicateFinderModal";
 import { ScrollToTopButton } from "@/components/image-viewer/layout/ScrollToTopButton";
@@ -146,6 +149,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const showOnlyNewImages = useMemo(() => parseShowOnlyNewImages(searchParams), [searchParams]);
   const characterSortOrder = useMemo(() => parseCharacterSortOrder(searchParams), [searchParams]);
   const mediaTypeFilter = useMemo(() => parseMediaTypeFilter(searchParams), [searchParams]);
+  const ratingFilter = useMemo(() => parseRatingFilter(searchParams), [searchParams]);
   const styleViewStyle = useMemo(() => parseStyleViewStyle(searchParams), [searchParams]);
   const poseViewStyle = useMemo(() => parsePoseViewStyle(searchParams), [searchParams]);
   const selectedMetadataFilterId = useMemo(
@@ -167,6 +171,10 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   // Images marked as seen since the last library load, so the grids (which keep their own copy of
   // the library) drop their "new" state without refetching it.
   const [seenRelativePaths, setSeenRelativePaths] = useState<ReadonlySet<string>>(new Set());
+  // Same idea for ratings set in the detail view (null = cleared).
+  const [ratingOverrides, setRatingOverrides] = useState<ReadonlyMap<string, TRating | null>>(
+    new Map(),
+  );
   const [authStatus, setAuthStatus] = useState<TAuthStatus>("checking");
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -300,6 +308,20 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         ? { ...currentImage, isNew: false }
         : currentImage,
     );
+  }, []);
+
+  // The rating is already saved server-side; mirror it locally instead of reloading the library.
+  const handleImageRated = useCallback((relativePath: string, rating: TRating | null) => {
+    const overrides = new Map([[relativePath, rating]]);
+    const applyRating = (item: IImageItem): IImageItem => applyRatingOverride(item, overrides);
+
+    setLibrary((currentLibrary) => ({
+      ...currentLibrary,
+      images: currentLibrary.images.map(applyRating),
+    }));
+    setModalFilteredImages((currentImages) => currentImages.map(applyRating));
+    setSelectedImageForModal((currentImage) => currentImage && applyRating(currentImage));
+    setRatingOverrides((current) => new Map(current).set(relativePath, rating));
   }, []);
 
   const handleImageDeleted = useCallback(() => {
@@ -505,6 +527,13 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const handleMediaTypeFilterChange = useCallback(
     (nextMediaTypeFilter: TMediaTypeFilter) => {
       updateQueryParams({ media: nextMediaTypeFilter === "both" ? null : nextMediaTypeFilter });
+    },
+    [updateQueryParams],
+  );
+
+  const handleRatingFilterChange = useCallback(
+    (nextRatingFilter: TRatingFilter) => {
+      updateQueryParams({ rating: nextRatingFilter === "all" ? null : nextRatingFilter });
     },
     [updateQueryParams],
   );
@@ -729,6 +758,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           showOnlyNewImages={showOnlyNewImages}
           characterSortOrder={characterSortOrder}
           mediaTypeFilter={mediaTypeFilter}
+          ratingFilter={ratingFilter}
           styleViewStyle={styleViewStyle}
           poseViewStyle={poseViewStyle}
           characterDetailStyle={characterDetailStyle}
@@ -736,6 +766,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           reloadToken={libraryRefreshToken}
           randomRequestToken={randomRequestToken}
           seenRelativePaths={seenRelativePaths}
+          ratingOverrides={ratingOverrides}
           setSelectedCharacter={handleSelectCharacter}
           setSelectedPoseFilters={handlePoseFiltersChange}
           setSelectedMetadataFilterId={handleMetadataFilterChange}
@@ -744,6 +775,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           setCharacterDetailStyle={setCharacterDetailStyle}
           setCharacterDetailPose={setCharacterDetailPose}
           onMediaTypeFilterChange={handleMediaTypeFilterChange}
+          onRatingFilterChange={handleRatingFilterChange}
           onImageSelect={handleOpenImageModal}
           onLibraryLoad={handleLibraryLoad}
         />
@@ -755,6 +787,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         onClose={handleCloseImageModal}
         onDeleteSuccess={handleImageDeleted}
         onImageSeen={handleImageSeen}
+        onImageRated={handleImageRated}
         canNavigatePrevious={canNavigateModalPrevious}
         canNavigateNext={canNavigateModalNext}
         onNavigatePrevious={handleModalPrevious}

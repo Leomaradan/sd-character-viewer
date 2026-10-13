@@ -30,6 +30,8 @@ const createProps = (overrides?: Partial<React.ComponentProps<typeof PosesView>>
   showNewBadge: false,
   mediaTypeFilter: "both" as const,
   onMediaTypeFilterChange: vi.fn(),
+  ratingFilter: "all" as const,
+  onRatingFilterChange: vi.fn(),
   onClearPoses: vi.fn(),
   onTogglePose: vi.fn(),
   onPoseStyleChange: vi.fn(),

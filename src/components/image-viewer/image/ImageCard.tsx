@@ -1,6 +1,7 @@
 "use client";
 
 import StarIcon from "@mui/icons-material/Star";
+import ThumbUpIcon from "@mui/icons-material/ThumbUp";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import { Box, Card, CardActionArea, CardContent, Typography } from "@mui/material";
 import { useCallback } from "react";
@@ -51,6 +52,18 @@ const VIDEO_BADGE_SX = {
   pointerEvents: "none",
 };
 
+const GOOD_BADGE_SX = {
+  position: "absolute",
+  bottom: 6,
+  right: 6,
+  color: "success.main",
+  bgcolor: "rgba(0,0,0,0.45)",
+  borderRadius: "50%",
+  p: "2px",
+  display: "flex",
+  pointerEvents: "none",
+};
+
 const CARD_TITLE_SX = {
   display: "flex",
   alignItems: "center",
@@ -84,6 +97,11 @@ export const ImageCard = ({
           {image.mediaType === "video" && (
             <Box sx={VIDEO_BADGE_SX} aria-label="Video">
               <VideocamIcon fontSize="small" />
+            </Box>
+          )}
+          {image.rating === "good" && (
+            <Box sx={GOOD_BADGE_SX} aria-label="Rated good">
+              <ThumbUpIcon fontSize="small" />
             </Box>
           )}
           {showNewBadge && image.isNew && (

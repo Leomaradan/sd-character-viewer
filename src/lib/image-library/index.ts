@@ -18,6 +18,7 @@ import {
   type IPoseSummary,
   type IVideoLink,
   type TMediaType,
+  type TRating,
 } from "@/types/library";
 
 import { findAnimationNodeByKey, normalizeAnimationsConfig } from "./animations";
@@ -41,6 +42,7 @@ import {
   readToAnimateEntries,
   readToExtendEntries,
   readMarkedImageMap,
+  readRatings,
   removeMarkedImageMapEntryIfUnchanged,
   TO_ANIMATE_FILE_NAME,
   TO_EXTEND_FILE_NAME,
@@ -1565,7 +1567,28 @@ const inFlightState = globalThis as typeof globalThis & {
 // Concurrent callers (the page's /api/library plus a tool's request, or several tabs) share one
 // read, so a big library is never rebuilt several times in parallel. A read started before an
 // in-app change (see removeLibraryIndexCache) isn't shared with callers arriving after it.
-export const readImageLibrary = (): Promise<ILibraryData> => {
+// Ratings aren't part of the cached index (rating a file must not force a rescan): they're laid
+// over whichever library a read returns. Unreadable ratings just leave the files unrated.
+const withRatings = async (library: ILibraryData): Promise<ILibraryData> => {
+  const rootPath = getImagesRootPathFromEnv();
+  const ratings: Readonly<Record<string, TRating>> = rootPath
+    ? await readRatings(rootPath).catch(() => ({}))
+    : {};
+  if (Object.keys(ratings).length === 0) {
+    return library;
+  }
+
+  return {
+    ...library,
+    images: library.images.map((image) => {
+      const rating = ratings[image.relativePath];
+      return rating ? { ...image, rating } : image;
+    }),
+  };
+};
+
+// Builds (or reuses) the library index; concurrent reads of the same generation share one build.
+const readLibraryIndex = (): Promise<ILibraryData> => {
   const generation = getLibraryCacheGeneration();
   const inFlight = inFlightState[IN_FLIGHT_LIBRARY_READ_KEY];
   if (inFlight?.generation === generation) {
@@ -1583,6 +1606,11 @@ export const readImageLibrary = (): Promise<ILibraryData> => {
   inFlightState[IN_FLIGHT_LIBRARY_READ_KEY] = { generation, promise };
   return promise;
 };
+
+// Ratings are read per call, after the (possibly shared) build: a rating set while a build was
+// in flight still shows up.
+export const readImageLibrary = async (): Promise<ILibraryData> =>
+  withRatings(await readLibraryIndex());
 
 interface IChangedFolder {
   // Library form: "characters/3d/Anna" or "extra-roots/00/characters/3d/Anna".

@@ -375,6 +375,46 @@ describe("POST /api/duplicates", () => {
     ]);
   });
 
+  it("moves ratings with renumbered files and drops those of deleted files", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+
+    const tempRoot = "/tmp/sd-dup-post-ratings";
+    const annaDir = path.join(tempRoot, "characters", "3d", "Anna");
+    await fs.mkdir(annaDir, { recursive: true });
+    await fs.writeFile(path.join(annaDir, "Base.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 2.png"), "");
+    await fs.writeFile(path.join(annaDir, "Base 3.png"), "");
+    await fs.writeFile(
+      path.join(tempRoot, "ratings.json"),
+      JSON.stringify({
+        "characters/3d/Anna/Base.png": { rating: "ok", ratedAt: 1 },
+        "characters/3d/Anna/Base 2.png": { rating: "good", ratedAt: 2 },
+        "characters/3d/Anna/Base 3.png": { rating: "ok", ratedAt: 3 },
+      }),
+    );
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = "/tmp/sd-dup-post-ratings-cache";
+
+    const response = await POST(
+      new Request("http://localhost/api/duplicates", {
+        method: "POST",
+        body: JSON.stringify({
+          primaryRelativePath: "characters/3d/Anna/Base 2.png",
+          additionalKeptRelativePaths: ["characters/3d/Anna/Base 3.png"],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    // Base.png was deleted, Base 2.png became Base.png and Base 3.png became Base 2.png.
+    expect(JSON.parse(await fs.readFile(path.join(tempRoot, "ratings.json"), "utf8"))).toEqual({
+      "characters/3d/Anna/Base.png": { rating: "good", ratedAt: 2 },
+      "characters/3d/Anna/Base 2.png": { rating: "ok", ratedAt: 3 },
+    });
+  });
+
   it("validates a duplicate group living in an extra images root", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);

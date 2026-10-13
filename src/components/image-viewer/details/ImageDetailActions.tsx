@@ -5,14 +5,40 @@ import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import HighQualityIcon from "@mui/icons-material/HighQuality";
-import RefreshIcon from "@mui/icons-material/Refresh";
+import ThumbDownIcon from "@mui/icons-material/ThumbDown";
+import ThumbsUpDownIcon from "@mui/icons-material/ThumbsUpDown";
+import ThumbUpIcon from "@mui/icons-material/ThumbUp";
 import { Alert, Button, ButtonGroup, CircularProgress } from "@mui/material";
+import { useCallback } from "react";
+
+import type { TRating } from "@/types/library";
 
 const DELETE_ERROR_SX = { fontSize: "0.75rem" };
-const REDRAW_BUTTON_SX = {
+const RATING_GROUP_SX = { alignSelf: "flex-start" };
+const BAD_BUTTON_SX = {
+  borderColor: "rgba(255,255,255,0.3)",
+  color: "#f44336",
+  "&:hover": { borderColor: "#f44336", bgcolor: "rgba(244,67,54,0.08)" },
+};
+const OK_BUTTON_SX = {
   borderColor: "rgba(255,255,255,0.3)",
   color: "#2196f3",
   "&:hover": { borderColor: "#2196f3", bgcolor: "rgba(33,150,243,0.08)" },
+};
+const OK_BUTTON_ACTIVE_SX = {
+  ...OK_BUTTON_SX,
+  borderColor: "#2196f3",
+  bgcolor: "rgba(33,150,243,0.24)",
+};
+const GOOD_BUTTON_SX = {
+  borderColor: "rgba(255,255,255,0.3)",
+  color: "#4caf50",
+  "&:hover": { borderColor: "#4caf50", bgcolor: "rgba(76,175,80,0.08)" },
+};
+const GOOD_BUTTON_ACTIVE_SX = {
+  ...GOOD_BUTTON_SX,
+  borderColor: "#4caf50",
+  bgcolor: "rgba(76,175,80,0.24)",
 };
 const UPSCALE_BUTTON_SX = {
   borderColor: "rgba(255,255,255,0.3)",
@@ -60,6 +86,10 @@ interface IImageDetailActionsProps {
   hasAnimations: boolean;
   isRedrawing: boolean;
   onRedraw: () => void;
+  rating: TRating | null;
+  isRating: boolean;
+  ratingError: string | null;
+  onRate: (rating: TRating) => void;
   isTogglingUpscale: boolean;
   isUpscaleMarked: boolean;
   onToggleUpscale: () => void;
@@ -92,6 +122,10 @@ export function ImageDetailActions({
   hasAnimations,
   isRedrawing,
   onRedraw,
+  rating,
+  isRating,
+  ratingError,
+  onRate,
   isTogglingUpscale,
   isUpscaleMarked,
   onToggleUpscale,
@@ -112,6 +146,13 @@ export function ImageDetailActions({
   deleteLabel,
   onDelete,
 }: Readonly<IImageDetailActionsProps>) {
+  const handleRateOk = useCallback(() => {
+    onRate("ok");
+  }, [onRate]);
+  const handleRateGood = useCallback(() => {
+    onRate("good");
+  }, [onRate]);
+
   return (
     <>
       {deleteError && (
@@ -122,6 +163,11 @@ export function ImageDetailActions({
       {redrawError && (
         <Alert severity="error" sx={DELETE_ERROR_SX}>
           {redrawError}
+        </Alert>
+      )}
+      {ratingError && (
+        <Alert severity="error" sx={DELETE_ERROR_SX}>
+          {ratingError}
         </Alert>
       )}
       {upscaleError && (
@@ -144,15 +190,36 @@ export function ImageDetailActions({
           {extendError}
         </Alert>
       )}
-      <ButtonGroup variant="outlined" size="small">
+      {/* "Bad" is the Redraw action: the file is renamed so the pose can be generated again. */}
+      <ButtonGroup variant="outlined" size="small" aria-label="Rating" sx={RATING_GROUP_SX}>
         <Button
-          startIcon={<RefreshIcon />}
+          startIcon={<ThumbDownIcon />}
           onClick={onRedraw}
-          disabled={isRedrawing}
-          sx={REDRAW_BUTTON_SX}
+          disabled={isRedrawing || isRating}
+          sx={BAD_BUTTON_SX}
         >
-          {isRedrawing ? <CircularProgress size={18} /> : "Redraw"}
+          {isRedrawing ? <CircularProgress size={18} /> : "Bad"}
         </Button>
+        <Button
+          startIcon={<ThumbsUpDownIcon />}
+          onClick={handleRateOk}
+          disabled={isRedrawing || isRating}
+          aria-pressed={rating === "ok"}
+          sx={rating === "ok" ? OK_BUTTON_ACTIVE_SX : OK_BUTTON_SX}
+        >
+          OK
+        </Button>
+        <Button
+          startIcon={<ThumbUpIcon />}
+          onClick={handleRateGood}
+          disabled={isRedrawing || isRating}
+          aria-pressed={rating === "good"}
+          sx={rating === "good" ? GOOD_BUTTON_ACTIVE_SX : GOOD_BUTTON_SX}
+        >
+          Good
+        </Button>
+      </ButtonGroup>
+      <ButtonGroup variant="outlined" size="small">
         {!isVideo && (
           <Button
             startIcon={<HighQualityIcon />}
