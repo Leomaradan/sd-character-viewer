@@ -414,8 +414,13 @@ export const PATCH = async (request: Request) => {
     const extension = path.extname(fileName);
     const baseName = fileName.slice(0, Math.max(0, fileName.length - extension.length));
 
+    const oldRelativePath = requestedPath;
+    const getNewRelativePath = (newFileName: string) =>
+      oldRelativePath.slice(0, Math.max(0, oldRelativePath.length - fileName.length)) + newFileName;
+
     // Same folder lock as manual/Pose Conformity renames, so a concurrent one can't pick the
-    // same free name and get overwritten.
+    // same free name and get overwritten. The "bad" rating is written under the lock too, so a
+    // rename of the new file can't migrate the ratings before it's there.
     const newFileName = await withFolderRenameLock(directory, async () => {
       const nextNumber = await findNextAvailableNumber(directory, baseName, extension);
       const candidateFileName = `${baseName} ${nextNumber}${extension}`;
@@ -425,19 +430,17 @@ export const PATCH = async (request: Request) => {
       await fs
         .rename(resolvePreviewFilePath(filePath), resolvePreviewFilePath(newFilePath))
         .catch(() => {});
+      await rateRedrawnFileBad(getNewRelativePath(candidateFileName));
 
       return candidateFileName;
     });
 
-    const oldRelativePath = requestedPath;
-    const newRelativePath =
-      oldRelativePath.slice(0, Math.max(0, oldRelativePath.length - fileName.length)) + newFileName;
+    const newRelativePath = getNewRelativePath(newFileName);
 
     invalidateMetadataCacheEntry(oldRelativePath);
     invalidateMetadataCacheEntry(newRelativePath);
     await removeFirstSeenCacheEntry(oldRelativePath);
     await removeMarkedActionEntries(oldRelativePath);
-    await rateRedrawnFileBad(newRelativePath);
     await refreshLibraryAfterChange([oldRelativePath]);
 
     const requeued = isVideoFilePath(filePath)

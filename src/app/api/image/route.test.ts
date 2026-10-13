@@ -68,6 +68,7 @@ import {
   setToExtendEntry,
   MediaRenameError,
   renameMediaFile,
+  withFolderRenameLock,
 } from "@/lib/image-library";
 
 import { DELETE, GET, PATCH } from "./route";
@@ -584,12 +585,26 @@ describe("/api/image PATCH", () => {
     vi.mocked(fs.readdir).mockResolvedValue([]);
     vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/root");
     const setRatingEntryMock = vi.mocked(setRatingEntry);
-    setRatingEntryMock.mockResolvedValueOnce(undefined);
+    let isInsideFolderLock = false;
+    let wasRatedInsideFolderLock = false;
+    vi.mocked(withFolderRenameLock).mockImplementation(async (_directory, task) => {
+      isInsideFolderLock = true;
+      try {
+        return await task();
+      } finally {
+        isInsideFolderLock = false;
+      }
+    });
+    setRatingEntryMock.mockImplementationOnce(async () => {
+      wasRatedInsideFolderLock = isInsideFolderLock;
+    });
 
     const response = await PATCH(new Request("http://localhost/api/image?path=ImageA.png"));
 
     expect(response.status).toBe(200);
     expect(setRatingEntryMock).toHaveBeenCalledWith("/root", "ImageA 2.png", "bad");
+    // Under the folder lock, so a rename of the new file can't migrate ratings before it.
+    expect(wasRatedInsideFolderLock).toBe(true);
 
     setRatingEntryMock.mockRejectedValueOnce(new Error("disk full"));
     const failedRatingResponse = await PATCH(
