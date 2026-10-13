@@ -69,6 +69,18 @@ describe("ImageDetailActions rating", () => {
     expect(screen.getByRole("button", { name: "OK" })).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("highlights Bad and clears it instead of redrawing again", () => {
+    const props = createProps({ rating: "bad" });
+    render(<ImageDetailActions {...props} />);
+
+    const badButton = screen.getByRole("button", { name: "Bad" });
+    expect(badButton).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(badButton);
+
+    expect(props.onRedraw).not.toHaveBeenCalled();
+    expect(props.onRate).toHaveBeenCalledWith("bad");
+  });
+
   it("disables the rating buttons while a rating is saved and shows its error", () => {
     render(
       <ImageDetailActions

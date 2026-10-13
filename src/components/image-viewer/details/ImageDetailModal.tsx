@@ -600,7 +600,7 @@ export function ImageDetailModal({
   }
   const ratingError = ratingErrorState?.message ?? null;
 
-  // OK/Good; clicking the active rating again clears it. (Bad is Redraw.)
+  // Clicking the active rating again clears it. (Bad on an unrated/OK/Good file is Redraw.)
   const handleRate = useCallback(
     async (rating: TRating) => {
       if (!relativePath) {

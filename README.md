@@ -168,10 +168,10 @@ Both tools start filtered on the current view: on the Styles view, the style sho
 
 The detail view has three rating buttons, **Bad**, **OK** and **Good** (shown when `SD_ALLOW_DELETE` is enabled, for images and videos):
 
-- **Bad** is the Redraw action: the file is renumbered so its pose can be generated again, and nothing is recorded (the renamed file is unrated).
-- **OK** and **Good** are saved in `ratings.json` (main root, keyed by file path). Clicking the active rating again clears it. A rating follows the file when it's renamed (manually, by Pose Conformity, or by the Duplicate Finder's renumbering) and is dropped when the file is deleted or redrawn.
-- Good files show a thumbs-up badge in the grids.
-- Next to **Images / Videos / Both**, every view has an **Unrated / Good / All** filter (default **All**, kept in the URL as `?rating=unrated|good`): **Unrated** shows only files with no OK/Good rating yet, **Good** only Good files.
+- **Bad** is the Redraw action: the file is renumbered so its pose can be generated again, and the renamed file is rated **bad** in `ratings.json`, so it stays out of the **Unrated** selection. Clicking **Bad** on a file already rated bad only clears its rating (no second rename). Files redrawn before bad ratings existed stay unrated. The Duplicate Finder's **Redraw primary** rates the file bad the same way.
+- **OK** and **Good** are saved in `ratings.json` (main root, keyed by file path). Clicking the active rating again clears it. A rating follows the file when it's renamed (manually, by Pose Conformity, or by the Duplicate Finder's renumbering) and is dropped when the file is deleted; a redrawn file's earlier rating is replaced by **bad**.
+- Good files show a thumbs-up badge in the grids, bad files a red thumbs-down badge.
+- Next to **Images / Videos / Both**, every view has an **Unrated / Good / All** filter (default **All**, kept in the URL as `?rating=unrated|good`): **Unrated** shows only files with no rating yet (so bad, OK and Good files are hidden), **Good** only Good files.
 - Ratings aren't part of the library index: they're read from `ratings.json` on each request (re-parsed only when the file changes), so rating a file never triggers a rescan and a hand edit shows up on the next load.
 
 ## Manual Rename
@@ -330,7 +330,7 @@ Example character flow:
 - `GET /api/marks?path=characters/...`: Returns `{ upscale: boolean, animate: { action: string } | null }`, the current upscale/animate mark state for an image. See [Upscale and Animate Marking](#upscale-and-animate-marking). Returns `400` for a video path.
 - `PUT /api/marks`: Marks an image. Body: `{ path, type: "upscale", metadata }` or `{ path, type: "animate", action, metadata }`. Requires `SD_ALLOW_DELETE`. Returns `400` for a video path.
 - `DELETE /api/marks?path=characters/...&type=upscale|animate`: Removes a mark. Requires `SD_ALLOW_DELETE`. Returns `400` for a video path.
-- `PUT /api/rating?path=characters/...`: Rates an image or video. Body: `{ "rating": "ok" | "good" }`, or `{ "rating": null }` to clear it. Requires `SD_ALLOW_DELETE`; `404` when rating a file that doesn't exist. See [Rating](#rating).
+- `PUT /api/rating?path=characters/...`: Rates an image or video. Body: `{ "rating": "bad" | "ok" | "good" }` (`"bad"` here only stores the rating; the UI's **Bad** is Redraw, `PATCH /api/image`), or `{ "rating": null }` to clear it. Requires `SD_ALLOW_DELETE`; `404` when rating a file that doesn't exist. See [Rating](#rating).
 
 ## Test And Lint
 

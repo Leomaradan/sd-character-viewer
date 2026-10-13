@@ -20,6 +20,11 @@ const BAD_BUTTON_SX = {
   color: "#f44336",
   "&:hover": { borderColor: "#f44336", bgcolor: "rgba(244,67,54,0.08)" },
 };
+const BAD_BUTTON_ACTIVE_SX = {
+  ...BAD_BUTTON_SX,
+  borderColor: "#f44336",
+  bgcolor: "rgba(244,67,54,0.24)",
+};
 const OK_BUTTON_SX = {
   borderColor: "rgba(255,255,255,0.3)",
   color: "#2196f3",
@@ -146,6 +151,14 @@ export function ImageDetailActions({
   deleteLabel,
   onDelete,
 }: Readonly<IImageDetailActionsProps>) {
+  // Bad runs Redraw (rename + "bad" rating); on a file already rated bad it just clears the rating.
+  const handleBad = useCallback(() => {
+    if (rating === "bad") {
+      onRate("bad");
+    } else {
+      onRedraw();
+    }
+  }, [rating, onRate, onRedraw]);
   const handleRateOk = useCallback(() => {
     onRate("ok");
   }, [onRate]);
@@ -190,13 +203,15 @@ export function ImageDetailActions({
           {extendError}
         </Alert>
       )}
-      {/* "Bad" is the Redraw action: the file is renamed so the pose can be generated again. */}
+      {/* "Bad" is the Redraw action: the file is renamed so the pose can be generated again, and
+          the renamed file is rated "bad". */}
       <ButtonGroup variant="outlined" size="small" aria-label="Rating" sx={RATING_GROUP_SX}>
         <Button
           startIcon={<ThumbDownIcon />}
-          onClick={onRedraw}
+          onClick={handleBad}
           disabled={isRedrawing || isRating}
-          sx={BAD_BUTTON_SX}
+          aria-pressed={rating === "bad"}
+          sx={rating === "bad" ? BAD_BUTTON_ACTIVE_SX : BAD_BUTTON_SX}
         >
           {isRedrawing ? <CircularProgress size={18} /> : "Bad"}
         </Button>
