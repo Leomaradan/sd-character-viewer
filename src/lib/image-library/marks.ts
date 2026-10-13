@@ -102,21 +102,15 @@ const normalizeToAnimateEntries = (
 
 const isRawMetadataEntry = (value: unknown): value is string => typeof value === "string";
 
-export const readMarkedImageMap = async <T>(
-  filePath: string,
+// The valid entries of a marker file's content; null when it isn't a JSON object.
+const parseMarkedImageMap = <T>(
+  fileContent: string,
   isValidEntry: (value: unknown) => value is T,
-): Promise<Record<string, T>> => {
-  let fileContent = "";
-  try {
-    fileContent = await fs.readFile(filePath, "utf8");
-  } catch {
-    return {};
-  }
-
+): Record<string, T> | null => {
   try {
     const parsedContent: unknown = JSON.parse(fileContent);
     if (!isPlainObjectRecord(parsedContent)) {
-      return {};
+      return null;
     }
 
     const entries: Record<string, T> = {};
@@ -128,9 +122,23 @@ export const readMarkedImageMap = async <T>(
 
     return entries;
   } catch {
-    // Fallback to no entries when the file is malformed.
+    return null;
+  }
+};
+
+export const readMarkedImageMap = async <T>(
+  filePath: string,
+  isValidEntry: (value: unknown) => value is T,
+): Promise<Record<string, T>> => {
+  let fileContent = "";
+  try {
+    fileContent = await fs.readFile(filePath, "utf8");
+  } catch {
     return {};
   }
+
+  // Fallback to no entries when the file is malformed.
+  return parseMarkedImageMap(fileContent, isValidEntry) ?? {};
 };
 
 export const writeMarkedImageMap = async (
@@ -456,7 +464,14 @@ export const readRatings = async (rootPath: string): Promise<Readonly<Record<str
     return ratingsCache.ratings;
   }
 
-  const entries = await readMarkedImageMap(filePath, isRatingEntry);
+  // A failed read or a half-written file isn't cached: the next request tries again even if the
+  // file's mtime/size don't change.
+  const fileContent = await fs.readFile(filePath, "utf8").catch(() => null);
+  const entries = fileContent === null ? null : parseMarkedImageMap(fileContent, isRatingEntry);
+  if (!entries) {
+    return {};
+  }
+
   const ratings = Object.fromEntries(
     Object.entries(entries).map(([relativePath, entry]) => [relativePath, entry.rating]),
   );

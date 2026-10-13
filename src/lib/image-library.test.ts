@@ -2964,6 +2964,26 @@ describe("ratings", () => {
     expect(await readRatings(tempRoot)).toEqual({ "characters/3d/Anna/Base.png": "ok" });
   });
 
+  it("doesn't cache a failed read of ratings.json", async () => {
+    const { tempRoot } = await setUpLibrary("unreadable");
+    await setRatingEntry(tempRoot, "characters/3d/Anna/Casual.png", "good");
+
+    vi.spyOn(fs, "readFile").mockRejectedValueOnce(new Error("EACCES"));
+    expect(await readRatings(tempRoot)).toEqual({});
+
+    expect(await readRatings(tempRoot)).toEqual({ "characters/3d/Anna/Casual.png": "good" });
+  });
+
+  it("doesn't cache a malformed ratings.json", async () => {
+    const { tempRoot } = await setUpLibrary("malformed");
+    await fs.writeFile(path.join(tempRoot, "ratings.json"), "{ half-written");
+    expect(await readRatings(tempRoot)).toEqual({});
+
+    const readFileSpy = vi.spyOn(fs, "readFile");
+    await readRatings(tempRoot);
+    expect(readFileSpy).toHaveBeenCalled();
+  });
+
   it("drops the rating of a deleted or redrawn file and moves it with a renamed one", async () => {
     const { tempRoot } = await setUpLibrary("marks");
     await setRatingEntry(tempRoot, "characters/3d/Anna/Base.png", "ok");
