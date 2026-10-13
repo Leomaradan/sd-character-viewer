@@ -2958,10 +2958,14 @@ describe("ratings", () => {
       JSON.stringify({
         "characters/3d/Anna/Base.png": { rating: "ok", ratedAt: 1 },
         "characters/3d/Anna/Casual.png": { rating: "bad", ratedAt: 1 },
+        "characters/3d/Anna/Full.png": { rating: "great", ratedAt: 1 },
       }),
     );
 
-    expect(await readRatings(tempRoot)).toEqual({ "characters/3d/Anna/Base.png": "ok" });
+    expect(await readRatings(tempRoot)).toEqual({
+      "characters/3d/Anna/Base.png": "ok",
+      "characters/3d/Anna/Casual.png": "bad",
+    });
   });
 
   it("doesn't cache a failed read of ratings.json", async () => {

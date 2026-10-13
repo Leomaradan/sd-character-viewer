@@ -180,18 +180,21 @@ describe("matchesRatingFilter", () => {
     expect(matchesRatingFilter({}, "all")).toBe(true);
     expect(matchesRatingFilter({ rating: "ok" }, "all")).toBe(true);
     expect(matchesRatingFilter({ rating: "good" }, "all")).toBe(true);
+    expect(matchesRatingFilter({ rating: "bad" }, "all")).toBe(true);
   });
 
   it("keeps only files without a rating with Unrated", () => {
     expect(matchesRatingFilter({}, "unrated")).toBe(true);
     expect(matchesRatingFilter({ rating: "ok" }, "unrated")).toBe(false);
     expect(matchesRatingFilter({ rating: "good" }, "unrated")).toBe(false);
+    expect(matchesRatingFilter({ rating: "bad" }, "unrated")).toBe(false);
   });
 
   it("keeps only Good files with Good", () => {
     expect(matchesRatingFilter({}, "good")).toBe(false);
     expect(matchesRatingFilter({ rating: "ok" }, "good")).toBe(false);
     expect(matchesRatingFilter({ rating: "good" }, "good")).toBe(true);
+    expect(matchesRatingFilter({ rating: "bad" }, "good")).toBe(false);
   });
 });
 

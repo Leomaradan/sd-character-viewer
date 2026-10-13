@@ -84,10 +84,13 @@ describe("/api/rating PUT", () => {
     expect((await put("", { rating: "good" })).status).toBe(400);
   });
 
-  it.each([{ rating: "bad" }, {}, "not json", null])("rejects an invalid body %j", async (body) => {
-    expect((await put("characters/3d/Anna/Casual.png", body)).status).toBe(400);
-    expect(setRatingEntry).not.toHaveBeenCalled();
-  });
+  it.each([{ rating: "great" }, {}, "not json", null])(
+    "rejects an invalid body %j",
+    async (body) => {
+      expect((await put("characters/3d/Anna/Casual.png", body)).status).toBe(400);
+      expect(setRatingEntry).not.toHaveBeenCalled();
+    },
+  );
 
   it("fails when the library root isn't configured", async () => {
     vi.mocked(getImagesRootPathFromEnv).mockReturnValue(null);
@@ -107,6 +110,13 @@ describe("/api/rating PUT", () => {
 
     expect(response.status).toBe(204);
     expect(setRatingEntry).toHaveBeenCalledWith("/root", "characters/3d/Anna/Casual.png", "good");
+  });
+
+  it("accepts a bad rating", async () => {
+    const response = await put("characters/3d/Anna/Casual.png", { rating: "bad" });
+
+    expect(response.status).toBe(204);
+    expect(setRatingEntry).toHaveBeenCalledWith("/root", "characters/3d/Anna/Casual.png", "bad");
   });
 
   it("clears a rating even when the file is gone", async () => {

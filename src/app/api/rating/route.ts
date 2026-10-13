@@ -19,11 +19,14 @@ const parseRating = (body: unknown): TRating | null | undefined => {
   }
 
   const { rating } = body;
-  return rating === "ok" || rating === "good" || rating === null ? rating : undefined;
+  return rating === "bad" || rating === "ok" || rating === "good" || rating === null
+    ? rating
+    : undefined;
 };
 
-// Rates an image/video "ok" or "good" (body `{ "rating": "ok" | "good" }`), or clears its rating
-// (`{ "rating": null }`). "Bad" is the Redraw action (PATCH /api/image), not a stored rating.
+// Rates an image/video (body `{ "rating": "bad" | "ok" | "good" }`), or clears its rating
+// (`{ "rating": null }`). The UI's "Bad" is the Redraw action (PATCH /api/image), which renames
+// the file and rates the new name "bad"; setting "bad" here only stores the rating.
 // Gated by SD_ALLOW_DELETE like the other marks. Ratings live in ratings.json (main root) and are
 // laid over the library on each read, so no rescan is needed.
 export const PUT = async (request: Request) => {
@@ -49,7 +52,7 @@ export const PUT = async (request: Request) => {
 
   const rating = parseRating(await request.json().catch(() => null));
   if (rating === undefined) {
-    return new Response('Expected { "rating": "ok" | "good" | null }', { status: 400 });
+    return new Response('Expected { "rating": "bad" | "ok" | "good" | null }', { status: 400 });
   }
 
   const rootPath = getImagesRootPathFromEnv();

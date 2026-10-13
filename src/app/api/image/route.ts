@@ -18,6 +18,7 @@ import {
   withFolderRenameLock,
   resolveImageFilePath,
   resolvePreviewFilePath,
+  setRatingEntry,
   setToAnimateEntry,
   setToExtendEntry,
 } from "@/lib/image-library";
@@ -310,6 +311,21 @@ const requeueVideoLinkMark = async (
   }
 };
 
+// Redraw is the "Bad" rating: the renamed file keeps a "bad" rating so it stays out of the
+// "Unrated" selection. Best-effort: the rename has already happened on disk.
+const rateRedrawnFileBad = async (newRelativePath: string): Promise<void> => {
+  const rootPath = getImagesRootPathFromEnv();
+  if (!rootPath) {
+    return;
+  }
+
+  try {
+    await setRatingEntry(rootPath, newRelativePath, "bad");
+  } catch {
+    // Ignore: see comment above.
+  }
+};
+
 const MEDIA_RENAME_ERROR_STATUS: Record<MediaRenameError["code"], number> = {
   "invalid-path": 400,
   "invalid-name": 400,
@@ -421,6 +437,7 @@ export const PATCH = async (request: Request) => {
     invalidateMetadataCacheEntry(newRelativePath);
     await removeFirstSeenCacheEntry(oldRelativePath);
     await removeMarkedActionEntries(oldRelativePath);
+    await rateRedrawnFileBad(newRelativePath);
     await refreshLibraryAfterChange([oldRelativePath]);
 
     const requeued = isVideoFilePath(filePath)

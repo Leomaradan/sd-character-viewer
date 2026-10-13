@@ -8,8 +8,9 @@ export type TMediaType = "image" | "video";
 
 export type TMediaTypeFilter = TMediaType | "both";
 
-// "Bad" isn't stored: it's the Redraw action (the file is renamed to free its pose name).
-export type TRating = "ok" | "good";
+// "Bad" is set by the Redraw action: the file is renamed to free its pose name, and the renamed
+// file is rated "bad" so it stays out of the "Unrated" selection.
+export type TRating = "bad" | "ok" | "good";
 
 export type TRatingFilter = "unrated" | "good" | "all";
 

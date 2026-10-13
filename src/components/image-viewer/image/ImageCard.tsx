@@ -1,6 +1,7 @@
 "use client";
 
 import StarIcon from "@mui/icons-material/Star";
+import ThumbDownIcon from "@mui/icons-material/ThumbDown";
 import ThumbUpIcon from "@mui/icons-material/ThumbUp";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import { Box, Card, CardActionArea, CardContent, Typography } from "@mui/material";
@@ -63,6 +64,7 @@ const GOOD_BADGE_SX = {
   display: "flex",
   pointerEvents: "none",
 };
+const BAD_BADGE_SX = { ...GOOD_BADGE_SX, color: "error.main" };
 
 const CARD_TITLE_SX = {
   display: "flex",
@@ -102,6 +104,11 @@ export const ImageCard = ({
           {image.rating === "good" && (
             <Box sx={GOOD_BADGE_SX} aria-label="Rated good">
               <ThumbUpIcon fontSize="small" />
+            </Box>
+          )}
+          {image.rating === "bad" && (
+            <Box sx={BAD_BADGE_SX} aria-label="Rated bad">
+              <ThumbDownIcon fontSize="small" />
             </Box>
           )}
           {showNewBadge && image.isNew && (

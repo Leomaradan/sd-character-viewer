@@ -433,7 +433,7 @@ interface IRatingEntry {
 
 const isRatingEntry = (value: unknown): value is IRatingEntry =>
   isPlainObjectRecord(value) &&
-  (value.rating === "ok" || value.rating === "good") &&
+  (value.rating === "bad" || value.rating === "ok" || value.rating === "good") &&
   typeof value.ratedAt === "number";
 
 interface IRatingsCache {

@@ -27,6 +27,7 @@ vi.mock("@/lib/image-library", () => ({
   isVideoFilePath: vi.fn((filePath: string) => filePath.toLowerCase().endsWith(".mp4")),
   getImagesRootPathFromEnv: vi.fn(),
   migrateVideoLink: vi.fn(),
+  setRatingEntry: vi.fn(),
   setToAnimateEntry: vi.fn(),
   setToExtendEntry: vi.fn(),
   renameMediaFile: vi.fn(),
@@ -62,6 +63,7 @@ import {
   refreshLibraryAfterChange,
   getImagesRootPathFromEnv,
   migrateVideoLink,
+  setRatingEntry,
   setToAnimateEntry,
   setToExtendEntry,
   MediaRenameError,
@@ -571,6 +573,45 @@ describe("/api/image PATCH", () => {
     expect(refreshLibraryAfterChangeMock).toHaveBeenCalledWith(["ImageA.png"]);
     const data = (await response.json()) as { newPath: string };
     expect(data.newPath).toBe("ImageA 2.png");
+  });
+
+  it("PATCH rates the redrawn file bad, and a ratings failure doesn't fail the Redraw", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/ImageA.png");
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+    vi.mocked(fs.readdir).mockResolvedValue([]);
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/root");
+    const setRatingEntryMock = vi.mocked(setRatingEntry);
+    setRatingEntryMock.mockResolvedValueOnce(undefined);
+
+    const response = await PATCH(new Request("http://localhost/api/image?path=ImageA.png"));
+
+    expect(response.status).toBe(200);
+    expect(setRatingEntryMock).toHaveBeenCalledWith("/root", "ImageA 2.png", "bad");
+
+    setRatingEntryMock.mockRejectedValueOnce(new Error("disk full"));
+    const failedRatingResponse = await PATCH(
+      new Request("http://localhost/api/image?path=ImageA.png"),
+    );
+
+    expect(failedRatingResponse.status).toBe(200);
+  });
+
+  it("PATCH skips the bad rating when no images root is configured", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/ImageA.png");
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+    vi.mocked(fs.readdir).mockResolvedValue([]);
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue(null);
+
+    const response = await PATCH(new Request("http://localhost/api/image?path=ImageA.png"));
+
+    expect(response.status).toBe(200);
+    expect(setRatingEntry).not.toHaveBeenCalled();
   });
 
   it("PATCH succeeds even when no preview file exists to rename", async () => {
