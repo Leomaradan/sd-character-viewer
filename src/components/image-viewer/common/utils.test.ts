@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import type { ICharacterSummary, IPosePatternFilter } from "@/types/library";
+import type { ICharacterSummary, IImageItem, IPosePatternFilter } from "@/types/library";
 
 import {
+  applyRatingOverride,
   buildPoseFilterOptions,
   buildPoseOptions,
   filterCharactersByMetadataOption,
   formatFirstSeenDate,
   formatStyleLabel,
   getImageUrl,
+  matchesRatingFilter,
   pickRandomItem,
 } from "./utils";
 
@@ -155,6 +157,42 @@ const buildCharacter = (overrides: Partial<ICharacterSummary>): ICharacterSummar
   tags: [],
   firstSeenAt: 0,
   ...overrides,
+});
+
+describe("applyRatingOverride", () => {
+  const image = { relativePath: "characters/3d/Anna/Casual.png", rating: "ok" } as IImageItem;
+
+  it("keeps the image when there is no override or it changes nothing", () => {
+    expect(applyRatingOverride(image, new Map())).toBe(image);
+    expect(applyRatingOverride(image, new Map([[image.relativePath, "ok"]]))).toBe(image);
+  });
+
+  it("sets or clears the rating", () => {
+    expect(applyRatingOverride(image, new Map([[image.relativePath, "good"]])).rating).toBe("good");
+    expect(applyRatingOverride(image, new Map([[image.relativePath, null]]))).not.toHaveProperty(
+      "rating",
+    );
+  });
+});
+
+describe("matchesRatingFilter", () => {
+  it("keeps everything with All", () => {
+    expect(matchesRatingFilter({}, "all")).toBe(true);
+    expect(matchesRatingFilter({ rating: "ok" }, "all")).toBe(true);
+    expect(matchesRatingFilter({ rating: "good" }, "all")).toBe(true);
+  });
+
+  it("keeps only files without a rating with Unrated", () => {
+    expect(matchesRatingFilter({}, "unrated")).toBe(true);
+    expect(matchesRatingFilter({ rating: "ok" }, "unrated")).toBe(false);
+    expect(matchesRatingFilter({ rating: "good" }, "unrated")).toBe(false);
+  });
+
+  it("keeps only Good files with Good", () => {
+    expect(matchesRatingFilter({}, "good")).toBe(false);
+    expect(matchesRatingFilter({ rating: "ok" }, "good")).toBe(false);
+    expect(matchesRatingFilter({ rating: "good" }, "good")).toBe(true);
+  });
 });
 
 describe("pickRandomItem", () => {

@@ -23,10 +23,13 @@ import {
   isDuplicateGroupReviewed,
   isVideoFilePath,
   markImageAsSeen,
+  migrateMarkedActionEntries,
   migrateVideoLink,
+  moveRatingEntries,
   normalizeAnimationsConfig,
   parsePoseName,
   readImageLibrary,
+  readRatings,
   readReviewedDuplicateGroups,
   readToAnimateEntries,
   readToExtendEntries,
@@ -46,6 +49,7 @@ import {
   resolveImageFilePath,
   resolvePreviewFilePath,
   selectAnimation,
+  setRatingEntry,
   setToAnimateEntry,
   setToExtendEntry,
   setToUpscaleEntry,
@@ -2900,5 +2904,99 @@ describe("removeFirstSeenCacheEntry", () => {
     expect(persisted).toHaveProperty("characters/3d/Anna/Full.png");
 
     delete process.env.SD_CACHE_DIR;
+  });
+});
+
+describe("ratings", () => {
+  const setUpLibrary = async (name: string) => {
+    const tempRoot = `/tmp/sd-ratings-${name}`;
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+    await fs.mkdir(characterDir, { recursive: true });
+    await fs.writeFile(path.join(characterDir, "Base.png"), "");
+    await fs.writeFile(path.join(characterDir, "Casual.png"), "");
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = `/tmp/sd-ratings-cache-${name}`;
+    return { tempRoot, characterDir };
+  };
+
+  const ratingOf = (library: ILibraryData, fileName: string) =>
+    library.images.find((image) => image.relativePath.endsWith(`/${fileName}`))?.rating;
+
+  const readRatingsFile = async (tempRoot: string): Promise<unknown> =>
+    JSON.parse(await fs.readFile(path.join(tempRoot, "ratings.json"), "utf8"));
+
+  it("lays ratings over the library and updates them without a rescan", async () => {
+    const { tempRoot } = await setUpLibrary("overlay");
+    expect(ratingOf(await readImageLibrary(), "Casual.png")).toBeUndefined();
+
+    await setRatingEntry(tempRoot, "characters/3d/Anna/Casual.png", "good");
+    const library = await readImageLibrary();
+    expect(ratingOf(library, "Casual.png")).toBe("good");
+    expect(ratingOf(library, "Base.png")).toBeUndefined();
+
+    await setRatingEntry(tempRoot, "characters/3d/Anna/Casual.png", "ok");
+    expect(ratingOf(await readImageLibrary(), "Casual.png")).toBe("ok");
+
+    await setRatingEntry(tempRoot, "characters/3d/Anna/Casual.png", null);
+    expect(ratingOf(await readImageLibrary(), "Casual.png")).toBeUndefined();
+    expect(await readRatingsFile(tempRoot)).toEqual({});
+  });
+
+  it("ignores clearing a rating that doesn't exist", async () => {
+    const { tempRoot } = await setUpLibrary("clear-missing");
+    await setRatingEntry(tempRoot, "characters/3d/Anna/Casual.png", null);
+    await expect(fs.stat(path.join(tempRoot, "ratings.json"))).rejects.toThrow();
+  });
+
+  it("picks up a hand-edited ratings.json and skips invalid entries", async () => {
+    const { tempRoot } = await setUpLibrary("hand-edit");
+    await setRatingEntry(tempRoot, "characters/3d/Anna/Casual.png", "good");
+    expect(await readRatings(tempRoot)).toEqual({ "characters/3d/Anna/Casual.png": "good" });
+
+    await fs.writeFile(
+      path.join(tempRoot, "ratings.json"),
+      JSON.stringify({
+        "characters/3d/Anna/Base.png": { rating: "ok", ratedAt: 1 },
+        "characters/3d/Anna/Casual.png": { rating: "bad", ratedAt: 1 },
+      }),
+    );
+
+    expect(await readRatings(tempRoot)).toEqual({ "characters/3d/Anna/Base.png": "ok" });
+  });
+
+  it("drops the rating of a deleted or redrawn file and moves it with a renamed one", async () => {
+    const { tempRoot } = await setUpLibrary("marks");
+    await setRatingEntry(tempRoot, "characters/3d/Anna/Base.png", "ok");
+    await setRatingEntry(tempRoot, "characters/3d/Anna/Casual.png", "good");
+
+    await removeMarkedActionEntries("characters/3d/Anna/Base.png");
+    await migrateMarkedActionEntries(
+      "characters/3d/Anna/Casual.png",
+      "characters/3d/Anna/Jump.png",
+    );
+
+    expect(await readRatings(tempRoot)).toEqual({ "characters/3d/Anna/Jump.png": "good" });
+  });
+
+  it("moves ratings along a renumbering chain without losing or misplacing one", async () => {
+    const { tempRoot } = await setUpLibrary("move");
+    await setRatingEntry(tempRoot, "characters/3d/Anna/Casual 2.png", "ok");
+    await setRatingEntry(tempRoot, "characters/3d/Anna/Casual 3.png", "good");
+
+    // "Casual 2" deleted, "Casual 3" renumbered to "Casual 2".
+    await moveRatingEntries({
+      "characters/3d/Anna/Casual 3.png": "characters/3d/Anna/Casual 2.png",
+      "characters/3d/Anna/Casual 2.png": null,
+    });
+
+    expect(await readRatings(tempRoot)).toEqual({ "characters/3d/Anna/Casual 2.png": "good" });
+
+    // Nothing to move: the file is left alone.
+    await moveRatingEntries({ "characters/3d/Anna/Other.png": null });
+    expect(await readRatings(tempRoot)).toEqual({ "characters/3d/Anna/Casual 2.png": "good" });
+  });
+
+  it("does nothing without a configured root", async () => {
+    await expect(moveRatingEntries({ "characters/3d/Anna/A.png": null })).resolves.toBeUndefined();
   });
 });

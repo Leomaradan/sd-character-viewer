@@ -33,6 +33,14 @@ const createImage = (overrides?: Partial<IImageItem>): IImageItem => ({
 });
 
 describe("ImageCard", () => {
+  it("shows a badge on Good files only", () => {
+    const { rerender } = render(<ImageCard image={createImage({ rating: "good" })} />);
+    expect(screen.getByLabelText("Rated good")).toBeInTheDocument();
+
+    rerender(<ImageCard image={createImage({ rating: "ok" })} />);
+    expect(screen.queryByLabelText("Rated good")).not.toBeInTheDocument();
+  });
+
   it("renders the character name and formatted style/pose", () => {
     render(<ImageCard image={createImage()} styleLabel={upperCaseStyleLabel} />);
 

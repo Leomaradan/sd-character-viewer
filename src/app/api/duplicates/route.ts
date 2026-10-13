@@ -13,6 +13,7 @@ import {
   isDuplicateGroupReviewed,
   isVideoFilePath,
   parsePoseName,
+  moveRatingEntries,
   readImageLibrary,
   readReviewedDuplicateGroups,
   refreshLibraryAfterChange,
@@ -135,6 +136,16 @@ const finalizeKeptFiles = async (params: {
       invalidateMetadataCacheEntry(toRelativePath(targetFileName));
       await removeFirstSeenCacheEntry(oldRelativePath);
     }),
+  );
+
+  // A rating belongs to the file, so it follows the renumbering.
+  await moveRatingEntries(
+    Object.fromEntries(
+      tempRenames.map(({ oldRelativePath, targetFileName }) => [
+        oldRelativePath,
+        toRelativePath(targetFileName),
+      ]),
+    ),
   );
 
   const finalFileNames = renamePlan
@@ -379,18 +390,22 @@ export const POST = async (request: Request) => {
       try {
         // Each rejected file is independent (distinct path, distinct cache entry), so deleting
         // them can run concurrently rather than one at a time.
+        const rejectedFileNames = groupFileNames.filter(
+          (fileName) => !keptFileNameSet.has(fileName),
+        );
         await Promise.all(
-          groupFileNames
-            .filter((fileName) => !keptFileNameSet.has(fileName))
-            .map(async (fileName) => {
-              const filePath = path.join(directory, fileName);
-              await fs.unlink(filePath);
-              await fs.unlink(resolvePreviewFilePath(filePath)).catch(() => {});
+          rejectedFileNames.map(async (fileName) => {
+            const filePath = path.join(directory, fileName);
+            await fs.unlink(filePath);
+            await fs.unlink(resolvePreviewFilePath(filePath)).catch(() => {});
 
-              const relativePath = toRelativePath(fileName);
-              invalidateMetadataCacheEntry(relativePath);
-              await removeFirstSeenCacheEntry(relativePath);
-            }),
+            const relativePath = toRelativePath(fileName);
+            invalidateMetadataCacheEntry(relativePath);
+            await removeFirstSeenCacheEntry(relativePath);
+          }),
+        );
+        await moveRatingEntries(
+          Object.fromEntries(rejectedFileNames.map((fileName) => [toRelativePath(fileName), null])),
         );
 
         if (rejectAll) {

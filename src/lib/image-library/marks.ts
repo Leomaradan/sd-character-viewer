@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import { type IAnimationGenerationOptions, type IVideoLink } from "@/types/library";
+import { type IAnimationGenerationOptions, type IVideoLink, type TRating } from "@/types/library";
 
 import { getImagesRootPathFromEnv } from "./paths";
 import { isPlainObjectRecord, normalizeRelativePath } from "./shared";
@@ -27,6 +27,7 @@ export const TO_EXTEND_FILE_NAME = "to-extends.json";
 const TO_UPSCALE_VIDEO_FILE_NAME = "to-upscale-video.json";
 export const VIDEO_LINKS_FILE_NAME = "video-links.json";
 const CUSTOM_POSES_FILE_NAME = "custom-poses.json";
+const RATINGS_FILE_NAME = "ratings.json";
 
 // Accepts entries with no prompt field (or a malformed one) at parse time - normalizeToAnimateEntry
 // below is what actually guarantees the IToAnimateEntry contract's prompt: string.
@@ -417,6 +418,127 @@ const removeCustomPoseEntry = async (rootPath: string, relativePath: string): Pr
   });
 };
 
+interface IRatingEntry {
+  rating: TRating;
+  ratedAt: number;
+}
+
+const isRatingEntry = (value: unknown): value is IRatingEntry =>
+  isPlainObjectRecord(value) &&
+  (value.rating === "ok" || value.rating === "good") &&
+  typeof value.ratedAt === "number";
+
+interface IRatingsCache {
+  filePath: string;
+  modifiedAt: number;
+  size: number;
+  ratings: Readonly<Record<string, TRating>>;
+}
+
+// ratings.json is read on every library request (it isn't part of the library index, so a rating
+// never forces a rescan); this keeps the parsed file until it changes on disk.
+let ratingsCache: IRatingsCache | null = null;
+
+// Ratings keyed by relativePath. Re-read only when the file's mtime/size changes (or after an
+// in-app write, which drops the cache).
+export const readRatings = async (rootPath: string): Promise<Readonly<Record<string, TRating>>> => {
+  const filePath = path.join(rootPath, RATINGS_FILE_NAME);
+  const stat = await fs.stat(filePath).catch(() => null);
+  if (!stat?.isFile()) {
+    return {};
+  }
+
+  if (
+    ratingsCache?.filePath === filePath &&
+    ratingsCache.modifiedAt === stat.mtimeMs &&
+    ratingsCache.size === stat.size
+  ) {
+    return ratingsCache.ratings;
+  }
+
+  const entries = await readMarkedImageMap(filePath, isRatingEntry);
+  const ratings = Object.fromEntries(
+    Object.entries(entries).map(([relativePath, entry]) => [relativePath, entry.rating]),
+  );
+  ratingsCache = { filePath, modifiedAt: stat.mtimeMs, size: stat.size, ratings };
+  return ratings;
+};
+
+// Locked read-modify-write of ratings.json: `update` changes the entries in place.
+const updateRatingEntries = async (
+  rootPath: string,
+  update: (entries: Record<string, IRatingEntry>) => boolean,
+): Promise<void> => {
+  const filePath = path.join(rootPath, RATINGS_FILE_NAME);
+  await withMarkedImageFileLock(filePath, async () => {
+    const entries = await readMarkedImageMap(filePath, isRatingEntry);
+    if (update(entries)) {
+      await writeMarkedImageMap(filePath, entries);
+      ratingsCache = null;
+    }
+  });
+};
+
+// Sets (or, with null, clears) a file's rating.
+export const setRatingEntry = async (
+  rootPath: string,
+  relativePath: string,
+  rating: TRating | null,
+): Promise<void> => {
+  const normalizedPath = normalizeRelativePath(relativePath);
+  await updateRatingEntries(rootPath, (entries) => {
+    if (rating === null) {
+      if (!(normalizedPath in entries)) {
+        return false;
+      }
+      delete entries[normalizedPath];
+      return true;
+    }
+
+    entries[normalizedPath] = { rating, ratedAt: Date.now() };
+    return true;
+  });
+};
+
+// Moves ratings along with files renamed/deleted together (Duplicate Finder renumbering): every
+// key of `moves` loses its rating, which then goes to its new path (null = file deleted). Done in
+// one pass so a chain like "3 -> 2, 2 -> deleted" can't lose or misplace a rating.
+export const moveRatingEntries = async (
+  moves: Readonly<Record<string, string | null>>,
+): Promise<void> => {
+  const rootPath = getImagesRootPathFromEnv();
+  if (!rootPath) {
+    return;
+  }
+
+  try {
+    await updateRatingEntries(rootPath, (entries) => {
+      const moved: [string, IRatingEntry][] = [];
+      let hasChanges = false;
+      for (const [oldPath, newPath] of Object.entries(moves)) {
+        const normalizedOldPath = normalizeRelativePath(oldPath);
+        const entry = entries[normalizedOldPath];
+        if (!entry) {
+          continue;
+        }
+
+        delete entries[normalizedOldPath];
+        hasChanges = true;
+        if (newPath !== null) {
+          moved.push([normalizeRelativePath(newPath), entry]);
+        }
+      }
+
+      for (const [newPath, entry] of moved) {
+        entries[newPath] = entry;
+      }
+      return hasChanges;
+    });
+  } catch {
+    // Best-effort, like removeMarkedActionEntries: the files have already moved on disk.
+  }
+};
+
 // Called after an image or video is deleted or renamed (the old relativePath no longer refers
 // to it), so any pending upscale/animate/extend/upscale-video mark tied to it is dropped rather
 // than left dangling. Best-effort: the delete/rename it follows has already happened on disk,
@@ -438,6 +560,7 @@ export const removeMarkedActionEntries = async (relativePath: string): Promise<v
       removeToExtendEntry(rootPath, normalizedPath),
       removeToUpscaleVideoEntry(rootPath, normalizedPath),
       removeCustomPoseEntry(rootPath, normalizedPath),
+      setRatingEntry(rootPath, normalizedPath, null),
     ]);
   } catch {
     // Ignore: see comment above.
@@ -534,6 +657,14 @@ export const migrateMarkedActionEntries = async (
         normalizedOldPath,
         normalizedNewPath,
       ),
+      migrateMarkedImageMapKey(
+        path.join(rootPath, RATINGS_FILE_NAME),
+        isRatingEntry,
+        normalizedOldPath,
+        normalizedNewPath,
+      ).then(() => {
+        ratingsCache = null;
+      }),
       migrateVideoLink(rootPath, normalizedOldPath, normalizedNewPath),
       migrateVideoLinkSources(rootPath, normalizedOldPath, normalizedNewPath),
     ]);

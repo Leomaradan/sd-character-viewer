@@ -78,7 +78,7 @@ show Images, Videos, or Both. Video differs from images in a few deliberate ways
 - No auto-play, anywhere in the app; playback always starts paused.
 - The detail view's magnifier/zoom is image-only; video gets standard playback controls instead.
 - No metadata panel (the SD "parameters" PNG chunk convention has no video equivalent).
-- No Upscale/Animate marking — only **Redraw** and **Delete** are available.
+- No Upscale/Animate marking — only the [rating](#rating) buttons (whose **Bad** is Redraw) and **Delete** are available.
 - Excluded entirely from the Duplicate Finder.
 - Grid thumbnails: if a matching `<name>.preview.png` sidecar exists next to the video (for example
   `Dance.mp4` → `Dance.preview.png`), it's shown as a static poster image. It can be provided
@@ -95,7 +95,7 @@ Character metadata file:
 
 - Additional images can be loaded from folders configured with `SD_EXTRA_IMAGES_ROOT` (a list of paths separated by `:` on Linux/macOS or `;` on Windows).
 - Each configured entry is either an images root itself (it directly contains a `characters` folder) or a parent directory whose immediate subdirectories are each their own images root. The latter is what makes multiple extra folders work in Docker, where a single bind mount can only map one host path: point `SD_EXTRA_IMAGES_ROOT` at a parent directory and put each additional folder inside it as a subdirectory.
-- Extra roots only ever contribute images. `config.json`, `characters/characters.json`, `pose-filters.json`, `duplicate-reviews.json`, `to-upscale.json`, `to-animate.json`, and `custom-poses.json` are always read from (and written to) the main root (`SD_IMAGES_ROOT`) only — an extra root's own copies of these files, if any, are ignored. Likewise, only the main root's `config.json` determines the list of available styles; a style folder in an extra root that isn't part of that list is skipped.
+- Extra roots only ever contribute images. `config.json`, `characters/characters.json`, `pose-filters.json`, `duplicate-reviews.json`, `to-upscale.json`, `to-animate.json`, `custom-poses.json`, and `ratings.json` are always read from (and written to) the main root (`SD_IMAGES_ROOT`) only — an extra root's own copies of these files, if any, are ignored. Likewise, only the main root's `config.json` determines the list of available styles; a style folder in an extra root that isn't part of that list is skipped.
 - Images found in an extra root are merged into the same browsable library as the main root (characters, poses, thumbnails, the "new" badge, and the Duplicate Finder), and support the same view/rename/delete actions. Duplicate detection only ever groups images that live in the same root, since validating a group renumbers files within a single folder.
 
 Optional pose pattern filters:
@@ -164,6 +164,16 @@ When `SD_ALLOW_DELETE` is enabled, the side menu's **Tools** section shows a **L
 
 Both tools start filtered on the current view: on the Styles view, the style shown there (the Duplicate Finder has a Style dropdown too); in Pose Conformity, also the main view's Images/Videos/Both filter. Changing a filter inside a tool doesn't change the main view, and the tool starts from the current view again the next time it opens.
 
+## Rating
+
+The detail view has three rating buttons, **Bad**, **OK** and **Good** (shown when `SD_ALLOW_DELETE` is enabled, for images and videos):
+
+- **Bad** is the Redraw action: the file is renumbered so its pose can be generated again, and nothing is recorded (the renamed file is unrated).
+- **OK** and **Good** are saved in `ratings.json` (main root, keyed by file path). Clicking the active rating again clears it. A rating follows the file when it's renamed (manually, by Pose Conformity, or by the Duplicate Finder's renumbering) and is dropped when the file is deleted or redrawn.
+- Good files show a thumbs-up badge in the grids.
+- Next to **Images / Videos / Both**, every view has an **Unrated / Good / All** filter (default **All**, kept in the URL as `?rating=unrated|good`): **Unrated** shows only files with no OK/Good rating yet, **Good** only Good files.
+- Ratings aren't part of the library index: they're read from `ratings.json` on each request (re-parsed only when the file changes), so rating a file never triggers a rescan and a hand edit shows up on the next load.
+
 ## Manual Rename
 
 When `SD_ALLOW_DELETE` is enabled, the detail view shows a pencil icon next to the pose name. It opens a dialog to rename the file: you edit the name without its extension (`.png`/`.mp4` is kept), and the file stays in the same folder.
@@ -175,9 +185,9 @@ When `SD_ALLOW_DELETE` is enabled, the detail view shows a pencil icon next to t
 
 ## Upscale and Animate Marking
 
-The image detail view has **Upscale** and **Animate** buttons (alongside Redraw/Delete) to flag an image for later, external processing — the app itself never upscales or animates anything, it just records the request. Both buttons are hidden for videos (see [Video Support](#video-support)); `GET`/`PUT`/`DELETE /api/marks` also reject a video path with `400`.
+The image detail view has **Upscale** and **Animate** buttons (alongside the [rating](#rating) buttons and Delete) to flag an image for later, external processing — the app itself never upscales or animates anything, it just records the request. Both buttons are hidden for videos (see [Video Support](#video-support)); `GET`/`PUT`/`DELETE /api/marks` also reject a video path with `400`.
 
-- Both buttons are shown only when `SD_ALLOW_DELETE` is enabled, the same flag that gates Redraw/Delete.
+- Both buttons are shown only when `SD_ALLOW_DELETE` is enabled, the same flag that gates the rating buttons (Bad = Redraw) and Delete.
 - **Upscale** is a plain toggle: click to mark, click again to unmark.
 - **Animate** opens a dropdown of the animation names configured in `config.json`'s `animations` array (see [Image Folder Structure](#image-folder-structure) above); the button itself is hidden when that list is empty. Picking a name marks the image with that action; picking the currently-marked name again unmarks it. Picking a different name switches the mark to the new action.
 - Marks are stored as flat JSON objects, one entry per marked image, keyed by the image's relative path (the same relative path used by `GET /api/image?path=...`):
@@ -211,7 +221,7 @@ Example `to-animate.json`:
 | `SD_LIBRARY_CACHE_TTL_SECONDS` | No | `120` | How long the server trusts the library index it keeps in memory before checking the `characters` folders again for files added, removed or renamed outside the app (e.g. by the generator). Within that time a request only checks the config files, so new files can take up to this long to appear; changes made in the app (delete, rename, Redraw, Mark as seen, ...) and config file edits show up immediately (an in-app change only re-reads the character folder it touched). `0` checks the folders on every request. |
 | `SD_PASSWORD`              | No                             | —                                                                | Enables password-protected access when set. Leave unset to run without a login screen.                                                                                                                                                                                                                                                |
 | `SD_PASSWORD_SALT`         | Only when `SD_PASSWORD` is set | —                                                                | Salt used to hash the configured password. The app reports a configuration error at startup if `SD_PASSWORD` is set without this.                                                                                                                                                                                                     |
-| `SD_ALLOW_DELETE`          | No                             | `false`                                                          | Enables destructive image actions: deleting an image, "Redraw" (renumbers a regenerated pose), manual rename, the Library Toolbox (and the Duplicate Finder's "Validate" action (deletes unselected duplicates and renumbers the ones kept)), and the Upscale/Animate marking buttons. Accepts `true`, `1`, or `yes` (case-insensitive); anything else is treated as disabled. |
+| `SD_ALLOW_DELETE`          | No                             | `false`                                                          | Enables destructive image actions: deleting an image, "Redraw" (renumbers a regenerated pose; also the **Bad** rating), the OK/Good rating, manual rename, the Library Toolbox (and the Duplicate Finder's "Validate" action (deletes unselected duplicates and renumbers the ones kept)), and the Upscale/Animate marking buttons. Accepts `true`, `1`, or `yes` (case-insensitive); anything else is treated as disabled. |
 | `SD_PREVIEW_MAX_DIMENSION` | No                             | `640`                                                            | Longest edge, in pixels, of generated preview thumbnails. Used by the [preview sync script](#preview-thumbnails).                                                                                                                                                                                                                     |
 | `SD_PREVIEW_JPEG_QUALITY`  | No                             | `70`                                                             | JPEG quality (1-100) used for image preview thumbnails. Used by the [preview sync script](#preview-thumbnails).                                                                                                                                                                                                                       |
 
@@ -320,6 +330,7 @@ Example character flow:
 - `GET /api/marks?path=characters/...`: Returns `{ upscale: boolean, animate: { action: string } | null }`, the current upscale/animate mark state for an image. See [Upscale and Animate Marking](#upscale-and-animate-marking). Returns `400` for a video path.
 - `PUT /api/marks`: Marks an image. Body: `{ path, type: "upscale", metadata }` or `{ path, type: "animate", action, metadata }`. Requires `SD_ALLOW_DELETE`. Returns `400` for a video path.
 - `DELETE /api/marks?path=characters/...&type=upscale|animate`: Removes a mark. Requires `SD_ALLOW_DELETE`. Returns `400` for a video path.
+- `PUT /api/rating?path=characters/...`: Rates an image or video. Body: `{ "rating": "ok" | "good" }`, or `{ "rating": null }` to clear it. Requires `SD_ALLOW_DELETE`; `404` when rating a file that doesn't exist. See [Rating](#rating).
 
 ## Test And Lint
 

@@ -3,6 +3,8 @@ import type {
   IImageItem,
   IMetadataFilterOption,
   IPosePatternFilter,
+  TRating,
+  TRatingFilter,
 } from "@/types/library";
 
 export const isVideoRelativePath = (relativePath: string): boolean => {
@@ -86,6 +88,32 @@ export const buildPoseFilterOptions = (
     .map((filter) => ({ value: filter.id, label: filter.label }));
 
   return [...nonPatternPoses, ...matchingPatternFilters];
+};
+
+// Applies a rating set in the app (null = cleared) on top of the loaded one.
+export const applyRatingOverride = (
+  image: IImageItem,
+  ratingOverrides: ReadonlyMap<string, TRating | null>,
+): IImageItem => {
+  const override = ratingOverrides.get(image.relativePath);
+  if (override === undefined || override === (image.rating ?? null)) {
+    return image;
+  }
+
+  const { rating: _previousRating, ...rest } = image;
+  return override === null ? rest : { ...rest, rating: override };
+};
+
+// "unrated" keeps files with no OK/Good rating, "good" only Good ones.
+export const matchesRatingFilter = (
+  image: Readonly<Pick<IImageItem, "rating">>,
+  ratingFilter: TRatingFilter,
+): boolean => {
+  if (ratingFilter === "unrated") {
+    return image.rating === undefined;
+  }
+
+  return ratingFilter === "all" || image.rating === "good";
 };
 
 export const pickRandomItem = <T>(

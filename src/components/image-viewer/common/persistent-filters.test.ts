@@ -6,6 +6,7 @@ import {
   normalizePoseFilters,
   parseCharacterSortOrder,
   parseMediaTypeFilter,
+  parseRatingFilter,
   parsePoseViewStyle,
   parseShowOnlyNewImages,
   parseSelectedMetadataFilterId,
@@ -73,6 +74,18 @@ describe("persistent filters", () => {
     it("defaults to name for any other value", () => {
       expect(parseCharacterSortOrder(new URLSearchParams("sort=name"))).toBe("name");
       expect(parseCharacterSortOrder(new URLSearchParams(""))).toBe("name");
+    });
+  });
+
+  describe("parseRatingFilter", () => {
+    it("reads unrated and good values", () => {
+      expect(parseRatingFilter(new URLSearchParams("rating=unrated"))).toBe("unrated");
+      expect(parseRatingFilter(new URLSearchParams("rating=%20GOOD%20"))).toBe("good");
+    });
+
+    it("defaults to all when absent or unknown", () => {
+      expect(parseRatingFilter(new URLSearchParams(""))).toBe("all");
+      expect(parseRatingFilter(new URLSearchParams("rating=bad"))).toBe("all");
     });
   });
 

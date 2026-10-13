@@ -9,6 +9,7 @@ import type {
   IMetadataFilterOption,
   TCharacterSortOrder,
   TMediaTypeFilter,
+  TRatingFilter,
 } from "@/types/library";
 
 import { ImageGrid } from "@/components/image-viewer/image/ImageGrid";
@@ -16,6 +17,7 @@ import { ImageGrid } from "@/components/image-viewer/image/ImageGrid";
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
 import { MediaTypeFilter } from "../common/MediaTypeFilter";
+import { RatingFilter } from "../common/RatingFilter";
 import { filterCharactersByMetadataOption } from "../common/utils";
 import { PoseView } from "../posesView/PoseView";
 import { StyleView } from "../stylesView/StyleView";
@@ -40,6 +42,8 @@ interface ICharactersViewProps {
   characterSortOrder: TCharacterSortOrder;
   mediaTypeFilter: TMediaTypeFilter;
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
+  ratingFilter: TRatingFilter;
+  onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
   onSelectCharacter: (characterName: string | null) => void;
   onCharacterDetailStyleChange: (style: string) => void;
   onCharacterDetailPoseChange: (pose: string) => void;
@@ -101,6 +105,8 @@ export const CharactersView = ({
   characterSortOrder,
   mediaTypeFilter,
   onMediaTypeFilterChange,
+  ratingFilter,
+  onRatingFilterChange,
   onSelectCharacter,
   onMetadataFilterChange,
   onClearMetadataFilter,
@@ -205,6 +211,7 @@ export const CharactersView = ({
               mediaTypeFilter={mediaTypeFilter}
               onMediaTypeFilterChange={onMediaTypeFilterChange}
             />
+            <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
           </Stack>
 
           <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>
@@ -244,6 +251,7 @@ export const CharactersView = ({
                 characterDetailStyle,
                 characterDetailPose,
                 mediaTypeFilter,
+                ratingFilter,
                 characterSortOrder,
                 showNewBadge,
               ].join("|")}
@@ -261,6 +269,7 @@ export const CharactersView = ({
               mediaTypeFilter={mediaTypeFilter}
               onMediaTypeFilterChange={onMediaTypeFilterChange}
             />
+            <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
           </Stack>
 
           <CategoryFilter
