@@ -247,6 +247,34 @@ describe("DuplicateFinderModal", () => {
     expect(screen.getByText(/Bob - Base/)).toBeInTheDocument();
   });
 
+  it("starts on the initial style each time it opens", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          groups: [buildGroup("group-a", "Anna", "3d"), buildGroup("group-b", "Bob", "anime")],
+        }),
+    });
+
+    const { rerender } = render(
+      <DuplicateFinderModal open onClose={vi.fn()} initialStyle="anime" />,
+    );
+
+    await screen.findByText(/Bob - Base/);
+    expect(screen.queryByText(/Anna - Base/)).not.toBeInTheDocument();
+
+    // Switch to "All styles", then close and reopen: the initial style applies again.
+    fireEvent.mouseDown(screen.getByLabelText("Style"));
+    fireEvent.click(await screen.findByRole("option", { name: "All styles" }));
+    expect(screen.getByText(/Anna - Base/)).toBeInTheDocument();
+
+    rerender(<DuplicateFinderModal open={false} onClose={vi.fn()} initialStyle="anime" />);
+    rerender(<DuplicateFinderModal open onClose={vi.fn()} initialStyle="anime" />);
+
+    await waitFor(() => expect(screen.queryByText(/Anna - Base/)).not.toBeInTheDocument());
+    expect(screen.getByText(/Bob - Base/)).toBeInTheDocument();
+  });
+
   it("falls back to showing every remaining group once the selected style's last group is resolved", async () => {
     fetchMock
       .mockResolvedValueOnce({

@@ -13,7 +13,7 @@ vi.mock("@/components/image-viewer/image/LazyImage", () => ({
   LazyImage: () => <div data-testid="lazy-image" />,
 }));
 
-const buildItem = (relativePath: string): IImageItem => ({
+const buildItem = (relativePath: string, overrides: Partial<IImageItem> = {}): IImageItem => ({
   id: relativePath,
   style: "3d",
   characterName: "Anna",
@@ -27,6 +27,7 @@ const buildItem = (relativePath: string): IImageItem => ({
   modifiedAt: 0,
   posePatternFilterIds: [],
   mediaType: "image",
+  ...overrides,
 });
 
 const listResponse = (items: IImageItem[]) =>
@@ -147,5 +148,112 @@ describe("PoseConformityModal", () => {
     expect(
       await screen.findByText("Could not check the library's poses. Try again."),
     ).toBeInTheDocument();
+  });
+
+  describe("filters", () => {
+    const mixedItems = [
+      buildItem("characters/3d/Anna/Casul.png"),
+      buildItem("characters/3d/Anna/Jump.mp4", { mediaType: "video" }),
+      buildItem("characters/anime/Bob/Odd.png", { style: "anime", characterName: "Bob" }),
+    ];
+
+    it("filters the cards by style and media type", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(listResponse(mixedItems)));
+
+      render(<PoseConformityModal open onClose={vi.fn()} />);
+      await screen.findByText("Casul.png");
+      expect(screen.getByText("3 files don't match a standard pose")).toBeInTheDocument();
+
+      fireEvent.mouseDown(screen.getByLabelText("Style"));
+      fireEvent.click(await screen.findByRole("option", { name: "3D" }));
+
+      expect(screen.queryByText("Odd.png")).not.toBeInTheDocument();
+      expect(screen.getByText("Jump.mp4")).toBeInTheDocument();
+      expect(screen.getByText(/2 of 3 files/)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Videos" }));
+
+      expect(screen.queryByText("Casul.png")).not.toBeInTheDocument();
+      expect(screen.getByText("Jump.mp4")).toBeInTheDocument();
+      expect(screen.getByText(/1 of 3 files/)).toBeInTheDocument();
+    });
+
+    it("starts on the initial filters each time it opens", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation(() => Promise.resolve(listResponse(mixedItems))),
+      );
+
+      const { rerender } = render(
+        <PoseConformityModal
+          open
+          onClose={vi.fn()}
+          initialStyle="3d"
+          initialMediaTypeFilter="image"
+        />,
+      );
+
+      await screen.findByText("Casul.png");
+      expect(screen.queryByText("Jump.mp4")).not.toBeInTheDocument();
+      expect(screen.queryByText("Odd.png")).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Both" }));
+      expect(screen.getByText("Jump.mp4")).toBeInTheDocument();
+
+      rerender(
+        <PoseConformityModal
+          open={false}
+          onClose={vi.fn()}
+          initialStyle="3d"
+          initialMediaTypeFilter="image"
+        />,
+      );
+      rerender(
+        <PoseConformityModal
+          open
+          onClose={vi.fn()}
+          initialStyle="3d"
+          initialMediaTypeFilter="image"
+        />,
+      );
+
+      await waitFor(() => expect(screen.queryByText("Jump.mp4")).not.toBeInTheDocument());
+      expect(screen.getByText("Casul.png")).toBeInTheDocument();
+    });
+
+    it("ignores an initial style that has nothing to fix", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(listResponse(mixedItems)));
+
+      render(<PoseConformityModal open onClose={vi.fn()} initialStyle="realistic" />);
+
+      expect(await screen.findByText("Odd.png")).toBeInTheDocument();
+      expect(screen.getByText("Casul.png")).toBeInTheDocument();
+    });
+
+    it("hides the filters a single-style, single-media list doesn't need", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(listResponse([buildItem("characters/3d/Anna/Casul.png")])),
+      );
+
+      render(<PoseConformityModal open onClose={vi.fn()} />);
+      await screen.findByText("Casul.png");
+
+      expect(screen.queryByLabelText("Style")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Videos" })).not.toBeInTheDocument();
+    });
+
+    it("keeps the media toggle and explains an empty result when the initial filter matches nothing", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(listResponse([buildItem("characters/3d/Anna/Casul.png")])),
+      );
+
+      render(<PoseConformityModal open onClose={vi.fn()} initialMediaTypeFilter="video" />);
+
+      expect(await screen.findByText("No files match these filters.")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Both" }));
+      expect(screen.getByText("Casul.png")).toBeInTheDocument();
+    });
   });
 });

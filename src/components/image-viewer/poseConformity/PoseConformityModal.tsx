@@ -14,10 +14,12 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { IImageItem } from "@/types/library";
+import type { IImageItem, TMediaTypeFilter } from "@/types/library";
 
+import { MediaTypeFilter } from "@/components/image-viewer/common/MediaTypeFilter";
+import { StyleSelectFilter } from "@/components/image-viewer/common/StyleSelectFilter";
 import { formatStyleLabel } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 
@@ -30,6 +32,9 @@ interface IPoseConformityModalProps {
   onClose: () => void;
   onChangesApplied?: () => void;
   styleLabel?: (style: string) => string;
+  // Filters the dialog starts on each time it opens (taken from the current view).
+  initialStyle?: string;
+  initialMediaTypeFilter?: TMediaTypeFilter;
 }
 
 interface IPoseConformityResponse {
@@ -47,6 +52,7 @@ const LOADING_SX = { display: "flex", justifyContent: "center", py: 6 };
 const FILE_NAME_SX = { wordBreak: "break-word" };
 const BUTTONS_SX = { flexWrap: "wrap", gap: 0.5, mt: 1 };
 const ERROR_SX = { mt: 1, fontSize: "0.75rem" };
+const FILTER_BAR_SX = { mb: 3, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2 };
 
 const getFileName = (relativePath: string): string => relativePath.split("/").pop() ?? "";
 
@@ -146,8 +152,21 @@ export function PoseConformityModal({
   onClose,
   onChangesApplied,
   styleLabel = formatStyleLabel,
+  initialStyle = "",
+  initialMediaTypeFilter = "both",
 }: Readonly<IPoseConformityModalProps>) {
   const [items, setItems] = useState<IImageItem[]>([]);
+  const [selectedStyle, setSelectedStyle] = useState(initialStyle);
+  const [mediaTypeFilter, setMediaTypeFilter] = useState(initialMediaTypeFilter);
+  // The filters restart from the current view each time the dialog opens (it stays mounted).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setSelectedStyle(initialStyle);
+      setMediaTypeFilter(initialMediaTypeFilter);
+    }
+  }
   // Bumped on every fresh list from the server, which brings the grid back to its first page.
   const [loadCount, setLoadCount] = useState(0);
   const [standardPoses, setStandardPoses] = useState<string[]>([]);
@@ -158,7 +177,34 @@ export function PoseConformityModal({
   // Rendered a page at a time: a big library can have thousands of non-conforming files. Removing
   // a handled card keeps the current page count; only a fresh load (e.g. reopening the dialog,
   // which stays mounted while closed) goes back to the first page.
-  const { visibleItems, hasMore, showMore } = useIncrementalList(items, String(loadCount));
+  const styleOptions = useMemo(
+    () =>
+      [...new Set(items.map((item) => item.style))].sort((a, b) =>
+        styleLabel(a).localeCompare(styleLabel(b), undefined, { sensitivity: "base" }),
+      ),
+    [items, styleLabel],
+  );
+  // A style with nothing left to fix (or absent from the list) falls back to "All styles".
+  const effectiveSelectedStyle =
+    selectedStyle && styleOptions.includes(selectedStyle) ? selectedStyle : "";
+  const hasBothMediaTypes = useMemo(
+    () => new Set(items.map((item) => item.mediaType)).size > 1,
+    [items],
+  );
+  const filteredItems = useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          (!effectiveSelectedStyle || item.style === effectiveSelectedStyle) &&
+          (mediaTypeFilter === "both" || item.mediaType === mediaTypeFilter),
+      ),
+    [items, effectiveSelectedStyle, mediaTypeFilter],
+  );
+  const isFiltered = filteredItems.length !== items.length;
+  const { visibleItems, hasMore, showMore } = useIncrementalList(
+    filteredItems,
+    `${loadCount}:${effectiveSelectedStyle}:${mediaTypeFilter}`,
+  );
   // Bumped on every load and whenever the dialog closes, so a stale response is ignored.
   const loadRequestIdRef = useRef(0);
 
@@ -286,6 +332,27 @@ export function PoseConformityModal({
   } else {
     content = (
       <>
+        <Box sx={FILTER_BAR_SX}>
+          {styleOptions.length > 1 && (
+            <StyleSelectFilter
+              styles={styleOptions}
+              selectedStyle={effectiveSelectedStyle}
+              onStyleChange={setSelectedStyle}
+              styleLabel={styleLabel}
+            />
+          )}
+          {(hasBothMediaTypes || mediaTypeFilter !== "both") && (
+            <MediaTypeFilter
+              mediaTypeFilter={mediaTypeFilter}
+              onMediaTypeFilterChange={setMediaTypeFilter}
+            />
+          )}
+        </Box>
+        {filteredItems.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            No files match these filters.
+          </Typography>
+        )}
         <Box sx={GRID}>
           {visibleItems.map((item) => (
             <PoseConformityCard
@@ -311,6 +378,7 @@ export function PoseConformityModal({
         Pose Conformity
         {!isLoading && !loadError && items.length > 0 && (
           <Typography variant="body2" color="text.secondary">
+            {isFiltered && `${filteredItems.length} of `}
             {items.length} {items.length === 1 ? "file doesn't" : "files don't"} match a standard
             pose
           </Typography>
