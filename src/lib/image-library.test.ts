@@ -685,6 +685,25 @@ describe("readImageLibrary with characters metadata", () => {
     expect(library.standardPoses).toEqual(["Casual", "Lying Side"]);
   });
 
+  it("reads special poses from config.json, dropping the ones that are standard poses", async () => {
+    const tempRoot = "/tmp/sd-library-special-poses";
+    await fs.mkdir(path.join(tempRoot, "characters", "3d", "Anna"), { recursive: true });
+    await fs.writeFile(
+      path.join(tempRoot, "config.json"),
+      JSON.stringify({
+        styles: ["3d"],
+        poses: ["Casual"],
+        specialPoses: [" T-Pose ", "t-pose", "", "casual", "Sleeping"],
+      }),
+    );
+    process.env.SD_IMAGES_ROOT = tempRoot;
+
+    const library = await readImageLibrary();
+
+    expect(library.standardPoses).toEqual(["Casual"]);
+    expect(library.specialPoses).toEqual(["T-Pose", "Sleeping"]);
+  });
+
   it("has no standard poses when config.json doesn't list any", async () => {
     const tempRoot = "/tmp/sd-library-no-standard-poses";
     await fs.mkdir(path.join(tempRoot, "characters", "3d", "Anna"), { recursive: true });
@@ -692,6 +711,7 @@ describe("readImageLibrary with characters metadata", () => {
     process.env.SD_IMAGES_ROOT = tempRoot;
 
     expect((await readImageLibrary()).standardPoses).toEqual([]);
+    expect((await readImageLibrary()).specialPoses).toEqual([]);
   });
 
   it("loads pose pattern filters from pose-filters.json", async () => {
@@ -1084,6 +1104,7 @@ describe("readImageLibrary with characters metadata", () => {
       styleLabels: {},
       animations: [],
       standardPoses: [],
+      specialPoses: [],
       images: [
         {
           id: "cached",
@@ -1116,7 +1137,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 11,
+          version: 12,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],

@@ -26,6 +26,15 @@ describe("isPoseConforming", () => {
     ).toBe(true);
   });
 
+  it("accepts special poses, case-insensitively", () => {
+    expect(
+      isPoseConforming({ poseFilterName: "t-pose", posePatternFilterIds: [] }, poses, ["T-Pose"]),
+    ).toBe(true);
+    expect(isPoseConforming({ poseFilterName: "T-Pose", posePatternFilterIds: [] }, poses)).toBe(
+      false,
+    );
+  });
+
   it("always accepts the Base thumbnail pose", () => {
     expect(isPoseConforming({ poseFilterName: "Base", posePatternFilterIds: [] }, [])).toBe(true);
   });
