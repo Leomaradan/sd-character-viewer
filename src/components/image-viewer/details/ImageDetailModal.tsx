@@ -140,6 +140,10 @@ interface IImageDetailModalProps {
   onDeleteSuccess?: () => void;
   onImageSeen?: (relativePath: string) => void;
   onImageRated?: (relativePath: string, rating: TRating | null) => void;
+  // Redraw (the "Bad" rating) renamed the file. Without it, Redraw closes like a delete.
+  onImageRedrawn?: (relativePath: string) => void;
+  // Random mode: Next shows another random file, and there's no Previous.
+  isRandomMode?: boolean;
   canNavigatePrevious?: boolean;
   canNavigateNext?: boolean;
   onNavigatePrevious?: () => void;
@@ -310,6 +314,8 @@ export function ImageDetailModal({
   onDeleteSuccess,
   onImageSeen,
   onImageRated,
+  onImageRedrawn,
+  isRandomMode = false,
   canNavigatePrevious = false,
   canNavigateNext = false,
   onNavigatePrevious,
@@ -585,13 +591,17 @@ export function ImageDetailModal({
 
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       (await response.json()) as { newPath: string };
-      onDeleteSuccess?.();
+      if (onImageRedrawn) {
+        onImageRedrawn(relativePath);
+      } else {
+        onDeleteSuccess?.();
+      }
     } catch {
       setRedrawError("Could not rename the image. Try again.");
     } finally {
       setIsRedrawing(false);
     }
-  }, [relativePath, onDeleteSuccess]);
+  }, [relativePath, onDeleteSuccess, onImageRedrawn]);
 
   const currentRating = image?.rating ?? null;
   // Moving to another file (previous/next) drops an earlier failure's message.
@@ -627,6 +637,11 @@ export function ImageDetailModal({
         }
 
         onImageRated?.(relativePath, nextRating);
+        // Rating is a verdict: move on to the next (or, in random mode, another random) file.
+        // Clearing a rating stays on the file.
+        if (nextRating !== null && canNavigateNext) {
+          onNavigateNext?.();
+        }
       } catch {
         setRatingErrorState({
           path: relativePath,
@@ -636,8 +651,16 @@ export function ImageDetailModal({
         setIsRating(false);
       }
     },
-    [relativePath, currentRating, onImageRated],
+    [relativePath, currentRating, onImageRated, canNavigateNext, onNavigateNext],
   );
+
+  // The server rates an unrated file "good" when it's marked for upscale/animate/extend (PUT
+  // /api/marks); mirror that locally.
+  const mirrorMarkRating = useCallback(() => {
+    if (relativePath && currentRating === null) {
+      onImageRated?.(relativePath, "good");
+    }
+  }, [relativePath, currentRating, onImageRated]);
 
   const {
     isUpscaleMarked,
@@ -690,12 +713,15 @@ export function ImageDetailModal({
       setMarksState((prev) =>
         prev.path === relativePath ? { ...prev, upscale: nextUpscale } : prev,
       );
+      if (nextUpscale) {
+        mirrorMarkRating();
+      }
     } catch {
       setUpscaleError("Could not update the upscale mark. Try again.");
     } finally {
       setIsTogglingUpscale(false);
     }
-  }, [relativePath, isUpscaleMarked, rawMetadata]);
+  }, [relativePath, isUpscaleMarked, rawMetadata, mirrorMarkRating]);
 
   const handleOpenAnimateMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
     setAnimateMenuAnchorEl(event.currentTarget);
@@ -753,13 +779,16 @@ export function ImageDetailModal({
               }
             : prev,
         );
+        if (!isRemoving) {
+          mirrorMarkRating();
+        }
       } catch {
         setAnimateError("Could not update the animate mark. Try again.");
       } finally {
         setIsTogglingAnimate(false);
       }
     },
-    [relativePath, animateAction, rawMetadata],
+    [relativePath, animateAction, rawMetadata, mirrorMarkRating],
   );
 
   const handleAnimateMenuItemClick = useCallback(
@@ -800,12 +829,15 @@ export function ImageDetailModal({
       setMarksState((prev) =>
         prev.path === relativePath ? { ...prev, upscaleVideo: nextUpscaleVideo } : prev,
       );
+      if (nextUpscaleVideo) {
+        mirrorMarkRating();
+      }
     } catch {
       setUpscaleVideoError("Could not update the upscale mark. Try again.");
     } finally {
       setIsTogglingUpscaleVideo(false);
     }
-  }, [relativePath, isUpscaleVideoMarked]);
+  }, [relativePath, isUpscaleVideoMarked, mirrorMarkRating]);
 
   const handleOpenExtendMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
     setExtendMenuAnchorEl(event.currentTarget);
@@ -853,13 +885,16 @@ export function ImageDetailModal({
               }
             : prev,
         );
+        if (!isRemoving) {
+          mirrorMarkRating();
+        }
       } catch {
         setExtendError("Could not update the extend mark. Try again.");
       } finally {
         setIsTogglingExtend(false);
       }
     },
-    [relativePath, extendAction],
+    [relativePath, extendAction, mirrorMarkRating],
   );
 
   const handleExtendMenuItemClick = useCallback(
@@ -1047,14 +1082,16 @@ export function ImageDetailModal({
               {mobileView === "image" ? <InfoIcon /> : <PhotoIcon />}
             </IconButton>
 
-            <IconButton
-              aria-label="Previous image"
-              onClick={onNavigatePrevious}
-              disabled={!canNavigatePrevious}
-              sx={NAV_BUTTON_LEFT_SX}
-            >
-              <ChevronLeftIcon />
-            </IconButton>
+            {!isRandomMode && (
+              <IconButton
+                aria-label="Previous image"
+                onClick={onNavigatePrevious}
+                disabled={!canNavigatePrevious}
+                sx={NAV_BUTTON_LEFT_SX}
+              >
+                <ChevronLeftIcon />
+              </IconButton>
+            )}
 
             <IconButton
               aria-label="Next image"

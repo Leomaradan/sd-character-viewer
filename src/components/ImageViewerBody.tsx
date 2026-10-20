@@ -49,7 +49,8 @@ interface IImageViewerBodyProps {
   seenRelativePaths?: ReadonlySet<string>;
   // Ratings set since the library was loaded (null = cleared), applied the same way.
   ratingOverrides?: ReadonlyMap<string, TRating | null>;
-  onImageSelect: (image: IImageItem, filteredImages: IImageItem[]) => void;
+  // `isRandom`: picked by the dice button, so the detail view opens in random mode.
+  onImageSelect: (image: IImageItem, filteredImages: IImageItem[], isRandom?: boolean) => void;
   onLibraryLoad: (library: ILibraryData) => void;
 
   setSelectedCharacter: (characterName: string | null) => void;
@@ -469,7 +470,7 @@ export const ImageViewerBody = ({
 
     const randomImage = pickRandomItem(pool);
     if (randomImage) {
-      onImageSelect(randomImage, pool);
+      onImageSelect(randomImage, pool, true);
     }
   }, [
     randomRequestToken,
