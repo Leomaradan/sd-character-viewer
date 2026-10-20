@@ -40,6 +40,11 @@ export const parseShowOnlyNewImages = (queryParams: IQueryParamsReader): boolean
   return rawValue === "1" || rawValue === "true";
 };
 
+export const parseShowOnlyUpscaled = (queryParams: IQueryParamsReader): boolean => {
+  const rawValue = queryParams.get("upscaled")?.trim().toLowerCase();
+  return rawValue === "1" || rawValue === "true";
+};
+
 export const parseCharacterSortOrder = (queryParams: IQueryParamsReader): TCharacterSortOrder => {
   const rawValue = queryParams.get("sort")?.trim().toLowerCase();
   return rawValue === "date" ? "date" : "name";

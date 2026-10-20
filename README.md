@@ -118,7 +118,7 @@ Example `pose-filters.json`:
 The dice button in the top app bar picks something at random from what the current view shows:
 
 - On the base **Characters** page (no character selected), it opens a random character among the visible ones (respecting the media type and metadata filters).
-- Anywhere else (a character's page, the Styles view, the Poses view), it opens a random image or video from the currently filtered grid in the detail view, so previous/next navigation keeps working within that list. Since the grid already respects the Images/Videos/Both switch, a selection of only pictures yields a picture, only videos a video.
+- Anywhere else (a character's page, the Styles view, the Poses view), it opens a random image or video from the currently filtered grid in the detail view, in **random mode**: the URL gets a `random=1` flag, there's no previous button, and next (button, right arrow key or swipe) shows another random file from that same list (never the one already shown). Closing the detail view removes the flag. Since the grid already respects the Images/Videos/Both switch, a selection of only pictures yields a picture, only videos a video.
 
 ## New Images
 
@@ -155,7 +155,7 @@ This script walks every PNG and MP4 under `characters/` in `SD_IMAGES_ROOT` and 
 
 When `SD_ALLOW_DELETE` is enabled, the side menu's **Tools** section shows a **Library Toolbox** button. It opens a popup listing the library-maintenance tools; picking one closes the toolbox and opens that tool.
 
-- **Duplicate Finder**: groups images sharing the same style, character, and pose (in the same folder) so you can keep the ones you want; validating deletes the others and renumbers the survivors.
+- **Duplicate Finder**: groups images sharing the same style, character, and pose (in the same folder) so you can keep the ones you want; validating deletes the others and renumbers the survivors, rating each unrated survivor **OK**.
 - **Pose Conformity** (only listed when `config.json` has a non-empty `poses` array): shows every image and video whose pose isn't one of the standard `poses` or `specialPoses`, each with one button per standard pose (special poses get no button) plus **Custom**.
   - What counts as the pose follows the [pose naming rules](#image-folder-structure): case is ignored, as are the variant number and `[...]` annotations; an image is checked by its whole name (`Casual.png`), a video by its whole name (`Casual.mp4`) or by its pose part (`Dancing (Casual).mp4` matches `Casual`). `Base` always counts as a standard pose, so thumbnails are never flagged.
   - Picking a pose renames the file. An image, or a video without an animation part, becomes `<Pose>`; a video named `Animation (Old)` becomes `Animation (Pose)`, except when the pose is the animation itself (`Dancing (Test).mp4` + `Dancing` gives `Dancing.mp4`, not `Dancing (Dancing).mp4`). The variant number is dropped and `[...]` annotations are kept. If the name is already taken, a number is added (`Dancing 2.mp4`, `Dancing 3.mp4`…, always at the very end, after annotations: `Casual [Upscaled] 2.png`, `Casual (no lora) 2.png`, so the Duplicate Finder groups them with `Casual [Upscaled].png` / `Casual (no lora).png`). As with [Manual Rename](#manual-rename), the preview, discovery date, marks and video links follow the file.
@@ -168,10 +168,13 @@ Both tools start filtered on the current view: on the Styles view, the style sho
 
 The detail view has three rating buttons, **Bad**, **OK** and **Good** (shown when `SD_ALLOW_DELETE` is enabled, for images and videos):
 
+- Setting a rating moves on to the next file (another random one in [random mode](#random-pick)); clearing one stays on the file. After **Bad**, the detail view closes only when there's no next file.
+- Some actions rate a file that has no rating yet (an existing rating is kept): marking it for **Upscale**, **Animate** or **Extend** rates it **Good**, and keeping it when validating a group in the Duplicate Finder rates it **OK**.
 - **Bad** is the Redraw action: the file is renumbered so its pose can be generated again, and the renamed file is rated **bad** in `ratings.json`, so it stays out of the **Unrated** selection. Clicking **Bad** on a file already rated bad only clears its rating (no second rename). Files redrawn before bad ratings existed stay unrated. The Duplicate Finder's **Redraw primary** rates the file bad the same way.
 - **OK** and **Good** are saved in `ratings.json` (main root, keyed by file path). Clicking the active rating again clears it. A rating follows the file when it's renamed (manually, by Pose Conformity, or by the Duplicate Finder's renumbering) and is dropped when the file is deleted; a redrawn file's earlier rating is replaced by **bad**.
 - Good files show a thumbs-up badge in the grids, bad files a red thumbs-down badge.
 - Next to **Images / Videos / Both**, every view has an **Unrated / Good / All** filter (default **All**, kept in the URL as `?rating=unrated|good`): **Unrated** shows only files with no rating yet (so bad, OK and Good files are hidden), **Good** only Good files.
+- Next to those, an **Upscaled** toggle (off by default, kept in the URL as `?upscaled=1`) shows only upscaled images and videos: files with an `[Upscaled]` [annotation](#image-folder-structure) in their name (any case, for example `Casual [Upscaled].png` or `Dancing (Casual) [upscaled] 2.mp4`). It combines with the other filters.
 - Ratings aren't part of the library index: they're read from `ratings.json` on each request (re-parsed only when the file changes), so rating a file never triggers a rescan and a hand edit shows up on the next load.
 
 ## Manual Rename
@@ -189,6 +192,7 @@ The image detail view has **Upscale** and **Animate** buttons (alongside the [ra
 
 - Both buttons are shown only when `SD_ALLOW_DELETE` is enabled, the same flag that gates the rating buttons (Bad = Redraw) and Delete.
 - **Upscale** is a plain toggle: click to mark, click again to unmark.
+- Marking an unrated file (Upscale, Animate, and for videos Upscale and Extend) also rates it **Good** (see [Rating](#rating)); unmarking doesn't change the rating, and neither does an Edit Animation save.
 - **Animate** opens a dropdown of the animation names configured in `config.json`'s `animations` array (see [Image Folder Structure](#image-folder-structure) above); the button itself is hidden when that list is empty. Picking a name marks the image with that action; picking the currently-marked name again unmarks it. Picking a different name switches the mark to the new action.
 - Marks are stored as flat JSON objects, one entry per marked image, keyed by the image's relative path (the same relative path used by `GET /api/image?path=...`):
   - `to-upscale.json` — value is the image's raw PNG generation metadata (the `parameters` text chunk) as a string.
