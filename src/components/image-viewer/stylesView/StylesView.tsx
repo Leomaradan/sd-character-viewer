@@ -17,6 +17,7 @@ import { FLEXWRAP, STACK_SPACING } from "../common/constants";
 import { MediaTypeFilter } from "../common/MediaTypeFilter";
 import { RatingFilter } from "../common/RatingFilter";
 import { SearchField } from "../common/SearchField";
+import { UpscaledFilter } from "../common/UpscaledFilter";
 import { StyleView } from "./StyleView";
 
 interface IStylesViewProps {
@@ -33,6 +34,8 @@ interface IStylesViewProps {
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   ratingFilter: TRatingFilter;
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
+  showOnlyUpscaled: boolean;
+  onShowOnlyUpscaledChange: (enabled: boolean) => void;
   onStyleSelect: (style: string) => void;
   onMetadataFilterChange: (event: SelectChangeEvent) => void;
   onClearMetadataFilter: () => void;
@@ -54,6 +57,8 @@ export const StylesView = ({
   onMediaTypeFilterChange,
   ratingFilter,
   onRatingFilterChange,
+  showOnlyUpscaled,
+  onShowOnlyUpscaledChange,
   onStyleSelect,
   onMetadataFilterChange,
   onClearMetadataFilter,
@@ -95,6 +100,10 @@ export const StylesView = ({
           onMediaTypeFilterChange={onMediaTypeFilterChange}
         />
         <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
+        <UpscaledFilter
+          showOnlyUpscaled={showOnlyUpscaled}
+          onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
+        />
       </Stack>
 
       <TextField
@@ -127,6 +136,7 @@ export const StylesView = ({
             selectedMetadataFilterId,
             mediaTypeFilter,
             ratingFilter,
+            showOnlyUpscaled,
             showDate,
             showNewBadge,
           ].join("|")}

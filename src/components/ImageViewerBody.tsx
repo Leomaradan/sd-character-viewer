@@ -22,6 +22,7 @@ import {
   filterCharactersByMetadataOption,
   applyRatingOverride,
   formatStyleLabel,
+  isUpscaledFile,
   matchesRatingFilter,
   pickRandomItem,
 } from "@/components/image-viewer/common/utils";
@@ -38,6 +39,7 @@ interface IImageViewerBodyProps {
   characterSortOrder: TCharacterSortOrder;
   mediaTypeFilter: TMediaTypeFilter;
   ratingFilter: TRatingFilter;
+  showOnlyUpscaled: boolean;
   styleViewStyle: string;
   poseViewStyle: string;
   characterDetailStyle: string;
@@ -62,6 +64,7 @@ interface IImageViewerBodyProps {
   setCharacterDetailPose: (pose: string) => void;
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
+  onShowOnlyUpscaledChange: (enabled: boolean) => void;
 }
 
 const NO_SEEN_PATHS: ReadonlySet<string> = new Set();
@@ -83,6 +86,7 @@ export const ImageViewerBody = ({
   characterSortOrder,
   mediaTypeFilter,
   ratingFilter,
+  showOnlyUpscaled,
   styleViewStyle,
   poseViewStyle,
   characterDetailStyle,
@@ -102,6 +106,7 @@ export const ImageViewerBody = ({
   setCharacterDetailPose,
   onMediaTypeFilterChange,
   onRatingFilterChange,
+  onShowOnlyUpscaledChange,
 }: Readonly<IImageViewerBodyProps>) => {
   const [library, setLibrary] = useState<ILibraryData>(DEFAULT_LIBRARY);
   const [isLoading, setIsLoading] = useState(true);
@@ -247,9 +252,10 @@ export const ImageViewerBody = ({
     return newOnlyImages.filter(
       (image) =>
         (mediaTypeFilter === "both" || image.mediaType === mediaTypeFilter) &&
-        matchesRatingFilter(image, ratingFilter),
+        matchesRatingFilter(image, ratingFilter) &&
+        (!showOnlyUpscaled || isUpscaledFile(image)),
     );
-  }, [libraryImages, showOnlyNewImages, mediaTypeFilter, ratingFilter]);
+  }, [libraryImages, showOnlyNewImages, mediaTypeFilter, ratingFilter, showOnlyUpscaled]);
 
   const charactersForBrowseStyle = useMemo(() => {
     const visibleCharacterNames = new Set(filteredImages.map((image) => image.characterName));
@@ -552,6 +558,8 @@ export const ImageViewerBody = ({
         onMediaTypeFilterChange={onMediaTypeFilterChange}
         ratingFilter={ratingFilter}
         onRatingFilterChange={onRatingFilterChange}
+        showOnlyUpscaled={showOnlyUpscaled}
+        onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
         onSelectCharacter={setSelectedCharacter}
         onCharacterDetailStyleChange={setCharacterDetailStyle}
         onCharacterDetailPoseChange={setCharacterDetailPose}
@@ -574,6 +582,8 @@ export const ImageViewerBody = ({
         onMediaTypeFilterChange={onMediaTypeFilterChange}
         ratingFilter={ratingFilter}
         onRatingFilterChange={onRatingFilterChange}
+        showOnlyUpscaled={showOnlyUpscaled}
+        onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
         onStyleSelect={onStyleSelect}
         onMetadataFilterChange={onMetadataFilterChange}
         onClearMetadataFilter={onClearMetadataFilter}
@@ -600,6 +610,8 @@ export const ImageViewerBody = ({
       onMediaTypeFilterChange={onMediaTypeFilterChange}
       ratingFilter={ratingFilter}
       onRatingFilterChange={onRatingFilterChange}
+      showOnlyUpscaled={showOnlyUpscaled}
+      onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
       onClearPoses={onClearPoses}
       onTogglePose={togglePoseFilter}
       onPoseStyleChange={setPoseViewStyle}

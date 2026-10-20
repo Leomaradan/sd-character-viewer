@@ -18,6 +18,7 @@ import { MediaTypeFilter } from "../common/MediaTypeFilter";
 import { RatingFilter } from "../common/RatingFilter";
 import { SearchField } from "../common/SearchField";
 import { TagPicker } from "../common/TagPicker";
+import { UpscaledFilter } from "../common/UpscaledFilter";
 import { StyleView } from "../stylesView/StyleView";
 import { PoseView } from "./PoseView";
 
@@ -44,6 +45,8 @@ interface IPosesViewProps {
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   ratingFilter: TRatingFilter;
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
+  showOnlyUpscaled: boolean;
+  onShowOnlyUpscaledChange: (enabled: boolean) => void;
   onClearPoses: () => void;
   onTogglePose: (pose: string) => void;
   onPoseStyleChange: (style: string) => void;
@@ -69,6 +72,8 @@ export const PosesView = ({
   onMediaTypeFilterChange,
   ratingFilter,
   onRatingFilterChange,
+  showOnlyUpscaled,
+  onShowOnlyUpscaledChange,
   onClearPoses,
   onTogglePose,
   onPoseStyleChange,
@@ -169,6 +174,10 @@ export const PosesView = ({
           onMediaTypeFilterChange={onMediaTypeFilterChange}
         />
         <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
+        <UpscaledFilter
+          showOnlyUpscaled={showOnlyUpscaled}
+          onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
+        />
       </Stack>
 
       <TextField
@@ -202,6 +211,7 @@ export const PosesView = ({
             selectedMetadataFilterId,
             mediaTypeFilter,
             ratingFilter,
+            showOnlyUpscaled,
             showDate,
             showNewBadge,
           ].join("|")}

@@ -50,6 +50,7 @@ import {
   parseCharacterSortOrder,
   parseMediaTypeFilter,
   parseRatingFilter,
+  parseShowOnlyUpscaled,
   parsePoseViewStyle,
   parseShowOnlyNewImages,
   parseSelectedMetadataFilterId,
@@ -156,6 +157,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const characterSortOrder = useMemo(() => parseCharacterSortOrder(searchParams), [searchParams]);
   const mediaTypeFilter = useMemo(() => parseMediaTypeFilter(searchParams), [searchParams]);
   const ratingFilter = useMemo(() => parseRatingFilter(searchParams), [searchParams]);
+  const showOnlyUpscaled = useMemo(() => parseShowOnlyUpscaled(searchParams), [searchParams]);
   const styleViewStyle = useMemo(() => parseStyleViewStyle(searchParams), [searchParams]);
   const poseViewStyle = useMemo(() => parsePoseViewStyle(searchParams), [searchParams]);
   const selectedMetadataFilterId = useMemo(
@@ -556,6 +558,13 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     [updateQueryParams],
   );
 
+  const handleShowOnlyUpscaledChange = useCallback(
+    (enabled: boolean) => {
+      updateQueryParams({ upscaled: enabled ? "1" : null });
+    },
+    [updateQueryParams],
+  );
+
   const handleMediaTypeFilterChange = useCallback(
     (nextMediaTypeFilter: TMediaTypeFilter) => {
       updateQueryParams({ media: nextMediaTypeFilter === "both" ? null : nextMediaTypeFilter });
@@ -820,6 +829,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           characterSortOrder={characterSortOrder}
           mediaTypeFilter={mediaTypeFilter}
           ratingFilter={ratingFilter}
+          showOnlyUpscaled={showOnlyUpscaled}
           styleViewStyle={styleViewStyle}
           poseViewStyle={poseViewStyle}
           characterDetailStyle={characterDetailStyle}
@@ -837,6 +847,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           setCharacterDetailPose={setCharacterDetailPose}
           onMediaTypeFilterChange={handleMediaTypeFilterChange}
           onRatingFilterChange={handleRatingFilterChange}
+          onShowOnlyUpscaledChange={handleShowOnlyUpscaledChange}
           onImageSelect={handleOpenImageModal}
           onLibraryLoad={handleLibraryLoad}
         />

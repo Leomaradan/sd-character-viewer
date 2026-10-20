@@ -174,6 +174,7 @@ The detail view has three rating buttons, **Bad**, **OK** and **Good** (shown wh
 - **OK** and **Good** are saved in `ratings.json` (main root, keyed by file path). Clicking the active rating again clears it. A rating follows the file when it's renamed (manually, by Pose Conformity, or by the Duplicate Finder's renumbering) and is dropped when the file is deleted; a redrawn file's earlier rating is replaced by **bad**.
 - Good files show a thumbs-up badge in the grids, bad files a red thumbs-down badge.
 - Next to **Images / Videos / Both**, every view has an **Unrated / Good / All** filter (default **All**, kept in the URL as `?rating=unrated|good`): **Unrated** shows only files with no rating yet (so bad, OK and Good files are hidden), **Good** only Good files.
+- Next to those, an **Upscaled** toggle (off by default, kept in the URL as `?upscaled=1`) shows only upscaled images and videos: files with an `[Upscaled]` [annotation](#image-folder-structure) in their name (any case, for example `Casual [Upscaled].png` or `Dancing (Casual) [upscaled] 2.mp4`). It combines with the other filters.
 - Ratings aren't part of the library index: they're read from `ratings.json` on each request (re-parsed only when the file changes), so rating a file never triggers a rescan and a hand edit shows up on the next load.
 
 ## Manual Rename
