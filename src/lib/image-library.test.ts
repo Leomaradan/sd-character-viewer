@@ -1480,6 +1480,20 @@ describe("readImageLibrary in-memory cache", () => {
     expect(hasImage(await readImageLibrary(), "Jump.png")).toBe(false);
     expect(readFileSpy).not.toHaveBeenCalled();
   });
+
+  it("ignores a library kept in memory by an older cache version", async () => {
+    await setUpLibrary("memory-version");
+
+    await readImageLibrary();
+    // A dev hot reload keeps globalThis, so the memory entry can predate a version bump.
+    const state = Reflect.get(globalThis, Symbol.for("sd-character-viewer.library-cache")) as {
+      memory: { version: number; library: { standardPoses: string[] } };
+    };
+    state.memory.version = 0;
+    state.memory.library.standardPoses = ["Stale"];
+
+    expect((await readImageLibrary()).standardPoses).toEqual([]);
+  });
 });
 
 describe("refreshLibraryAfterChange", () => {
