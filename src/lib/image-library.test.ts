@@ -1137,7 +1137,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 12,
+          version: 13,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],
