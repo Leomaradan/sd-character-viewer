@@ -70,6 +70,12 @@ describe("getPoseFilterName", () => {
     expect(getPoseFilterName("Casual 3", "video")).toBe("Casual");
   });
 
+  it("drops the source image's variant number from an animation video's pose part", () => {
+    expect(getPoseFilterName("Dance (Close Up 3)", "video")).toBe("Close Up");
+    expect(getPoseFilterName("Dance (Close Up 3) 2", "video")).toBe("Close Up");
+    expect(getPoseFilterName("Dance (3)", "video")).toBe("3");
+  });
+
   it("falls back to the raw name when it is only a bracket annotation", () => {
     expect(getPoseFilterName("[Upscaled]", "image")).toBe("[Upscaled]");
   });

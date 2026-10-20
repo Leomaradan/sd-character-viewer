@@ -124,6 +124,9 @@ export interface ILibraryData {
   animations: IAnimationConfig[];
   // config.json "poses": the standard pose names the Pose Conformity tool checks files against.
   standardPoses: string[];
+  // config.json "specialPoses": poses that exist and count as conforming, but aren't offered as
+  // rename targets in the Pose Conformity tool.
+  specialPoses: string[];
   images: IImageItem[];
   characters: ICharacterSummary[];
   poses: IPoseSummary[];

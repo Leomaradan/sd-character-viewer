@@ -19,7 +19,7 @@ const LIBRARY_INDEX_CACHE_FILE_SUFFIX = ".library-index.json";
 // Bumped whenever a cached ILibraryData's shape changes, so a cache written by an older version
 // of the app (e.g. one predating the `mediaType` field) is treated as a miss and rebuilt, rather
 // than being returned as-is with the new field silently undefined.
-const LIBRARY_INDEX_CACHE_VERSION = 11;
+const LIBRARY_INDEX_CACHE_VERSION = 13;
 const NEW_IMAGE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DEFAULT_LIBRARY_CACHE_TTL_SECONDS = 120;
 
@@ -49,8 +49,10 @@ export interface ILibraryIndexSnapshot {
 // the (multi-MB) index cache file, nor walk every character directory: within the TTL only the
 // config files and the index cache file itself are stat()ed. `cacheFileModifiedAt` ties it to the
 // file on disk, so deleting or rewriting that file (removeLibraryIndexCache, another process)
-// drops it too.
+// drops it too. `version` drops one kept across a dev hot reload that bumped
+// LIBRARY_INDEX_CACHE_VERSION.
 interface ILibraryMemoryCache {
+  version: number;
   cachePath: string;
   extraRootPaths: string[];
   cacheFileModifiedAt: number;
@@ -272,6 +274,7 @@ const rememberLibrary = async (
     cacheFileModifiedAt === null
       ? null
       : {
+          version: LIBRARY_INDEX_CACHE_VERSION,
           cachePath,
           extraRootPaths,
           cacheFileModifiedAt,
@@ -293,7 +296,8 @@ const readLibraryMemoryCache = async (
 ): Promise<ILibraryData | null | undefined> => {
   const { memory } = getLibraryCacheState();
   if (
-    memory?.cachePath !== cachePath ||
+    memory?.version !== LIBRARY_INDEX_CACHE_VERSION ||
+    memory.cachePath !== cachePath ||
     !areStringArraysEqual(memory.extraRootPaths, extraRootPaths) ||
     (await getFileModifiedAt(cachePath)) !== memory.cacheFileModifiedAt
   ) {
@@ -490,7 +494,8 @@ export const getRememberedLibrary = async (
   const { memory } = getLibraryCacheState();
 
   if (
-    memory?.cachePath !== cachePath ||
+    memory?.version !== LIBRARY_INDEX_CACHE_VERSION ||
+    memory.cachePath !== cachePath ||
     !areStringArraysEqual(memory.extraRootPaths, extraRootPaths) ||
     (await getFileModifiedAt(cachePath)) !== memory.cacheFileModifiedAt ||
     !areSnapshotsEqual(await collectConfigFileSnapshots(rootPath), memory.snapshot.configFiles)

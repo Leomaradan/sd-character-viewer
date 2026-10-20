@@ -140,6 +140,20 @@ describe("GET /api/pose-conformity", () => {
     ]);
   });
 
+  it("treats special poses as conforming without offering them as targets", async () => {
+    allowRequests();
+    vi.mocked(readImageLibrary).mockResolvedValue(buildLibrary({ specialPoses: ["Odd"] }));
+
+    const response = await GET(new Request("http://localhost/api/pose-conformity"));
+    const data = (await response.json()) as { standardPoses: string[]; items: IImageItem[] };
+
+    expect(data.standardPoses).toEqual(["Casual", "Dancing"]);
+    expect(data.items.map((item) => item.relativePath)).toEqual([
+      "characters/3d/Anna/Casul.png",
+      "characters/3d/Anna/Jumping (Test).mp4",
+    ]);
+  });
+
   it("returns no items when no standard poses are configured", async () => {
     allowRequests();
     vi.mocked(readImageLibrary).mockResolvedValue(buildLibrary({ standardPoses: [] }));
@@ -219,6 +233,8 @@ describe("POST /api/pose-conformity", () => {
     allowRequests();
 
     expect((await post({ path: "characters/3d/Anna/Casul.png", pose: "Nope" })).status).toBe(400);
+    vi.mocked(readImageLibrary).mockResolvedValue(buildLibrary({ specialPoses: ["Odd"] }));
+    expect((await post({ path: "characters/3d/Anna/Casul.png", pose: "Odd" })).status).toBe(400);
   });
 
   it("renames an image to the standard pose spelling, numbering on conflict", async () => {

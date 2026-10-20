@@ -33,7 +33,8 @@ const isPoseConformityManagementAllowed = (): boolean => {
   return readBooleanEnvFlag(process.env[SD_ALLOW_DELETE_ENV_KEY]);
 };
 
-// Lists the images/videos whose pose isn't one of config.json's standard "poses" (see
+// Lists the images/videos whose pose isn't one of config.json's standard "poses" or
+// "specialPoses" (see
 // isPoseConforming), minus the ones already marked as a custom pose.
 export const GET = async (request: Request) => {
   if (isMisconfigured()) {
@@ -53,7 +54,8 @@ export const GET = async (request: Request) => {
   const customPoseEntries = await readCustomPoseEntries(library.rootPath);
   const items = library.images.filter(
     (image) =>
-      !(image.relativePath in customPoseEntries) && !isPoseConforming(image, library.standardPoses),
+      !(image.relativePath in customPoseEntries) &&
+      !isPoseConforming(image, library.standardPoses, library.specialPoses),
   );
 
   return Response.json({ standardPoses: library.standardPoses, items });

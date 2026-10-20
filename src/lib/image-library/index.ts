@@ -84,6 +84,7 @@ interface ILibraryConfig {
   // normalizeAnimationsConfig, not Ajv - see its comment.
   animations?: unknown[];
   poses?: string[];
+  specialPoses?: string[];
 }
 
 interface IStyleConfig {
@@ -92,6 +93,7 @@ interface IStyleConfig {
   styleLabels: Partial<Record<string, string>>;
   animations: IAnimationConfig[];
   standardPoses: string[];
+  specialPoses: string[];
 }
 
 interface ICharacterAccumulator {
@@ -160,6 +162,10 @@ const libraryConfigValidator = ajv.compile<ILibraryConfig>({
       type: "array",
     },
     poses: {
+      type: "array",
+      items: { type: "string" },
+    },
+    specialPoses: {
       type: "array",
       items: { type: "string" },
     },
@@ -291,6 +297,20 @@ const normalizeStandardPoses = (poses: string[] | undefined): string[] => {
   return normalized;
 };
 
+// A pose listed in both "poses" and "specialPoses" stays a standard pose (offered as a rename
+// target), so it's only kept once.
+const normalizeSpecialPoses = (
+  specialPoses: string[] | undefined,
+  standardPoses: string[] | undefined,
+): string[] => {
+  const standardKeys = new Set(
+    normalizeStandardPoses(standardPoses).map((pose) => pose.toLowerCase()),
+  );
+  return normalizeStandardPoses(specialPoses).filter(
+    (pose) => !standardKeys.has(pose.toLowerCase()),
+  );
+};
+
 const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
   const configPath = path.join(rootPath, LIBRARY_CONFIG_FILE_NAME);
   const fallbackStyles = [...STYLES];
@@ -309,6 +329,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         styleLabels: fallbackStyleLabels,
         animations: fallbackAnimations,
         standardPoses: [],
+        specialPoses: [],
       };
     }
 
@@ -318,6 +339,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       styleLabels: fallbackStyleLabels,
       animations: fallbackAnimations,
       standardPoses: [],
+      specialPoses: [],
     };
   }
 
@@ -331,6 +353,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         styleLabels: fallbackStyleLabels,
         animations: fallbackAnimations,
         standardPoses: [],
+        specialPoses: [],
       };
     }
 
@@ -342,6 +365,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         styleLabels: fallbackStyleLabels,
         animations: normalizeAnimationsConfig(parsedContent.animations),
         standardPoses: normalizeStandardPoses(parsedContent.poses),
+        specialPoses: normalizeSpecialPoses(parsedContent.specialPoses, parsedContent.poses),
       };
     }
 
@@ -351,6 +375,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       styleLabels: normalizeStyleLabels(styles, parsedContent.styleLabels),
       animations: normalizeAnimationsConfig(parsedContent.animations),
       standardPoses: normalizeStandardPoses(parsedContent.poses),
+      specialPoses: normalizeSpecialPoses(parsedContent.specialPoses, parsedContent.poses),
     };
   } catch {
     // Fallback to legacy defaults when config.json is malformed.
@@ -360,6 +385,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       styleLabels: fallbackStyleLabels,
       animations: fallbackAnimations,
       standardPoses: [],
+      specialPoses: [],
     };
   }
 };
@@ -1158,6 +1184,7 @@ const createEmptyLibraryData = (
     styleLabels: styleConfig?.styleLabels ?? {},
     animations: styleConfig?.animations ?? [],
     standardPoses: styleConfig?.standardPoses ?? [],
+    specialPoses: styleConfig?.specialPoses ?? [],
     images: [],
     characters: [],
     poses: [],
@@ -1429,6 +1456,7 @@ const toLibraryData = (
     styleLabels: styleConfig.styleLabels,
     animations: styleConfig.animations,
     standardPoses: styleConfig.standardPoses,
+    specialPoses: styleConfig.specialPoses,
     images: state.imageItems,
     characters,
     poses,
@@ -1449,6 +1477,7 @@ const buildImageLibrary = async (): Promise<ILibraryData> => {
     styleLabels: {},
     animations: [],
     standardPoses: [],
+    specialPoses: [],
   };
 
   if (!rootPath) {
@@ -1737,6 +1766,7 @@ const refreshRememberedLibrary = async (
     styleLabels: library.styleLabels ?? {},
     animations: library.animations,
     standardPoses: library.standardPoses,
+    specialPoses: library.specialPoses,
   };
 
   sortImageItems(state.imageItems);

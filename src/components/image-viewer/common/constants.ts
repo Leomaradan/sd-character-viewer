@@ -40,6 +40,7 @@ export const DEFAULT_LIBRARY: ILibraryData = {
   styleLabels: {},
   animations: [],
   standardPoses: [],
+  specialPoses: [],
   images: [],
   characters: [],
   poses: [],

@@ -56,8 +56,10 @@ export const getPoseMatchName = (sanitizedStem: string): string => {
 };
 
 // The name an item is filtered by in the pose filters: annotations and the variant number are
-// ignored, and for a video named "Animation (Pose)" only the pose part counts.
-// "Casual 2 [Upscaled]" -> "Casual"; "Dancing (Casual) 2 [Extended]" (video) -> "Casual".
+// ignored, and for a video named "Animation (Pose)" only the pose part counts, without the
+// variant number of the image it was generated from.
+// "Casual 2 [Upscaled]" -> "Casual"; "Dancing (Casual) 2 [Extended]" (video) -> "Casual";
+// "Dance (Close Up 3) 2" (video) -> "Close Up".
 // (A file matching a pose-filters.json pattern keeps its full match name instead - see
 // applyPosePatternFilterIds in image-library.)
 export const getPoseFilterName = (sanitizedStem: string, mediaType: TMediaType): string => {
@@ -66,7 +68,7 @@ export const getPoseFilterName = (sanitizedStem: string, mediaType: TMediaType):
   if (mediaType === "video") {
     const animationPose = splitAnimationPose(base);
     if (animationPose) {
-      return animationPose.pose;
+      return splitVariantSuffix(animationPose.pose).base;
     }
   }
 

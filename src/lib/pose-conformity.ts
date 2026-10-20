@@ -6,19 +6,22 @@ import { splitAnimationPose, splitVariantSuffix, stripAnnotations } from "./pose
 const ALWAYS_CONFORMING_POSES = ["Base"];
 
 // An item conforms when its pose (poseFilterName: annotations and variant number ignored, and
-// only the pose part of an "Animation (Pose)" video) is one of the standard poses, compared
+// only the pose part of an "Animation (Pose)" video) is one of the standard or special poses, compared
 // case-insensitively. An item matching a pose-filters.json pattern ("With Somebody"...) has its
 // pose defined by that pattern, so it conforms too.
 export const isPoseConforming = (
   item: Pick<IImageItem, "poseFilterName" | "posePatternFilterIds">,
   standardPoses: readonly string[],
+  specialPoses: readonly string[] = [],
 ): boolean => {
   if (item.posePatternFilterIds.length > 0) {
     return true;
   }
 
   const allowedPoses = new Set(
-    [...standardPoses, ...ALWAYS_CONFORMING_POSES].map((pose) => pose.toLowerCase()),
+    [...standardPoses, ...specialPoses, ...ALWAYS_CONFORMING_POSES].map((pose) =>
+      pose.toLowerCase(),
+    ),
   );
   return allowedPoses.has(item.poseFilterName.trim().toLowerCase());
 };
