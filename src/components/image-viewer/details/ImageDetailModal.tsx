@@ -176,6 +176,8 @@ interface IMetadataState {
 
 interface IMarksState {
   path: string | null;
+  // False until GET /api/marks answers: the mark fields are then unknown, not empty.
+  loaded: boolean;
   upscale: boolean;
   animateAction: string | null;
   animatePrompt: string | null;
@@ -361,6 +363,7 @@ export function ImageDetailModal({
   } | null>(null);
   const [marksState, setMarksState] = useState<IMarksState>({
     path: null,
+    loaded: false,
     upscale: false,
     animateAction: null,
     animatePrompt: null,
@@ -498,6 +501,7 @@ export function ImageDetailModal({
     let isMounted = true;
     const emptyMarksState: IMarksState = {
       path: relativePath,
+      loaded: false,
       upscale: false,
       animateAction: null,
       animatePrompt: null,
@@ -517,6 +521,7 @@ export function ImageDetailModal({
         if (isMounted) {
           setMarksState({
             path: relativePath,
+            loaded: data !== null,
             upscale: data?.upscale ?? false,
             animateAction: data?.animate?.action ?? null,
             animatePrompt: data?.animate?.prompt ?? null,
@@ -732,8 +737,9 @@ export function ImageDetailModal({
   );
 
   // Keeps the "With action" filter in step with the marks, whether they were just toggled here
-  // or the loaded library was out of date. Only marks loaded for the shown file count.
-  const isCurrentMarksState = marksState.path === relativePath;
+  // or the loaded library was out of date. Only marks loaded for the shown file count: a failed
+  // fetch says nothing about them.
+  const isCurrentMarksState = marksState.path === relativePath && marksState.loaded;
   const hasPendingAction =
     marksState.upscale ||
     marksState.animateAction !== null ||

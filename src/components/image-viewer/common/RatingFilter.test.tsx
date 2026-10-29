@@ -35,4 +35,26 @@ describe("RatingFilter", () => {
 
     expect(onRatingFilterChange).toHaveBeenCalledWith(["good"]);
   });
+
+  it("keeps an earlier click when a second one comes before the filter prop updates", () => {
+    const onRatingFilterChange = vi.fn();
+    render(<RatingFilter ratingFilter={[]} onRatingFilterChange={onRatingFilterChange} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Unrated" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "OK" }));
+
+    expect(onRatingFilterChange).toHaveBeenLastCalledWith(["unrated", "ok"]);
+    expect(screen.getByRole("checkbox", { name: "Unrated" })).toBeChecked();
+  });
+
+  it("follows the filter prop when it changes", () => {
+    const { rerender } = render(
+      <RatingFilter ratingFilter={["good"]} onRatingFilterChange={vi.fn()} />,
+    );
+
+    rerender(<RatingFilter ratingFilter={["ok"]} onRatingFilterChange={vi.fn()} />);
+
+    expect(screen.getByRole("checkbox", { name: "OK" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Good" })).not.toBeChecked();
+  });
 });

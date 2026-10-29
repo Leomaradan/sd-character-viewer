@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Checkbox, FormControlLabel } from "@mui/material";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import type { TRatingFilter, TRatingFilterOption } from "@/types/library";
 
@@ -26,16 +26,25 @@ export const RatingFilter = ({
   ratingFilter,
   onRatingFilterChange,
 }: Readonly<IRatingFilterProps>) => {
+  // The prop only changes once the URL update lands, so clicks made before that build on the
+  // last selection made here instead (otherwise a quick second click would drop the first).
+  const [selection, setSelection] = useState(ratingFilter);
+  const [syncedRatingFilter, setSyncedRatingFilter] = useState(ratingFilter);
+  if (syncedRatingFilter !== ratingFilter) {
+    setSyncedRatingFilter(ratingFilter);
+    setSelection(ratingFilter);
+  }
+
   const handleChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const { checked, value } = event.target;
-      onRatingFilterChange(
-        RATING_FILTER_OPTIONS.filter((option) =>
-          option === value ? checked : ratingFilter.includes(option),
-        ),
+      const nextSelection = RATING_FILTER_OPTIONS.filter((option) =>
+        option === value ? checked : selection.includes(option),
       );
+      setSelection(nextSelection);
+      onRatingFilterChange(nextSelection);
     },
-    [ratingFilter, onRatingFilterChange],
+    [selection, onRatingFilterChange],
   );
 
   return (
@@ -48,7 +57,7 @@ export const RatingFilter = ({
             <Checkbox
               size="small"
               value={option}
-              checked={ratingFilter.includes(option)}
+              checked={selection.includes(option)}
               onChange={handleChange}
             />
           }

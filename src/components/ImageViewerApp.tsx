@@ -694,6 +694,9 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
 
   const handleLibraryLoad = useCallback((loadedLibrary: ILibraryData) => {
     setLibrary(loadedLibrary);
+    // Marks are read on each library request, so a fresh load is already up to date (and may
+    // reflect an external tool having processed a mark since it was set here).
+    setPendingActionOverrides((current) => (current.size === 0 ? current : new Map()));
   }, []);
 
   // The Library Toolbox tools start on the style shown by the Styles view (same fallback as
