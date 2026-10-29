@@ -50,6 +50,7 @@ import {
   resolveImageFilePath,
   resolvePreviewFilePath,
   selectAnimation,
+  setRatingEntriesIfUnrated,
   setRatingEntry,
   setToAnimateEntry,
   setToExtendEntry,
@@ -3046,6 +3047,26 @@ describe("ratings", () => {
     await setRatingEntry(tempRoot, "characters/3d/Anna/Casual.png", null);
     expect(ratingOf(await readImageLibrary(), "Casual.png")).toBeUndefined();
     expect(await readRatingsFile(tempRoot)).toEqual({});
+  });
+
+  it("rates only unrated files with setRatingEntriesIfUnrated", async () => {
+    const { tempRoot } = await setUpLibrary("if-unrated");
+    await setRatingEntry(tempRoot, "characters/3d/Anna/Casual.png", "bad");
+
+    await setRatingEntriesIfUnrated(
+      tempRoot,
+      ["characters/3d/Anna/Casual.png", "characters/3d/Anna/Base.png"],
+      "good",
+    );
+    expect(await readRatings(tempRoot)).toEqual({
+      "characters/3d/Anna/Casual.png": "bad",
+      "characters/3d/Anna/Base.png": "good",
+    });
+
+    const before = await fs.stat(path.join(tempRoot, "ratings.json"));
+    await setRatingEntriesIfUnrated(tempRoot, ["characters/3d/Anna/Base.png"], "ok");
+    expect((await readRatings(tempRoot))["characters/3d/Anna/Base.png"]).toBe("good");
+    expect((await fs.stat(path.join(tempRoot, "ratings.json"))).mtimeMs).toBe(before.mtimeMs);
   });
 
   it("ignores clearing a rating that doesn't exist", async () => {

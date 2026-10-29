@@ -144,6 +144,7 @@ describe("GET /api/pose-conformity", () => {
   it("treats special poses as conforming without offering them as targets", async () => {
     allowRequests();
     vi.mocked(readImageLibrary).mockResolvedValue(buildLibrary({ specialPoses: ["Odd"] }));
+    vi.mocked(readCustomPoseEntries).mockResolvedValue({});
 
     const response = await GET(new Request("http://localhost/api/pose-conformity"));
     const data = (await response.json()) as { standardPoses: string[]; items: IImageItem[] };

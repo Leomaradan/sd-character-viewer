@@ -19,6 +19,7 @@ import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
 import { MediaTypeFilter } from "../common/MediaTypeFilter";
 import { PendingActionFilter } from "../common/PendingActionFilter";
 import { RatingFilter } from "../common/RatingFilter";
+import { UpscaledFilter } from "../common/UpscaledFilter";
 import { filterCharactersByMetadataOption } from "../common/utils";
 import { PoseView } from "../posesView/PoseView";
 import { StyleView } from "../stylesView/StyleView";
@@ -47,6 +48,8 @@ interface ICharactersViewProps {
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
   withAction: boolean;
   onWithActionChange: (withAction: boolean) => void;
+  showOnlyUpscaled: boolean;
+  onShowOnlyUpscaledChange: (enabled: boolean) => void;
   onSelectCharacter: (characterName: string | null) => void;
   onCharacterDetailStyleChange: (style: string) => void;
   onCharacterDetailPoseChange: (pose: string) => void;
@@ -112,6 +115,8 @@ export const CharactersView = ({
   onRatingFilterChange,
   withAction,
   onWithActionChange,
+  showOnlyUpscaled,
+  onShowOnlyUpscaledChange,
   onSelectCharacter,
   onMetadataFilterChange,
   onClearMetadataFilter,
@@ -218,6 +223,10 @@ export const CharactersView = ({
             />
             <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
             <PendingActionFilter withAction={withAction} onWithActionChange={onWithActionChange} />
+            <UpscaledFilter
+              showOnlyUpscaled={showOnlyUpscaled}
+              onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
+            />
           </Stack>
 
           <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>
@@ -259,6 +268,7 @@ export const CharactersView = ({
                 mediaTypeFilter,
                 ratingFilter,
                 withAction,
+                showOnlyUpscaled,
                 characterSortOrder,
                 showNewBadge,
               ].join("|")}
@@ -278,6 +288,10 @@ export const CharactersView = ({
             />
             <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
             <PendingActionFilter withAction={withAction} onWithActionChange={onWithActionChange} />
+            <UpscaledFilter
+              showOnlyUpscaled={showOnlyUpscaled}
+              onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
+            />
           </Stack>
 
           <CategoryFilter

@@ -34,6 +34,7 @@ vi.mock("@/lib/image-library", async (importOriginal) => {
     setToExtendEntry: vi.fn(),
     setToUpscaleEntry: vi.fn(),
     setToUpscaleVideoEntry: vi.fn(),
+    setRatingEntriesIfUnrated: vi.fn(),
     isVideoFilePath: vi.fn(() => false),
   };
 });
@@ -54,6 +55,7 @@ import {
   removeToUpscaleEntry,
   removeToUpscaleVideoEntry,
   resolveImageFilePath,
+  setRatingEntriesIfUnrated,
   setToAnimateEntry,
   setToExtendEntry,
   setToUpscaleEntry,
@@ -389,6 +391,7 @@ describe("/api/marks PUT", () => {
     );
 
     expect(setToUpscaleEntry).toHaveBeenCalledWith("/tmp", "a.png", "raw");
+    expect(setRatingEntriesIfUnrated).toHaveBeenCalledWith("/tmp", ["a.png"], "good");
     expect(response.status).toBe(204);
   });
 
@@ -541,6 +544,8 @@ describe("/api/marks PUT", () => {
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ action: "Zoom In", prompt: "edited by user" });
+    // An Edit Animation save doesn't touch the rating.
+    expect(setRatingEntriesIfUnrated).not.toHaveBeenCalled();
   });
 
   it("passes metadata through as undefined when Edit Animation omits it (prompt-only edit), letting setToAnimateEntry resolve it atomically", async () => {

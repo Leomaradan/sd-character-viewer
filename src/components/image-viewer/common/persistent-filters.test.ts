@@ -10,6 +10,7 @@ import {
   parseWithActionFilter,
   parsePoseViewStyle,
   parseShowOnlyNewImages,
+  parseShowOnlyUpscaled,
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
   parseStyleViewStyle,
@@ -54,6 +55,18 @@ describe("persistent filters", () => {
       expect(parseShowOnlyNewImages(new URLSearchParams("new=0"))).toBe(false);
       expect(parseShowOnlyNewImages(new URLSearchParams("new=false"))).toBe(false);
       expect(parseShowOnlyNewImages(new URLSearchParams(""))).toBe(false);
+    });
+  });
+
+  describe("parseShowOnlyUpscaled", () => {
+    it("returns true for enabled values", () => {
+      expect(parseShowOnlyUpscaled(new URLSearchParams("upscaled=1"))).toBe(true);
+      expect(parseShowOnlyUpscaled(new URLSearchParams("upscaled=%20TRUE%20"))).toBe(true);
+    });
+
+    it("returns false for disabled or missing values", () => {
+      expect(parseShowOnlyUpscaled(new URLSearchParams("upscaled=0"))).toBe(false);
+      expect(parseShowOnlyUpscaled(new URLSearchParams(""))).toBe(false);
     });
   });
 

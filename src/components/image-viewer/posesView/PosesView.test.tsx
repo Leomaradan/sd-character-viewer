@@ -34,6 +34,8 @@ const createProps = (overrides?: Partial<React.ComponentProps<typeof PosesView>>
   onRatingFilterChange: vi.fn(),
   withAction: false,
   onWithActionChange: vi.fn(),
+  showOnlyUpscaled: false,
+  onShowOnlyUpscaledChange: vi.fn(),
   onClearPoses: vi.fn(),
   onTogglePose: vi.fn(),
   onPoseStyleChange: vi.fn(),

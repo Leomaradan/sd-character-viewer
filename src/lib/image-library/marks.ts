@@ -599,6 +599,28 @@ export const setRatingEntry = async (
   });
 };
 
+// Rates the files that have no rating yet; an existing rating (even "bad") is kept. Used when an
+// action implies a verdict: validating in the Duplicate Finder ("ok"), marking for
+// upscale/animate/extend ("good").
+export const setRatingEntriesIfUnrated = async (
+  rootPath: string,
+  relativePaths: readonly string[],
+  rating: TRating,
+): Promise<void> => {
+  await updateRatingEntries(rootPath, (entries) => {
+    const ratedAt = Date.now();
+    let hasChanges = false;
+    for (const relativePath of relativePaths) {
+      const normalizedPath = normalizeRelativePath(relativePath);
+      if (!(normalizedPath in entries)) {
+        entries[normalizedPath] = { rating, ratedAt };
+        hasChanges = true;
+      }
+    }
+    return hasChanges;
+  });
+};
+
 // Moves ratings along with files renamed/deleted together (Duplicate Finder renumbering): every
 // key of `moves` loses its rating, which then goes to its new path (null = file deleted). Done in
 // one pass so a chain like "3 -> 2, 2 -> deleted" can't lose or misplace a rating.

@@ -19,6 +19,7 @@ import { PendingActionFilter } from "../common/PendingActionFilter";
 import { RatingFilter } from "../common/RatingFilter";
 import { SearchField } from "../common/SearchField";
 import { TagPicker } from "../common/TagPicker";
+import { UpscaledFilter } from "../common/UpscaledFilter";
 import { StyleView } from "../stylesView/StyleView";
 import { PoseView } from "./PoseView";
 
@@ -47,6 +48,8 @@ interface IPosesViewProps {
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
   withAction: boolean;
   onWithActionChange: (withAction: boolean) => void;
+  showOnlyUpscaled: boolean;
+  onShowOnlyUpscaledChange: (enabled: boolean) => void;
   onClearPoses: () => void;
   onTogglePose: (pose: string) => void;
   onPoseStyleChange: (style: string) => void;
@@ -74,6 +77,8 @@ export const PosesView = ({
   onRatingFilterChange,
   withAction,
   onWithActionChange,
+  showOnlyUpscaled,
+  onShowOnlyUpscaledChange,
   onClearPoses,
   onTogglePose,
   onPoseStyleChange,
@@ -175,6 +180,10 @@ export const PosesView = ({
         />
         <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
         <PendingActionFilter withAction={withAction} onWithActionChange={onWithActionChange} />
+        <UpscaledFilter
+          showOnlyUpscaled={showOnlyUpscaled}
+          onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
+        />
       </Stack>
 
       <TextField
@@ -209,6 +218,7 @@ export const PosesView = ({
             mediaTypeFilter,
             ratingFilter,
             withAction,
+            showOnlyUpscaled,
             showDate,
             showNewBadge,
           ].join("|")}

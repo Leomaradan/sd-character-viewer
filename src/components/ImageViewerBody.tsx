@@ -23,6 +23,7 @@ import {
   applyPendingActionOverride,
   applyRatingOverride,
   formatStyleLabel,
+  isUpscaledFile,
   matchesRatingFilter,
   pickRandomItem,
 } from "@/components/image-viewer/common/utils";
@@ -40,6 +41,7 @@ interface IImageViewerBodyProps {
   mediaTypeFilter: TMediaTypeFilter;
   ratingFilter: TRatingFilter;
   withAction: boolean;
+  showOnlyUpscaled: boolean;
   styleViewStyle: string;
   poseViewStyle: string;
   characterDetailStyle: string;
@@ -53,7 +55,8 @@ interface IImageViewerBodyProps {
   ratingOverrides?: ReadonlyMap<string, TRating | null>;
   // Same for pending actions marked/unmarked since then.
   pendingActionOverrides?: ReadonlyMap<string, boolean>;
-  onImageSelect: (image: IImageItem, filteredImages: IImageItem[]) => void;
+  // `isRandom`: picked by the dice button, so the detail view opens in random mode.
+  onImageSelect: (image: IImageItem, filteredImages: IImageItem[], isRandom?: boolean) => void;
   onLibraryLoad: (library: ILibraryData) => void;
 
   setSelectedCharacter: (characterName: string | null) => void;
@@ -66,6 +69,7 @@ interface IImageViewerBodyProps {
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
   onWithActionChange: (withAction: boolean) => void;
+  onShowOnlyUpscaledChange: (enabled: boolean) => void;
 }
 
 const NO_SEEN_PATHS: ReadonlySet<string> = new Set();
@@ -89,6 +93,7 @@ export const ImageViewerBody = ({
   mediaTypeFilter,
   ratingFilter,
   withAction,
+  showOnlyUpscaled,
   styleViewStyle,
   poseViewStyle,
   characterDetailStyle,
@@ -110,6 +115,7 @@ export const ImageViewerBody = ({
   onMediaTypeFilterChange,
   onRatingFilterChange,
   onWithActionChange,
+  onShowOnlyUpscaledChange,
 }: Readonly<IImageViewerBodyProps>) => {
   const [library, setLibrary] = useState<ILibraryData>(DEFAULT_LIBRARY);
   const [isLoading, setIsLoading] = useState(true);
@@ -263,9 +269,17 @@ export const ImageViewerBody = ({
       (image) =>
         (mediaTypeFilter === "both" || image.mediaType === mediaTypeFilter) &&
         matchesRatingFilter(image, ratingFilter) &&
-        (!withAction || image.hasPendingAction === true),
+        (!withAction || image.hasPendingAction === true) &&
+        (!showOnlyUpscaled || isUpscaledFile(image)),
     );
-  }, [libraryImages, showOnlyNewImages, mediaTypeFilter, ratingFilter, withAction]);
+  }, [
+    libraryImages,
+    showOnlyNewImages,
+    mediaTypeFilter,
+    ratingFilter,
+    withAction,
+    showOnlyUpscaled,
+  ]);
 
   const charactersForBrowseStyle = useMemo(() => {
     const visibleCharacterNames = new Set(filteredImages.map((image) => image.characterName));
@@ -486,7 +500,7 @@ export const ImageViewerBody = ({
 
     const randomImage = pickRandomItem(pool);
     if (randomImage) {
-      onImageSelect(randomImage, pool);
+      onImageSelect(randomImage, pool, true);
     }
   }, [
     randomRequestToken,
@@ -570,6 +584,8 @@ export const ImageViewerBody = ({
         onRatingFilterChange={onRatingFilterChange}
         withAction={withAction}
         onWithActionChange={onWithActionChange}
+        showOnlyUpscaled={showOnlyUpscaled}
+        onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
         onSelectCharacter={setSelectedCharacter}
         onCharacterDetailStyleChange={setCharacterDetailStyle}
         onCharacterDetailPoseChange={setCharacterDetailPose}
@@ -594,6 +610,8 @@ export const ImageViewerBody = ({
         onRatingFilterChange={onRatingFilterChange}
         withAction={withAction}
         onWithActionChange={onWithActionChange}
+        showOnlyUpscaled={showOnlyUpscaled}
+        onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
         onStyleSelect={onStyleSelect}
         onMetadataFilterChange={onMetadataFilterChange}
         onClearMetadataFilter={onClearMetadataFilter}
@@ -622,6 +640,8 @@ export const ImageViewerBody = ({
       onRatingFilterChange={onRatingFilterChange}
       withAction={withAction}
       onWithActionChange={onWithActionChange}
+      showOnlyUpscaled={showOnlyUpscaled}
+      onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
       onClearPoses={onClearPoses}
       onTogglePose={togglePoseFilter}
       onPoseStyleChange={setPoseViewStyle}

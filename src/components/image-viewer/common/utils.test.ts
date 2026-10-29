@@ -11,6 +11,7 @@ import {
   formatFirstSeenDate,
   formatStyleLabel,
   getImageUrl,
+  isUpscaledFile,
   matchesRatingFilter,
   pickRandomItem,
 } from "./utils";
@@ -190,6 +191,22 @@ describe("applyPendingActionOverride", () => {
     expect(
       applyPendingActionOverride(marked, new Map([[image.relativePath, false]])),
     ).not.toHaveProperty("hasPendingAction");
+  });
+});
+
+describe("isUpscaledFile", () => {
+  it("matches an [Upscaled] annotation in the file name, in any case or position", () => {
+    expect(isUpscaledFile({ relativePath: "characters/3d/Anna/Casual [Upscaled].png" })).toBe(true);
+    expect(isUpscaledFile({ relativePath: "characters/3d/Anna/Casual [ upscaled ] 2.mp4" })).toBe(
+      true,
+    );
+    expect(isUpscaledFile({ relativePath: "characters/3d/Anna/[UPSCALED] Casual.png" })).toBe(true);
+  });
+
+  it("ignores files without it, and folder names", () => {
+    expect(isUpscaledFile({ relativePath: "characters/3d/Anna/Casual.png" })).toBe(false);
+    expect(isUpscaledFile({ relativePath: "characters/3d/Anna/Casual Upscaled.png" })).toBe(false);
+    expect(isUpscaledFile({ relativePath: "characters/3d/[Upscaled]/Casual.png" })).toBe(false);
   });
 });
 

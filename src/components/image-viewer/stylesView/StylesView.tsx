@@ -18,6 +18,7 @@ import { MediaTypeFilter } from "../common/MediaTypeFilter";
 import { PendingActionFilter } from "../common/PendingActionFilter";
 import { RatingFilter } from "../common/RatingFilter";
 import { SearchField } from "../common/SearchField";
+import { UpscaledFilter } from "../common/UpscaledFilter";
 import { StyleView } from "./StyleView";
 
 interface IStylesViewProps {
@@ -36,6 +37,8 @@ interface IStylesViewProps {
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
   withAction: boolean;
   onWithActionChange: (withAction: boolean) => void;
+  showOnlyUpscaled: boolean;
+  onShowOnlyUpscaledChange: (enabled: boolean) => void;
   onStyleSelect: (style: string) => void;
   onMetadataFilterChange: (event: SelectChangeEvent) => void;
   onClearMetadataFilter: () => void;
@@ -59,6 +62,8 @@ export const StylesView = ({
   onRatingFilterChange,
   withAction,
   onWithActionChange,
+  showOnlyUpscaled,
+  onShowOnlyUpscaledChange,
   onStyleSelect,
   onMetadataFilterChange,
   onClearMetadataFilter,
@@ -101,6 +106,10 @@ export const StylesView = ({
         />
         <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
         <PendingActionFilter withAction={withAction} onWithActionChange={onWithActionChange} />
+        <UpscaledFilter
+          showOnlyUpscaled={showOnlyUpscaled}
+          onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
+        />
       </Stack>
 
       <TextField
@@ -134,6 +143,7 @@ export const StylesView = ({
             mediaTypeFilter,
             ratingFilter,
             withAction,
+            showOnlyUpscaled,
             showDate,
             showNewBadge,
           ].join("|")}
