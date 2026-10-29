@@ -45,6 +45,15 @@ Example `config.json`:
         { "key": "latin-dance", "name": "Latin Dance", "prompt": "latin dancing" },
         { "key": "sensual-dance", "name": "Sensual Dance", "prompt": "slow sensual dancing" }
       ]
+    },
+    {
+      "key": "spin",
+      "name": "Spin",
+      "prompt": "spinning around",
+      "loras": [
+        { "lora": "spin_motion", "trigger": "spinning", "weight": 0.9 },
+        { "lora": "motion_blur", "weight": 0.4 }
+      ]
     }
   ]
 }
@@ -55,6 +64,7 @@ Each `animations` entry is an object with:
 - `key` (required, unique across the whole tree) and `name` (required, display name).
 - `prompt`: a string, or an array of strings. When an image is marked, one line of the array is picked at random.
 - `lora`, `trigger` (strings) and `weight` (number): optional, copied as-is into the mark entry for the external tool.
+- `loras`: optional array of `{ "lora", "trigger", "weight" }` objects (each field optional), for an animation that needs several LoRAs. It can be used instead of, or alongside, the single `lora`/`trigger`/`weight`, and is copied into the mark entry as `loras`. Items with no valid field are dropped.
 - `subVersions`: optional nested entries of the same shape.
 
 An entry with an empty (or missing) `prompt` and no `subVersions` is skipped entirely. An entry with an empty `prompt` but with `subVersions` stays selectable: marking with it picks one of its sub-versions at random (recursively), and that sub-version's key, prompt and `lora`/`trigger`/`weight` are what get stored. Plain-string entries (the old `"animations": ["Zoom In"]` format) have no prompt and are therefore skipped.
@@ -66,7 +76,7 @@ Pose naming rules:
 - `Base` is treated as the thumbnail pose for each character.
 - Anything in square brackets, and `(no lora)` (any case), is an annotation, not part of the pose, and is ignored by the pose filters (for example `Casual [Upscaled].png`, `Casual 2 [Extended].mp4` and `Casual (no lora).png` all count as the `Casual` pose).
 - A video can be named `Animation (Pose).mp4`: the part before the parentheses is the animation, the part inside is the pose. Only the pose part is used by the pose filters, so `Dancing (Casual).mp4` is listed under `Casual`. A variant number inside the pose part (the source image's variant) is ignored too: `Dance (Close Up 3) 2.mp4` is listed under `Close Up`. A video without parentheses (for example `Dancing.mp4`) uses its whole name as its pose.
-- A [pose pattern filter](#image-folder-structure) from `pose-filters.json` takes priority: it is matched against the whole name (annotations and variant ignored, parentheses kept), and a matching file is listed under that pattern's chip only. For example, with a `^with ` pattern, both `With Zelda (Skyward Sword) 2.png` and `With Zelda (Skyward Sword).mp4` are listed under that pattern, never under a `Skyward Sword` pose. The Pose Conformity tool also treats such files as conforming.
+- A [pose pattern filter](#image-folder-structure) from `pose-filters.json` takes priority: it is matched against the whole name (annotations and variant ignored, parentheses kept), and a matching file is listed under that pattern's chip only. For example, with a `^with ` pattern, both `With Zelda (Skyward Sword) 2.png` and `With Zelda (Skyward Sword).mp4` are listed under that pattern, never under a `Skyward Sword` pose. The Pose Conformity tool also treats such files as conforming, and so is a video whose pose part alone matches a pattern: with `^abducted by `, `Cowgirl (Abducted by Ganondorf).mp4` isn't listed by Pose Conformity.
 - The Duplicate Finder still groups by the full name (minus the variant number), so `Dancing (Casual).mp4` and `Casual.mp4` are never treated as duplicates of each other.
 
 ### Video Support
@@ -171,8 +181,23 @@ The detail view has three rating buttons, **Bad**, **OK** and **Good** (shown wh
 - **Bad** is the Redraw action: the file is renumbered so its pose can be generated again, and the renamed file is rated **bad** in `ratings.json`, so it stays out of the **Unrated** selection. Clicking **Bad** on a file already rated bad only clears its rating (no second rename). Files redrawn before bad ratings existed stay unrated. The Duplicate Finder's **Redraw primary** rates the file bad the same way.
 - **OK** and **Good** are saved in `ratings.json` (main root, keyed by file path). Clicking the active rating again clears it. A rating follows the file when it's renamed (manually, by Pose Conformity, or by the Duplicate Finder's renumbering) and is dropped when the file is deleted; a redrawn file's earlier rating is replaced by **bad**.
 - Good files show a thumbs-up badge in the grids, bad files a red thumbs-down badge.
-- Next to **Images / Videos / Both**, every view has an **Unrated / Good / All** filter (default **All**, kept in the URL as `?rating=unrated|good`): **Unrated** shows only files with no rating yet (so bad, OK and Good files are hidden), **Good** only Good files.
+- Next to **Images / Videos / Both**, every view has **Unrated**, **OK** and **Good** checkboxes (kept in the URL as repeated `?rating=unrated&rating=ok&rating=good` params): only files whose rating is checked are shown (**Unrated** = no rating yet), so bad files are hidden as soon as one box is checked. With no box checked (the default), everything is shown, bad files included.
+- Pose Conformity and manual renames keep the file's rating (see below).
 - Ratings aren't part of the library index: they're read from `ratings.json` on each request (re-parsed only when the file changes), so rating a file never triggers a rescan and a hand edit shows up on the next load.
+
+## With Action Filter
+
+After the rating checkboxes, every view has a **With action** toggle (kept in the URL as `?action=1`). When on, only files with a pending [mark](#upscale-and-animate-marking) are shown: Upscale or Animate on an image, Upscale or Extend on a video. A mark set or cleared in the detail view updates the filter right away. Like ratings, marks aren't part of the library index: the mark files are read on each library request (re-parsed only when they change), so an external tool removing the entries it processed shows up on the next load.
+
+## Related Files
+
+The detail view lists the files related to the one shown, under **Related**, each opening that file in the detail view when clicked:
+
+- **Animated from** / **Extended from**: the image or video a video was generated from (its `video-links.json` link). Shown as plain text if that file is gone.
+- **Animation** / **Extension**: the videos generated from the shown image or video (with the animation used).
+- **Version**: files of the same type in the same folder with the same name once `[...]`/`(no lora)` annotations are ignored, e.g. `Doggy (Doggystyle) [Extended].mp4` for `Doggy (Doggystyle).mp4`, or `Casual [Upscaled].png` for `Casual.png` (`Casual 2.png` is a variant, not a version).
+
+For example, `characters/3d/Urbosa/Doggy (Doggystyle).mp4` shows "Animated from With Sheik" and "Extension Doggy (Doggystyle) [Extended]". The list is shown to every viewer, not only when `SD_ALLOW_DELETE` is enabled.
 
 ## Manual Rename
 
@@ -192,7 +217,7 @@ The image detail view has **Upscale** and **Animate** buttons (alongside the [ra
 - **Animate** opens a dropdown of the animation names configured in `config.json`'s `animations` array (see [Image Folder Structure](#image-folder-structure) above); the button itself is hidden when that list is empty. Picking a name marks the image with that action; picking the currently-marked name again unmarks it. Picking a different name switches the mark to the new action.
 - Marks are stored as flat JSON objects, one entry per marked image, keyed by the image's relative path (the same relative path used by `GET /api/image?path=...`):
   - `to-upscale.json` — value is the image's raw PNG generation metadata (the `parameters` text chunk) as a string.
-  - `to-animate.json` — value is `{ "metadata": "...", "action": "zoom-in", "prompt": "...", "lora": "...", "trigger": "...", "weight": 0.8 }` (`action` is the key of the node actually picked; `lora`/`trigger`/`weight` only when that node sets them).
+  - `to-animate.json` — value is `{ "metadata": "...", "action": "zoom-in", "prompt": "...", "lora": "...", "trigger": "...", "weight": 0.8 }` (`action` is the key of the node actually picked; `lora`/`trigger`/`weight`, and a `loras` array, only when that node sets them).
 - Both files live in the main root (`SD_IMAGES_ROOT`) and are created automatically the first time an image is marked.
 - Deleting or redrawing (renaming) an image removes its entry from both files automatically, so they never reference a path that no longer exists.
 
@@ -327,7 +352,7 @@ Example character flow:
 
 - `GET /api/library`: Returns the computed library index (kept in memory and in `SD_CACHE_DIR`, see `SD_LIBRARY_CACHE_TTL_SECONDS`), gzip-compressed when the client accepts it.
 - `GET /api/image?path=characters/...`: Streams a PNG or MP4 file safely from configured root (`Content-Type` is derived from the file's extension). Add `&variant=preview` to stream the compressed preview instead — falls back to the original PNG if no `.preview.jpg` exists yet, but returns `404` for a video with no `.preview.png` sidecar (see [Video Support](#video-support)) rather than streaming the raw video.
-- `GET /api/marks?path=characters/...`: Returns `{ upscale: boolean, animate: { action: string } | null }`, the current upscale/animate mark state for an image. See [Upscale and Animate Marking](#upscale-and-animate-marking). Returns `400` for a video path.
+- `GET /api/marks?path=characters/...`: Returns the current mark state: `{ upscale, animate: { action, prompt } | null, derived }` for an image, `{ upscaleVideo, extend: { action, prompt } | null, link, derived }` for a video (`link` is the video's own `video-links.json` entry). `derived` lists the videos generated from the file, as `{ relativePath, action }`. See [Upscale and Animate Marking](#upscale-and-animate-marking) and [Related Files](#related-files).
 - `PUT /api/marks`: Marks an image. Body: `{ path, type: "upscale", metadata }` or `{ path, type: "animate", action, metadata }`. Requires `SD_ALLOW_DELETE`. Returns `400` for a video path.
 - `DELETE /api/marks?path=characters/...&type=upscale|animate`: Removes a mark. Requires `SD_ALLOW_DELETE`. Returns `400` for a video path.
 - `PUT /api/rating?path=characters/...`: Rates an image or video. Body: `{ "rating": "bad" | "ok" | "good" }` (`"bad"` here only stores the rating; the UI's **Bad** is Redraw, `PATCH /api/image`), or `{ "rating": null }` to clear it. Requires `SD_ALLOW_DELETE`; `404` when rating a file that doesn't exist. See [Rating](#rating).

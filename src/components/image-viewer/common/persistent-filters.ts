@@ -1,4 +1,9 @@
-import type { TCharacterSortOrder, TMediaTypeFilter, TRatingFilter } from "@/types/library";
+import type {
+  TCharacterSortOrder,
+  TMediaTypeFilter,
+  TRatingFilter,
+  TRatingFilterOption,
+} from "@/types/library";
 
 interface IQueryParamsReader {
   get: (key: string) => string | null;
@@ -50,9 +55,19 @@ export const parseMediaTypeFilter = (queryParams: IQueryParamsReader): TMediaTyp
   return rawValue === "image" || rawValue === "video" ? rawValue : "both";
 };
 
+export const RATING_FILTER_OPTIONS: readonly TRatingFilterOption[] = ["unrated", "ok", "good"];
+
+// Repeated "rating" params (?rating=unrated&rating=ok), in the checkboxes' order; none = all.
 export const parseRatingFilter = (queryParams: IQueryParamsReader): TRatingFilter => {
-  const rawValue = queryParams.get("rating")?.trim().toLowerCase();
-  return rawValue === "unrated" || rawValue === "good" ? rawValue : "all";
+  const rawValues = new Set(
+    queryParams.getAll("rating").map((value) => value.trim().toLowerCase()),
+  );
+  return RATING_FILTER_OPTIONS.filter((option) => rawValues.has(option));
+};
+
+export const parseWithActionFilter = (queryParams: IQueryParamsReader): boolean => {
+  const rawValue = queryParams.get("action")?.trim().toLowerCase();
+  return rawValue === "1" || rawValue === "true";
 };
 
 export const parseStyleViewStyle = (queryParams: IQueryParamsReader): string => {

@@ -15,6 +15,7 @@ import { ImageGrid } from "@/components/image-viewer/image/ImageGrid";
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, STACK_SPACING } from "../common/constants";
 import { MediaTypeFilter } from "../common/MediaTypeFilter";
+import { PendingActionFilter } from "../common/PendingActionFilter";
 import { RatingFilter } from "../common/RatingFilter";
 import { SearchField } from "../common/SearchField";
 import { StyleView } from "./StyleView";
@@ -33,6 +34,8 @@ interface IStylesViewProps {
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   ratingFilter: TRatingFilter;
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
+  withAction: boolean;
+  onWithActionChange: (withAction: boolean) => void;
   onStyleSelect: (style: string) => void;
   onMetadataFilterChange: (event: SelectChangeEvent) => void;
   onClearMetadataFilter: () => void;
@@ -54,6 +57,8 @@ export const StylesView = ({
   onMediaTypeFilterChange,
   ratingFilter,
   onRatingFilterChange,
+  withAction,
+  onWithActionChange,
   onStyleSelect,
   onMetadataFilterChange,
   onClearMetadataFilter,
@@ -95,6 +100,7 @@ export const StylesView = ({
           onMediaTypeFilterChange={onMediaTypeFilterChange}
         />
         <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
+        <PendingActionFilter withAction={withAction} onWithActionChange={onWithActionChange} />
       </Stack>
 
       <TextField
@@ -127,6 +133,7 @@ export const StylesView = ({
             selectedMetadataFilterId,
             mediaTypeFilter,
             ratingFilter,
+            withAction,
             showDate,
             showNewBadge,
           ].join("|")}

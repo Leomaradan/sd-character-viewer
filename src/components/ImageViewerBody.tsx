@@ -20,6 +20,7 @@ import { DEFAULT_LIBRARY } from "@/components/image-viewer/common/constants";
 import {
   buildPoseOptions,
   filterCharactersByMetadataOption,
+  applyPendingActionOverride,
   applyRatingOverride,
   formatStyleLabel,
   matchesRatingFilter,
@@ -38,6 +39,7 @@ interface IImageViewerBodyProps {
   characterSortOrder: TCharacterSortOrder;
   mediaTypeFilter: TMediaTypeFilter;
   ratingFilter: TRatingFilter;
+  withAction: boolean;
   styleViewStyle: string;
   poseViewStyle: string;
   characterDetailStyle: string;
@@ -49,6 +51,8 @@ interface IImageViewerBodyProps {
   seenRelativePaths?: ReadonlySet<string>;
   // Ratings set since the library was loaded (null = cleared), applied the same way.
   ratingOverrides?: ReadonlyMap<string, TRating | null>;
+  // Same for pending actions marked/unmarked since then.
+  pendingActionOverrides?: ReadonlyMap<string, boolean>;
   onImageSelect: (image: IImageItem, filteredImages: IImageItem[]) => void;
   onLibraryLoad: (library: ILibraryData) => void;
 
@@ -61,10 +65,12 @@ interface IImageViewerBodyProps {
   setCharacterDetailPose: (pose: string) => void;
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
+  onWithActionChange: (withAction: boolean) => void;
 }
 
 const NO_SEEN_PATHS: ReadonlySet<string> = new Set();
 const NO_RATING_OVERRIDES: ReadonlyMap<string, TRating | null> = new Map();
+const NO_PENDING_ACTION_OVERRIDES: ReadonlyMap<string, boolean> = new Map();
 
 const PROGRESS_CONTAINER = {
   display: "flex",
@@ -82,6 +88,7 @@ export const ImageViewerBody = ({
   characterSortOrder,
   mediaTypeFilter,
   ratingFilter,
+  withAction,
   styleViewStyle,
   poseViewStyle,
   characterDetailStyle,
@@ -90,6 +97,7 @@ export const ImageViewerBody = ({
   randomRequestToken = 0,
   seenRelativePaths = NO_SEEN_PATHS,
   ratingOverrides = NO_RATING_OVERRIDES,
+  pendingActionOverrides = NO_PENDING_ACTION_OVERRIDES,
   onImageSelect,
   onLibraryLoad,
   setSelectedCharacter,
@@ -101,6 +109,7 @@ export const ImageViewerBody = ({
   setCharacterDetailPose,
   onMediaTypeFilterChange,
   onRatingFilterChange,
+  onWithActionChange,
 }: Readonly<IImageViewerBodyProps>) => {
   const [library, setLibrary] = useState<ILibraryData>(DEFAULT_LIBRARY);
   const [isLoading, setIsLoading] = useState(true);
@@ -224,19 +233,26 @@ export const ImageViewerBody = ({
   ]);
 
   const libraryImages = useMemo(() => {
-    if (seenRelativePaths.size === 0 && ratingOverrides.size === 0) {
+    if (
+      seenRelativePaths.size === 0 &&
+      ratingOverrides.size === 0 &&
+      pendingActionOverrides.size === 0
+    ) {
       return library.images;
     }
 
     return library.images.map((image) =>
-      applyRatingOverride(
-        image.isNew && seenRelativePaths.has(image.relativePath)
-          ? { ...image, isNew: false }
-          : image,
-        ratingOverrides,
+      applyPendingActionOverride(
+        applyRatingOverride(
+          image.isNew && seenRelativePaths.has(image.relativePath)
+            ? { ...image, isNew: false }
+            : image,
+          ratingOverrides,
+        ),
+        pendingActionOverrides,
       ),
     );
-  }, [library.images, seenRelativePaths, ratingOverrides]);
+  }, [library.images, seenRelativePaths, ratingOverrides, pendingActionOverrides]);
 
   const filteredImages = useMemo(() => {
     const newOnlyImages = showOnlyNewImages
@@ -246,9 +262,10 @@ export const ImageViewerBody = ({
     return newOnlyImages.filter(
       (image) =>
         (mediaTypeFilter === "both" || image.mediaType === mediaTypeFilter) &&
-        matchesRatingFilter(image, ratingFilter),
+        matchesRatingFilter(image, ratingFilter) &&
+        (!withAction || image.hasPendingAction === true),
     );
-  }, [libraryImages, showOnlyNewImages, mediaTypeFilter, ratingFilter]);
+  }, [libraryImages, showOnlyNewImages, mediaTypeFilter, ratingFilter, withAction]);
 
   const charactersForBrowseStyle = useMemo(() => {
     const visibleCharacterNames = new Set(filteredImages.map((image) => image.characterName));
@@ -551,6 +568,8 @@ export const ImageViewerBody = ({
         onMediaTypeFilterChange={onMediaTypeFilterChange}
         ratingFilter={ratingFilter}
         onRatingFilterChange={onRatingFilterChange}
+        withAction={withAction}
+        onWithActionChange={onWithActionChange}
         onSelectCharacter={setSelectedCharacter}
         onCharacterDetailStyleChange={setCharacterDetailStyle}
         onCharacterDetailPoseChange={setCharacterDetailPose}
@@ -573,6 +592,8 @@ export const ImageViewerBody = ({
         onMediaTypeFilterChange={onMediaTypeFilterChange}
         ratingFilter={ratingFilter}
         onRatingFilterChange={onRatingFilterChange}
+        withAction={withAction}
+        onWithActionChange={onWithActionChange}
         onStyleSelect={onStyleSelect}
         onMetadataFilterChange={onMetadataFilterChange}
         onClearMetadataFilter={onClearMetadataFilter}
@@ -599,6 +620,8 @@ export const ImageViewerBody = ({
       onMediaTypeFilterChange={onMediaTypeFilterChange}
       ratingFilter={ratingFilter}
       onRatingFilterChange={onRatingFilterChange}
+      withAction={withAction}
+      onWithActionChange={onWithActionChange}
       onClearPoses={onClearPoses}
       onTogglePose={togglePoseFilter}
       onPoseStyleChange={setPoseViewStyle}

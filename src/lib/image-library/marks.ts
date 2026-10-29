@@ -1,12 +1,17 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import { type IAnimationGenerationOptions, type IVideoLink, type TRating } from "@/types/library";
+import {
+  type IAnimationGenerationOptions,
+  type IAnimationLora,
+  type IVideoLink,
+  type TRating,
+} from "@/types/library";
 
 import { getImagesRootPathFromEnv } from "./paths";
 import { isPlainObjectRecord, normalizeRelativePath } from "./shared";
 
-// lora/trigger/weight are copied from the animation node the mark resolved to, and omitted
+// lora/trigger/weight/loras are copied from the animation node the mark resolved to, and omitted
 // entirely when that node doesn't set them.
 export interface IToAnimateEntry extends IAnimationGenerationOptions {
   metadata: string;
@@ -38,6 +43,7 @@ interface IRawToAnimateEntry {
   lora?: unknown;
   trigger?: unknown;
   weight?: unknown;
+  loras?: unknown;
 }
 
 const isToAnimateEntry = (value: unknown): value is IRawToAnimateEntry => {
@@ -46,6 +52,40 @@ const isToAnimateEntry = (value: unknown): value is IRawToAnimateEntry => {
     typeof value.metadata === "string" &&
     typeof value.action === "string"
   );
+};
+
+// Only the set fields, in a fixed key order (entries are compared by their JSON serialization).
+const buildLora = (options: IAnimationLora): IAnimationLora => {
+  const lora: IAnimationLora = {};
+  if (options.lora !== undefined) {
+    lora.lora = options.lora;
+  }
+  if (options.trigger !== undefined) {
+    lora.trigger = options.trigger;
+  }
+  if (options.weight !== undefined) {
+    lora.weight = options.weight;
+  }
+  return lora;
+};
+
+// The entry's valid loras items, each with only its valid fields.
+const normalizeStoredLoras = (rawLoras: unknown): IAnimationLora[] | undefined => {
+  if (!Array.isArray(rawLoras)) {
+    return undefined;
+  }
+
+  const loras = rawLoras
+    .filter(isPlainObjectRecord)
+    .map((lora) =>
+      buildLora({
+        lora: typeof lora.lora === "string" ? lora.lora : undefined,
+        trigger: typeof lora.trigger === "string" ? lora.trigger : undefined,
+        weight: typeof lora.weight === "number" ? lora.weight : undefined,
+      }),
+    )
+    .filter((lora) => Object.keys(lora).length > 0);
+  return loras.length > 0 ? loras : undefined;
 };
 
 // Always builds the entry in the same key order as buildToAnimateEntry, since
@@ -59,6 +99,7 @@ const normalizeToAnimateEntry = (entry: IRawToAnimateEntry): IToAnimateEntry =>
       lora: typeof entry.lora === "string" ? entry.lora : undefined,
       trigger: typeof entry.trigger === "string" ? entry.trigger : undefined,
       weight: typeof entry.weight === "number" ? entry.weight : undefined,
+      loras: normalizeStoredLoras(entry.loras),
     },
   );
 
@@ -68,15 +109,9 @@ const buildToAnimateEntry = (
   prompt: string,
   options: IAnimationGenerationOptions = {},
 ): IToAnimateEntry => {
-  const entry: IToAnimateEntry = { metadata, action, prompt };
-  if (options.lora !== undefined) {
-    entry.lora = options.lora;
-  }
-  if (options.trigger !== undefined) {
-    entry.trigger = options.trigger;
-  }
-  if (options.weight !== undefined) {
-    entry.weight = options.weight;
+  const entry: IToAnimateEntry = { metadata, action, prompt, ...buildLora(options) };
+  if (options.loras !== undefined && options.loras.length > 0) {
+    entry.loras = options.loras.map(buildLora);
   }
   return entry;
 };
@@ -146,6 +181,7 @@ export const writeMarkedImageMap = async (
   entries: Record<string, unknown>,
 ): Promise<void> => {
   await fs.writeFile(filePath, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
+  markedImageKeysCache.delete(filePath);
 };
 
 // Serializes read-modify-write cycles against a single marker file (to-upscale.json /
@@ -325,6 +361,54 @@ export const removeToExtendEntry = async (
       await writeMarkedImageMap(filePath, entries);
     }
   });
+};
+
+interface IMarkedImageKeysCacheEntry {
+  modifiedAt: number;
+  size: number;
+  keys: readonly string[];
+}
+
+// The mark files are read on every library request (for the "With action" filter); this keeps
+// each one's keys until it changes on disk (or is written by the app, see writeMarkedImageMap).
+const markedImageKeysCache = new Map<string, IMarkedImageKeysCacheEntry>();
+
+const readMarkedImageMapKeys = async <T>(
+  filePath: string,
+  isValidEntry: (value: unknown) => value is T,
+): Promise<readonly string[]> => {
+  const stat = await fs.stat(filePath).catch(() => null);
+  if (!stat?.isFile()) {
+    return [];
+  }
+
+  const cached = markedImageKeysCache.get(filePath);
+  if (cached?.modifiedAt === stat.mtimeMs && cached.size === stat.size) {
+    return cached.keys;
+  }
+
+  // Like readRatings, a failed read or a half-written file isn't cached.
+  const fileContent = await fs.readFile(filePath, "utf8").catch(() => null);
+  const entries = fileContent === null ? null : parseMarkedImageMap(fileContent, isValidEntry);
+  if (!entries) {
+    return [];
+  }
+
+  const keys = Object.keys(entries);
+  markedImageKeysCache.set(filePath, { modifiedAt: stat.mtimeMs, size: stat.size, keys });
+  return keys;
+};
+
+// Every path with a pending Upscale/Animate/Extend/Upscale-video mark, for the "With action"
+// filter. Unreadable or malformed mark files just contribute nothing.
+export const readPendingActionPaths = async (rootPath: string): Promise<Set<string>> => {
+  const keyLists = await Promise.all([
+    readMarkedImageMapKeys(path.join(rootPath, TO_UPSCALE_FILE_NAME), isRawMetadataEntry),
+    readMarkedImageMapKeys(path.join(rootPath, TO_ANIMATE_FILE_NAME), isToAnimateEntry),
+    readMarkedImageMapKeys(path.join(rootPath, TO_EXTEND_FILE_NAME), isToAnimateEntry),
+    readMarkedImageMapKeys(path.join(rootPath, TO_UPSCALE_VIDEO_FILE_NAME), isRawMetadataEntry),
+  ]);
+  return new Set(keyLists.flat());
 };
 
 export const isVideoLink = (value: unknown): value is IVideoLink => {

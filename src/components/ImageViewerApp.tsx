@@ -55,8 +55,13 @@ import {
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
   parseStyleViewStyle,
+  parseWithActionFilter,
 } from "@/components/image-viewer/common/persistent-filters";
-import { applyRatingOverride, formatStyleLabel } from "@/components/image-viewer/common/utils";
+import {
+  applyPendingActionOverride,
+  applyRatingOverride,
+  formatStyleLabel,
+} from "@/components/image-viewer/common/utils";
 import { ImageDetailModal } from "@/components/image-viewer/details/ImageDetailModal";
 import { DuplicateFinderModal } from "@/components/image-viewer/duplicateFinder/DuplicateFinderModal";
 import { ScrollToTopButton } from "@/components/image-viewer/layout/ScrollToTopButton";
@@ -150,6 +155,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const characterSortOrder = useMemo(() => parseCharacterSortOrder(searchParams), [searchParams]);
   const mediaTypeFilter = useMemo(() => parseMediaTypeFilter(searchParams), [searchParams]);
   const ratingFilter = useMemo(() => parseRatingFilter(searchParams), [searchParams]);
+  const withAction = useMemo(() => parseWithActionFilter(searchParams), [searchParams]);
   const styleViewStyle = useMemo(() => parseStyleViewStyle(searchParams), [searchParams]);
   const poseViewStyle = useMemo(() => parsePoseViewStyle(searchParams), [searchParams]);
   const selectedMetadataFilterId = useMemo(
@@ -175,6 +181,10 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const [ratingOverrides, setRatingOverrides] = useState<ReadonlyMap<string, TRating | null>>(
     new Map(),
   );
+  // And for Upscale/Animate/Extend marks set or cleared in the detail view.
+  const [pendingActionOverrides, setPendingActionOverrides] = useState<
+    ReadonlyMap<string, boolean>
+  >(new Map());
   const [authStatus, setAuthStatus] = useState<TAuthStatus>("checking");
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -322,6 +332,30 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     setModalFilteredImages((currentImages) => currentImages.map(applyRating));
     setSelectedImageForModal((currentImage) => currentImage && applyRating(currentImage));
     setRatingOverrides((current) => new Map(current).set(relativePath, rating));
+  }, []);
+
+  // Same for a mark set or cleared in the detail view, so the "With action" filter follows it.
+  const handleImagePendingActionChange = useCallback(
+    (relativePath: string, hasPendingAction: boolean) => {
+      const overrides = new Map([[relativePath, hasPendingAction]]);
+      const applyPendingAction = (item: IImageItem): IImageItem =>
+        applyPendingActionOverride(item, overrides);
+
+      setLibrary((currentLibrary) => ({
+        ...currentLibrary,
+        images: currentLibrary.images.map(applyPendingAction),
+      }));
+      setModalFilteredImages((currentImages) => currentImages.map(applyPendingAction));
+      setSelectedImageForModal((currentImage) => currentImage && applyPendingAction(currentImage));
+      setPendingActionOverrides((current) => new Map(current).set(relativePath, hasPendingAction));
+    },
+    [],
+  );
+
+  // A related file picked in the detail view replaces the shown one; previous/next keep working
+  // when it's part of the grid the modal was opened from.
+  const handleOpenRelatedImage = useCallback((image: IImageItem) => {
+    setSelectedImageForModal(image);
   }, []);
 
   const handleImageDeleted = useCallback(() => {
@@ -533,7 +567,14 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
 
   const handleRatingFilterChange = useCallback(
     (nextRatingFilter: TRatingFilter) => {
-      updateQueryParams({ rating: nextRatingFilter === "all" ? null : nextRatingFilter });
+      updateQueryParams({ rating: [...nextRatingFilter] });
+    },
+    [updateQueryParams],
+  );
+
+  const handleWithActionChange = useCallback(
+    (nextWithAction: boolean) => {
+      updateQueryParams({ action: nextWithAction ? "1" : null });
     },
     [updateQueryParams],
   );
@@ -759,6 +800,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           characterSortOrder={characterSortOrder}
           mediaTypeFilter={mediaTypeFilter}
           ratingFilter={ratingFilter}
+          withAction={withAction}
           styleViewStyle={styleViewStyle}
           poseViewStyle={poseViewStyle}
           characterDetailStyle={characterDetailStyle}
@@ -767,6 +809,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           randomRequestToken={randomRequestToken}
           seenRelativePaths={seenRelativePaths}
           ratingOverrides={ratingOverrides}
+          pendingActionOverrides={pendingActionOverrides}
           setSelectedCharacter={handleSelectCharacter}
           setSelectedPoseFilters={handlePoseFiltersChange}
           setSelectedMetadataFilterId={handleMetadataFilterChange}
@@ -776,6 +819,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           setCharacterDetailPose={setCharacterDetailPose}
           onMediaTypeFilterChange={handleMediaTypeFilterChange}
           onRatingFilterChange={handleRatingFilterChange}
+          onWithActionChange={handleWithActionChange}
           onImageSelect={handleOpenImageModal}
           onLibraryLoad={handleLibraryLoad}
         />
@@ -788,6 +832,9 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         onDeleteSuccess={handleImageDeleted}
         onImageSeen={handleImageSeen}
         onImageRated={handleImageRated}
+        onImagePendingActionChange={handleImagePendingActionChange}
+        libraryImages={library.images}
+        onOpenRelatedImage={handleOpenRelatedImage}
         canNavigatePrevious={canNavigateModalPrevious}
         canNavigateNext={canNavigateModalNext}
         onNavigatePrevious={handleModalPrevious}

@@ -1,4 +1,4 @@
-import type { IImageItem, TMediaType } from "@/types/library";
+import type { IImageItem, IPosePatternFilter, TMediaType } from "@/types/library";
 
 import { splitAnimationPose, splitVariantSuffix, stripAnnotations } from "./pose-name";
 
@@ -8,13 +8,25 @@ const ALWAYS_CONFORMING_POSES = ["Base"];
 // An item conforms when its pose (poseFilterName: annotations and variant number ignored, and
 // only the pose part of an "Animation (Pose)" video) is one of the standard or special poses, compared
 // case-insensitively. An item matching a pose-filters.json pattern ("With Somebody"...) has its
-// pose defined by that pattern, so it conforms too.
+// pose defined by that pattern, so it conforms too - including a video whose pose part alone
+// matches one ("Cowgirl (Abducted by Ganondorf)" with "^abducted by "), given `posePatterns`.
 export const isPoseConforming = (
   item: Pick<IImageItem, "poseFilterName" | "posePatternFilterIds">,
   standardPoses: readonly string[],
   specialPoses: readonly string[] = [],
+  posePatterns: readonly RegExp[] = [],
 ): boolean => {
   if (item.posePatternFilterIds.length > 0) {
+    return true;
+  }
+
+  const poseName = item.poseFilterName.trim();
+  if (
+    posePatterns.some((pattern) => {
+      pattern.lastIndex = 0;
+      return pattern.test(poseName);
+    })
+  ) {
     return true;
   }
 
@@ -23,7 +35,20 @@ export const isPoseConforming = (
       pose.toLowerCase(),
     ),
   );
-  return allowedPoses.has(item.poseFilterName.trim().toLowerCase());
+  return allowedPoses.has(poseName.toLowerCase());
+};
+
+// The pose-filters.json patterns as regexes for isPoseConforming; an invalid one is skipped.
+export const compilePosePatterns = (
+  posePatternFilters: readonly IPosePatternFilter[],
+): RegExp[] => {
+  return posePatternFilters.flatMap((filter) => {
+    try {
+      return [new RegExp(filter.pattern, filter.flags)];
+    } catch {
+      return [];
+    }
+  });
 };
 
 // Annotations kept verbatim across a rename: "[...]" parts and "(no lora)".

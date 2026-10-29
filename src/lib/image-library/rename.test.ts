@@ -19,11 +19,13 @@ import {
   migrateFirstSeenCacheEntry,
   migrateMarkedActionEntries,
   readCustomPoseEntries,
+  readRatings,
   readToAnimateEntries,
   removeMarkedActionEntries,
   readToUpscaleEntries,
   readVideoLinks,
   setCustomPoseEntry,
+  setRatingEntry,
   setToAnimateEntry,
   setToUpscaleEntry,
 } from "@/lib/image-library";
@@ -268,6 +270,15 @@ describe("renameMediaFile with incrementOnConflict", () => {
       "Casual 3.png",
       "Casual.png",
     ]);
+  });
+
+  it("keeps the rating on the numbered name (Pose Conformity)", async () => {
+    await fs.writeFile(path.join(ANNA_DIR, "Casual.png"), "taken");
+    await setRatingEntry(ROOT, "characters/3d/Anna/Casul.png", "good");
+
+    await renameMediaFile("characters/3d/Anna/Casul.png", "Casual", { incrementOnConflict: true });
+
+    expect(await readRatings(ROOT)).toEqual({ "characters/3d/Anna/Casual 2.png": "good" });
   });
 
   it("uses the requested name when it's free", async () => {

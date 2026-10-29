@@ -1,40 +1,60 @@
 "use client";
 
-import { ToggleButton, ToggleButtonGroup } from "@mui/material";
+import { Box, Checkbox, FormControlLabel } from "@mui/material";
 import { useCallback } from "react";
 
-import type { TRatingFilter } from "@/types/library";
+import type { TRatingFilter, TRatingFilterOption } from "@/types/library";
+
+import { RATING_FILTER_OPTIONS } from "./persistent-filters";
 
 interface IRatingFilterProps {
   ratingFilter: TRatingFilter;
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
 }
 
-// "Unrated" = no OK/Good rating yet; "Good" = rated Good only.
+const RATING_FILTER_LABELS: Record<TRatingFilterOption, string> = {
+  unrated: "Unrated",
+  ok: "OK",
+  good: "Good",
+};
+
+const RATING_FILTER_SX = { display: "flex", flexWrap: "wrap", alignItems: "center" };
+const RATING_LABEL_SX = { mr: 1 };
+
+// Shows the files whose rating is checked ("Unrated" = no rating yet); nothing checked shows all.
 export const RatingFilter = ({
   ratingFilter,
   onRatingFilterChange,
 }: Readonly<IRatingFilterProps>) => {
   const handleChange = useCallback(
-    (_event: React.MouseEvent<HTMLElement>, nextValue: TRatingFilter | null) => {
-      if (nextValue) {
-        onRatingFilterChange(nextValue);
-      }
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const { checked, value } = event.target;
+      onRatingFilterChange(
+        RATING_FILTER_OPTIONS.filter((option) =>
+          option === value ? checked : ratingFilter.includes(option),
+        ),
+      );
     },
-    [onRatingFilterChange],
+    [ratingFilter, onRatingFilterChange],
   );
 
   return (
-    <ToggleButtonGroup
-      value={ratingFilter}
-      exclusive
-      size="small"
-      onChange={handleChange}
-      aria-label="Filter by rating"
-    >
-      <ToggleButton value="unrated">Unrated</ToggleButton>
-      <ToggleButton value="good">Good</ToggleButton>
-      <ToggleButton value="all">All</ToggleButton>
-    </ToggleButtonGroup>
+    <Box role="group" aria-label="Filter by rating" sx={RATING_FILTER_SX}>
+      {RATING_FILTER_OPTIONS.map((option) => (
+        <FormControlLabel
+          key={option}
+          sx={RATING_LABEL_SX}
+          control={
+            <Checkbox
+              size="small"
+              value={option}
+              checked={ratingFilter.includes(option)}
+              onChange={handleChange}
+            />
+          }
+          label={RATING_FILTER_LABELS[option]}
+        />
+      ))}
+    </Box>
   );
 };

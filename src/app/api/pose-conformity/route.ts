@@ -17,7 +17,7 @@ import {
   resolveImageFilePath,
   setCustomPoseEntry,
 } from "@/lib/image-library";
-import { buildConformedStem, isPoseConforming } from "@/lib/pose-conformity";
+import { buildConformedStem, compilePosePatterns, isPoseConforming } from "@/lib/pose-conformity";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +34,8 @@ const isPoseConformityManagementAllowed = (): boolean => {
 };
 
 // Lists the images/videos whose pose isn't one of config.json's standard "poses" or
-// "specialPoses" (see
-// isPoseConforming), minus the ones already marked as a custom pose.
+// "specialPoses" and matches no pose-filters.json pattern (see isPoseConforming), minus the ones
+// already marked as a custom pose.
 export const GET = async (request: Request) => {
   if (isMisconfigured()) {
     return Response.json({ misconfigured: true, required: true, authenticated: false });
@@ -52,10 +52,11 @@ export const GET = async (request: Request) => {
   }
 
   const customPoseEntries = await readCustomPoseEntries(library.rootPath);
+  const posePatterns = compilePosePatterns(library.posePatternFilters);
   const items = library.images.filter(
     (image) =>
       !(image.relativePath in customPoseEntries) &&
-      !isPoseConforming(image, library.standardPoses, library.specialPoses),
+      !isPoseConforming(image, library.standardPoses, library.specialPoses, posePatterns),
   );
 
   return Response.json({ standardPoses: library.standardPoses, items });

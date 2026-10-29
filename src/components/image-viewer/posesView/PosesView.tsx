@@ -15,6 +15,7 @@ import { ImageGrid } from "@/components/image-viewer/image/ImageGrid";
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, STACK_SPACING } from "../common/constants";
 import { MediaTypeFilter } from "../common/MediaTypeFilter";
+import { PendingActionFilter } from "../common/PendingActionFilter";
 import { RatingFilter } from "../common/RatingFilter";
 import { SearchField } from "../common/SearchField";
 import { TagPicker } from "../common/TagPicker";
@@ -44,6 +45,8 @@ interface IPosesViewProps {
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   ratingFilter: TRatingFilter;
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
+  withAction: boolean;
+  onWithActionChange: (withAction: boolean) => void;
   onClearPoses: () => void;
   onTogglePose: (pose: string) => void;
   onPoseStyleChange: (style: string) => void;
@@ -69,6 +72,8 @@ export const PosesView = ({
   onMediaTypeFilterChange,
   ratingFilter,
   onRatingFilterChange,
+  withAction,
+  onWithActionChange,
   onClearPoses,
   onTogglePose,
   onPoseStyleChange,
@@ -169,6 +174,7 @@ export const PosesView = ({
           onMediaTypeFilterChange={onMediaTypeFilterChange}
         />
         <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
+        <PendingActionFilter withAction={withAction} onWithActionChange={onWithActionChange} />
       </Stack>
 
       <TextField
@@ -202,6 +208,7 @@ export const PosesView = ({
             selectedMetadataFilterId,
             mediaTypeFilter,
             ratingFilter,
+            withAction,
             showDate,
             showNewBadge,
           ].join("|")}

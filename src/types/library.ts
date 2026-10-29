@@ -12,7 +12,10 @@ export type TMediaTypeFilter = TMediaType | "both";
 // file is rated "bad" so it stays out of the "Unrated" selection.
 export type TRating = "bad" | "ok" | "good";
 
-export type TRatingFilter = "unrated" | "good" | "all";
+export type TRatingFilterOption = "unrated" | "ok" | "good";
+
+// The ratings to show; empty means no rating filter (everything, bad files included).
+export type TRatingFilter = readonly TRatingFilterOption[];
 
 export interface IImageItem {
   id: string;
@@ -32,6 +35,8 @@ export interface IImageItem {
   mediaType: TMediaType;
   // From ratings.json; absent when the file hasn't been rated.
   rating?: TRating;
+  // True when an Upscale/Animate/Extend mark is waiting on the file; absent otherwise.
+  hasPendingAction?: boolean;
 }
 
 export interface ICharacterSummary {
@@ -79,12 +84,18 @@ export interface IDuplicateGroup {
   images: IImageItem[];
 }
 
-// Optional generation hints copied verbatim from the chosen animation node into its mark entry,
-// for the external tool that consumes to-animate.json/to-extends.json.
-export interface IAnimationGenerationOptions {
+// One LoRA to apply: its name, trigger word and weight, each optional.
+export interface IAnimationLora {
   lora?: string;
   trigger?: string;
   weight?: number;
+}
+
+// Optional generation hints copied verbatim from the chosen animation node into its mark entry,
+// for the external tool that consumes to-animate.json/to-extends.json. `loras` lists extra LoRAs
+// for an animation that needs several, alongside (or instead of) the single lora/trigger/weight.
+export interface IAnimationGenerationOptions extends IAnimationLora {
+  loras?: IAnimationLora[];
 }
 
 // `prompt` is always normalized to an array of candidate lines (one is picked at random when an
