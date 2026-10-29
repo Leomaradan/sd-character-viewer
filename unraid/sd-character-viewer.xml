@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>sd-character-viewer</Name>
+  <Repository>leomaradan/sd-character-viewer:latest</Repository>
+  <Registry>https://hub.docker.com/r/leomaradan/sd-character-viewer</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Leomaradan/sd-character-viewer/issues</Support>
+  <Project>https://github.com/Leomaradan/sd-character-viewer</Project>
+  <Overview>Web gallery for browsing Stable Diffusion character images and videos stored on disk as characters/{style}/{character}/*.png (or .mp4), with character, style and pose filters, ratings, a duplicate finder, Upscale/Animate marking and optional password protection.&#xD;
+&#xD;
+The images folder must contain the characters folder. It is mounted read/write because ratings, marks, renames, deletes and preview thumbnails are written there; set it to read-only if you only browse and leave Allow Destructive Actions off.</Overview>
+  <Category>MediaApp:Photos Tools:</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/Leomaradan/sd-character-viewer/main/unraid/sd-character-viewer.xml</TemplateURL>
+  <Icon/>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Port of the web interface." Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="Images" Target="/data" Default="" Mode="rw" Description="Images root: the folder that contains the characters folder (and config.json, characters.json, ratings.json...)." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Cache" Target="/cache" Default="/mnt/user/appdata/sd-character-viewer/cache" Mode="rw" Description="Library index and first-seen (new image) cache." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/sd-character-viewer/cache</Config>
+  <Config Name="Extra images" Target="/data-extra" Default="" Mode="rw" Description="Optional. An extra images root (contains a characters folder), or a parent folder whose subfolders are each an images root. Merged into the same library; ignored when left empty." Type="Path" Display="always" Required="false" Mask="false"/>
+  <Config Name="Allow destructive actions" Target="SD_ALLOW_DELETE" Default="false|true" Mode="" Description="Enables delete, Redraw, rating, rename, the Library Toolbox, the Duplicate Finder's Validate and Upscale/Animate marking." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="Password" Target="SD_PASSWORD" Default="" Mode="" Description="Optional. Shows a login screen when set. Requires the password salt below." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="Password salt" Target="SD_PASSWORD_SALT" Default="" Mode="" Description="Required when a password is set: any random string, used to hash the password." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="SD_IMAGES_ROOT" Target="SD_IMAGES_ROOT" Default="/data" Mode="" Description="Container path of the images root. Leave as is." Type="Variable" Display="advanced" Required="true" Mask="false">/data</Config>
+  <Config Name="SD_EXTRA_IMAGES_ROOT" Target="SD_EXTRA_IMAGES_ROOT" Default="/data-extra" Mode="" Description="Container path of the extra images. Leave as is." Type="Variable" Display="advanced" Required="false" Mask="false">/data-extra</Config>
+  <Config Name="SD_CACHE_DIR" Target="SD_CACHE_DIR" Default="/cache" Mode="" Description="Container path of the cache. Leave as is." Type="Variable" Display="advanced" Required="true" Mask="false">/cache</Config>
+  <Config Name="Library cache TTL (seconds)" Target="SD_LIBRARY_CACHE_TTL_SECONDS" Default="120" Mode="" Description="How long the library index is trusted before checking the folders again for files added outside the app. 0 checks on every request." Type="Variable" Display="advanced" Required="false" Mask="false">120</Config>
+  <Config Name="Preview max dimension" Target="SD_PREVIEW_MAX_DIMENSION" Default="640" Mode="" Description="Longest edge, in pixels, of generated preview thumbnails." Type="Variable" Display="advanced" Required="false" Mask="false">640</Config>
+  <Config Name="Preview JPEG quality" Target="SD_PREVIEW_JPEG_QUALITY" Default="70" Mode="" Description="JPEG quality (1-100) of image preview thumbnails." Type="Variable" Display="advanced" Required="false" Mask="false">70</Config>
+  <Config Name="Background sync" Target="SD_FIRST_SEEN_SYNC_ENABLED" Default="1|0" Mode="" Description="Runs the first-seen/preview sync script at startup and then periodically." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Background sync interval (seconds)" Target="SD_FIRST_SEEN_SYNC_INTERVAL_SECONDS" Default="86400" Mode="" Description="Delay between two background sync runs." Type="Variable" Display="advanced" Required="false" Mask="false">86400</Config>
+</Container>
