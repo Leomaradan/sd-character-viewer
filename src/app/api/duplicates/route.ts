@@ -14,6 +14,7 @@ import {
   isVideoFilePath,
   parsePoseName,
   moveRatingEntries,
+  setRatingEntriesIfUnrated,
   readImageLibrary,
   readReviewedDuplicateGroups,
   refreshLibraryAfterChange,
@@ -146,6 +147,12 @@ const finalizeKeptFiles = async (params: {
         toRelativePath(targetFileName),
       ]),
     ),
+  );
+  // Keeping a file is a verdict on it: an unrated survivor becomes "ok".
+  await setRatingEntriesIfUnrated(
+    rootPath,
+    renamePlan.map((entry) => toRelativePath(entry.targetFileName)),
+    "ok",
   );
 
   const finalFileNames = renamePlan

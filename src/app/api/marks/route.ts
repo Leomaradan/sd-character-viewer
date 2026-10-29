@@ -22,6 +22,7 @@ import {
   setToAnimateEntry,
   setToExtendEntry,
   setToUpscaleEntry,
+  setRatingEntriesIfUnrated,
   setToUpscaleVideoEntry,
 } from "@/lib/image-library";
 
@@ -222,6 +223,34 @@ const handleExtendMark = async (
   return markResponse(mark);
 };
 
+const applyMark = async (
+  rootPath: string,
+  requestedPath: string,
+  body: IMarkRequestBody,
+  metadata: string,
+): Promise<Response> => {
+  if (body.type === "upscale") {
+    await setToUpscaleEntry(rootPath, requestedPath, metadata);
+    return new Response(null, { status: 204 });
+  }
+
+  if (body.type === "animate") {
+    return handleAnimateMark(rootPath, requestedPath, body.action, body.metadata, body.prompt);
+  }
+
+  if (body.type === "upscaleVideo") {
+    const upscaleVideoMetadata = await resolveVideoMetadata(rootPath, requestedPath);
+    await setToUpscaleVideoEntry(rootPath, requestedPath, upscaleVideoMetadata);
+    return new Response(null, { status: 204 });
+  }
+
+  if (body.type === "extend") {
+    return handleExtendMark(rootPath, requestedPath, body.action, body.prompt);
+  }
+
+  return new Response("Invalid mark type", { status: 400 });
+};
+
 export const PUT = async (request: Request) => {
   if (isMisconfigured()) {
     return Response.json({ misconfigured: true, required: true, authenticated: false });
@@ -261,26 +290,13 @@ export const PUT = async (request: Request) => {
     return new Response("Image library is not configured", { status: 400 });
   }
 
-  if (body.type === "upscale") {
-    await setToUpscaleEntry(rootPath, requestedPath, metadata);
-    return new Response(null, { status: 204 });
+  const response = await applyMark(rootPath, requestedPath, body, metadata);
+  // Marking a file for more work is a verdict on it: an unrated file becomes "good". An Edit
+  // Animation save (explicit prompt) only edits an existing mark, so it leaves the rating alone.
+  if (response.ok && typeof body.prompt !== "string") {
+    await setRatingEntriesIfUnrated(rootPath, [requestedPath], "good");
   }
-
-  if (body.type === "animate") {
-    return handleAnimateMark(rootPath, requestedPath, body.action, body.metadata, body.prompt);
-  }
-
-  if (body.type === "upscaleVideo") {
-    const upscaleVideoMetadata = await resolveVideoMetadata(rootPath, requestedPath);
-    await setToUpscaleVideoEntry(rootPath, requestedPath, upscaleVideoMetadata);
-    return new Response(null, { status: 204 });
-  }
-
-  if (body.type === "extend") {
-    return handleExtendMark(rootPath, requestedPath, body.action, body.prompt);
-  }
-
-  return new Response("Invalid mark type", { status: 400 });
+  return response;
 };
 
 export const DELETE = async (request: Request) => {

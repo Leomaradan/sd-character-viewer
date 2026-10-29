@@ -50,13 +50,18 @@ import {
   parseCharacterSortOrder,
   parseMediaTypeFilter,
   parseRatingFilter,
+  parseShowOnlyUpscaled,
   parsePoseViewStyle,
   parseShowOnlyNewImages,
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
   parseStyleViewStyle,
 } from "@/components/image-viewer/common/persistent-filters";
-import { applyRatingOverride, formatStyleLabel } from "@/components/image-viewer/common/utils";
+import {
+  applyRatingOverride,
+  formatStyleLabel,
+  pickRandomItem,
+} from "@/components/image-viewer/common/utils";
 import { ImageDetailModal } from "@/components/image-viewer/details/ImageDetailModal";
 import { DuplicateFinderModal } from "@/components/image-viewer/duplicateFinder/DuplicateFinderModal";
 import { ScrollToTopButton } from "@/components/image-viewer/layout/ScrollToTopButton";
@@ -122,6 +127,8 @@ const AUTH_LOADING_SX = {
 const AUTH_LOCAL_EXPIRY_KEY = "sd_auth_expires_at";
 const AUTH_SESSION_KEY = "sd_auth_session";
 const AUTH_MARKER_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+// Query-string flag of a detail view opened by the dice button (random mode).
+const RANDOM_QUERY_PARAM = "random";
 
 interface IAuthSessionResponse {
   misconfigured?: boolean;
@@ -150,6 +157,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const characterSortOrder = useMemo(() => parseCharacterSortOrder(searchParams), [searchParams]);
   const mediaTypeFilter = useMemo(() => parseMediaTypeFilter(searchParams), [searchParams]);
   const ratingFilter = useMemo(() => parseRatingFilter(searchParams), [searchParams]);
+  const showOnlyUpscaled = useMemo(() => parseShowOnlyUpscaled(searchParams), [searchParams]);
   const styleViewStyle = useMemo(() => parseStyleViewStyle(searchParams), [searchParams]);
   const poseViewStyle = useMemo(() => parsePoseViewStyle(searchParams), [searchParams]);
   const selectedMetadataFilterId = useMemo(
@@ -160,6 +168,9 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [selectedImageForModal, setSelectedImageForModal] = useState<IImageItem | null>(null);
+  // Opened by the dice button: Next picks another random file and there's no Previous. Also
+  // reflected as `random=1` on the detail view's history entry, so closing it drops the flag.
+  const [isRandomMode, setIsRandomMode] = useState(false);
   const [modalFilteredImages, setModalFilteredImages] = useState<IImageItem[]>([]);
   const [isDuplicateFinderOpen, setIsDuplicateFinderOpen] = useState(false);
   const [isPoseConformityOpen, setIsPoseConformityOpen] = useState(false);
@@ -221,16 +232,37 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     [isSidebarCollapsed],
   );
 
-  const handleOpenImageModal = useCallback((image: IImageItem, filteredImages: IImageItem[]) => {
-    setModalFilteredImages(filteredImages);
-    setSelectedImageForModal(image);
-    history.pushState({ sdModal: true }, "");
-    modalHistoryPushed.current = true;
+  const handleOpenImageModal = useCallback(
+    (image: IImageItem, filteredImages: IImageItem[], isRandom: boolean = false) => {
+      setModalFilteredImages(filteredImages);
+      setSelectedImageForModal(image);
+      setIsRandomMode(isRandom);
+      if (isRandom) {
+        const url = new URL(globalThis.location.href);
+        url.searchParams.set(RANDOM_QUERY_PARAM, "1");
+        history.pushState({ sdModal: true }, "", url);
+      } else {
+        history.pushState({ sdModal: true }, "");
+      }
+      modalHistoryPushed.current = true;
+    },
+    [],
+  );
+
+  // A `random` flag left in the URL (page reloaded while the random detail view was open) has no
+  // detail view to go with it any more.
+  useEffect(() => {
+    const url = new URL(globalThis.location.href);
+    if (url.searchParams.has(RANDOM_QUERY_PARAM)) {
+      url.searchParams.delete(RANDOM_QUERY_PARAM);
+      history.replaceState(history.state, "", url);
+    }
   }, []);
 
   const handleCloseImageModal = useCallback(() => {
     setSelectedImageForModal(null);
     setModalFilteredImages([]);
+    setIsRandomMode(false);
     if (modalHistoryPushed.current) {
       modalHistoryPushed.current = false;
       history.back();
@@ -327,6 +359,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const handleImageDeleted = useCallback(() => {
     setSelectedImageForModal(null);
     setModalFilteredImages([]);
+    setIsRandomMode(false);
     if (modalHistoryPushed.current) {
       modalHistoryPushed.current = false;
       history.back();
@@ -340,6 +373,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         modalHistoryPushed.current = false;
         setSelectedImageForModal(null);
         setModalFilteredImages([]);
+        setIsRandomMode(false);
       }
     };
     globalThis.addEventListener("popstate", handlePopState);
@@ -524,6 +558,13 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     [updateQueryParams],
   );
 
+  const handleShowOnlyUpscaledChange = useCallback(
+    (enabled: boolean) => {
+      updateQueryParams({ upscaled: enabled ? "1" : null });
+    },
+    [updateQueryParams],
+  );
+
   const handleMediaTypeFilterChange = useCallback(
     (nextMediaTypeFilter: TMediaTypeFilter) => {
       updateQueryParams({ media: nextMediaTypeFilter === "both" ? null : nextMediaTypeFilter });
@@ -564,9 +605,10 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     return modalImageIndexById.get(selectedImageForModal.id) ?? -1;
   }, [modalImageIndexById, selectedImageForModal]);
 
-  const canNavigateModalPrevious = selectedModalImageIndex > 0;
-  const canNavigateModalNext =
-    selectedModalImageIndex >= 0 && selectedModalImageIndex < modalFilteredImages.length - 1;
+  const canNavigateModalPrevious = !isRandomMode && selectedModalImageIndex > 0;
+  const canNavigateModalNext = isRandomMode
+    ? modalFilteredImages.length > 1
+    : selectedModalImageIndex >= 0 && selectedModalImageIndex < modalFilteredImages.length - 1;
 
   const handleModalPrevious = useCallback(() => {
     if (!canNavigateModalPrevious) {
@@ -581,8 +623,36 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
       return;
     }
 
+    if (isRandomMode) {
+      // Another random file, never the one already shown.
+      const others = modalFilteredImages.filter((_, index) => index !== selectedModalImageIndex);
+      setSelectedImageForModal(pickRandomItem(others));
+      return;
+    }
+
     setSelectedImageForModal(modalFilteredImages[selectedModalImageIndex + 1] ?? null);
-  }, [canNavigateModalNext, modalFilteredImages, selectedModalImageIndex]);
+  }, [canNavigateModalNext, isRandomMode, modalFilteredImages, selectedModalImageIndex]);
+
+  // Redraw renamed the shown file: drop it from the list and move on to the next (or another
+  // random) file, closing when there's none left. The library reloads to pick up the new name.
+  const handleImageRedrawn = useCallback(
+    (relativePath: string) => {
+      const remaining = modalFilteredImages.filter((item) => item.relativePath !== relativePath);
+      const nextImage = isRandomMode
+        ? pickRandomItem(remaining)
+        : (modalFilteredImages[selectedModalImageIndex + 1] ?? null);
+
+      if (nextImage) {
+        setModalFilteredImages(remaining);
+        setSelectedImageForModal(nextImage);
+        setLibraryRefreshToken((currentToken) => currentToken + 1);
+        return;
+      }
+
+      handleImageDeleted();
+    },
+    [handleImageDeleted, isRandomMode, modalFilteredImages, selectedModalImageIndex],
+  );
 
   const handleLibraryLoad = useCallback((loadedLibrary: ILibraryData) => {
     setLibrary(loadedLibrary);
@@ -759,6 +829,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           characterSortOrder={characterSortOrder}
           mediaTypeFilter={mediaTypeFilter}
           ratingFilter={ratingFilter}
+          showOnlyUpscaled={showOnlyUpscaled}
           styleViewStyle={styleViewStyle}
           poseViewStyle={poseViewStyle}
           characterDetailStyle={characterDetailStyle}
@@ -776,6 +847,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           setCharacterDetailPose={setCharacterDetailPose}
           onMediaTypeFilterChange={handleMediaTypeFilterChange}
           onRatingFilterChange={handleRatingFilterChange}
+          onShowOnlyUpscaledChange={handleShowOnlyUpscaledChange}
           onImageSelect={handleOpenImageModal}
           onLibraryLoad={handleLibraryLoad}
         />
@@ -788,6 +860,8 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         onDeleteSuccess={handleImageDeleted}
         onImageSeen={handleImageSeen}
         onImageRated={handleImageRated}
+        onImageRedrawn={handleImageRedrawn}
+        isRandomMode={isRandomMode}
         canNavigatePrevious={canNavigateModalPrevious}
         canNavigateNext={canNavigateModalNext}
         onNavigatePrevious={handleModalPrevious}

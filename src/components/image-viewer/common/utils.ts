@@ -104,6 +104,14 @@ export const applyRatingOverride = (
   return override === null ? rest : { ...rest, rating: override };
 };
 
+// An upscaled file carries an "[Upscaled]" annotation in its name (any case, any position):
+// "Casual [Upscaled].png", "Dancing (Casual) [upscaled] 2.mp4".
+const UPSCALED_ANNOTATION_REGEX = /\[\s*upscaled\s*\]/i;
+export const isUpscaledFile = (image: Readonly<Pick<IImageItem, "relativePath">>): boolean => {
+  const fileName = image.relativePath.slice(image.relativePath.lastIndexOf("/") + 1);
+  return UPSCALED_ANNOTATION_REGEX.test(fileName);
+};
+
 // "unrated" keeps files with no OK/Good rating, "good" only Good ones.
 export const matchesRatingFilter = (
   image: Readonly<Pick<IImageItem, "rating">>,

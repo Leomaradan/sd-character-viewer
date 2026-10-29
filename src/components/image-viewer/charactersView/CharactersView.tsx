@@ -18,6 +18,7 @@ import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
 import { MediaTypeFilter } from "../common/MediaTypeFilter";
 import { RatingFilter } from "../common/RatingFilter";
+import { UpscaledFilter } from "../common/UpscaledFilter";
 import { filterCharactersByMetadataOption } from "../common/utils";
 import { PoseView } from "../posesView/PoseView";
 import { StyleView } from "../stylesView/StyleView";
@@ -44,6 +45,8 @@ interface ICharactersViewProps {
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   ratingFilter: TRatingFilter;
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
+  showOnlyUpscaled: boolean;
+  onShowOnlyUpscaledChange: (enabled: boolean) => void;
   onSelectCharacter: (characterName: string | null) => void;
   onCharacterDetailStyleChange: (style: string) => void;
   onCharacterDetailPoseChange: (pose: string) => void;
@@ -107,6 +110,8 @@ export const CharactersView = ({
   onMediaTypeFilterChange,
   ratingFilter,
   onRatingFilterChange,
+  showOnlyUpscaled,
+  onShowOnlyUpscaledChange,
   onSelectCharacter,
   onMetadataFilterChange,
   onClearMetadataFilter,
@@ -212,6 +217,10 @@ export const CharactersView = ({
               onMediaTypeFilterChange={onMediaTypeFilterChange}
             />
             <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
+            <UpscaledFilter
+              showOnlyUpscaled={showOnlyUpscaled}
+              onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
+            />
           </Stack>
 
           <Stack spacing={STACK_SPACING} direction="row" useFlexGap sx={FLEXWRAP}>
@@ -252,6 +261,7 @@ export const CharactersView = ({
                 characterDetailPose,
                 mediaTypeFilter,
                 ratingFilter,
+                showOnlyUpscaled,
                 characterSortOrder,
                 showNewBadge,
               ].join("|")}
@@ -270,6 +280,10 @@ export const CharactersView = ({
               onMediaTypeFilterChange={onMediaTypeFilterChange}
             />
             <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
+            <UpscaledFilter
+              showOnlyUpscaled={showOnlyUpscaled}
+              onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
+            />
           </Stack>
 
           <CategoryFilter
