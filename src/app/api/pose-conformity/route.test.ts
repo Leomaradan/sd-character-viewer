@@ -72,6 +72,7 @@ const buildLibrary = (overrides: Partial<ILibraryData> = {}): ILibraryData =>
     rootConfigured: true,
     rootPath: "/root",
     standardPoses: ["Casual", "Dancing"],
+    posePatternFilters: [],
     images: [
       buildImage("characters/3d/Anna/Base.png", "Base"),
       buildImage("characters/3d/Anna/Casual.png", "Casual"),
@@ -151,6 +152,29 @@ describe("GET /api/pose-conformity", () => {
     expect(data.standardPoses).toEqual(["Casual", "Dancing"]);
     expect(data.items.map((item) => item.relativePath)).toEqual([
       "characters/3d/Anna/Casul.png",
+      "characters/3d/Anna/Jumping (Test).mp4",
+    ]);
+  });
+
+  it("treats a video whose pose part matches a pose-filters.json pattern as conforming", async () => {
+    allowRequests();
+    vi.mocked(readCustomPoseEntries).mockResolvedValue({});
+    const library = buildLibrary({
+      posePatternFilters: [
+        { id: "abducted", label: "Abducted by Somebody", pattern: "^abducted by ", flags: "i" },
+      ],
+    });
+    library.images.push(
+      buildImage("characters/3d/Anna/Cowgirl (Abducted by Ganondorf).mp4", "Abducted by Ganondorf"),
+    );
+    vi.mocked(readImageLibrary).mockResolvedValue(library);
+
+    const response = await GET(new Request("http://localhost/api/pose-conformity"));
+    const data = (await response.json()) as { items: IImageItem[] };
+
+    expect(data.items.map((item) => item.relativePath)).toEqual([
+      "characters/3d/Anna/Casul.png",
+      "characters/3d/Anna/Odd.png",
       "characters/3d/Anna/Jumping (Test).mp4",
     ]);
   });

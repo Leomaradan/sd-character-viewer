@@ -1,4 +1,8 @@
-import { type IAnimationConfig, type IAnimationGenerationOptions } from "@/types/library";
+import {
+  type IAnimationConfig,
+  type IAnimationGenerationOptions,
+  type IAnimationLora,
+} from "@/types/library";
 
 import { isPlainObjectRecord } from "./shared";
 
@@ -9,10 +13,8 @@ const normalizeAnimationPrompt = (rawPrompt: unknown): string[] => {
   return lines.filter((line): line is string => typeof line === "string" && line.trim() !== "");
 };
 
-const normalizeAnimationGenerationOptions = (
-  entry: Record<string, unknown>,
-): IAnimationGenerationOptions => {
-  const options: IAnimationGenerationOptions = {};
+const normalizeAnimationLora = (entry: Record<string, unknown>): IAnimationLora => {
+  const options: IAnimationLora = {};
   if (typeof entry.lora === "string" && entry.lora.trim()) {
     options.lora = entry.lora.trim();
   }
@@ -25,9 +27,27 @@ const normalizeAnimationGenerationOptions = (
   return options;
 };
 
+// `loras` keeps its object items that set at least one valid lora/trigger/weight, and is left
+// out when none does.
+const normalizeAnimationGenerationOptions = (
+  entry: Record<string, unknown>,
+): IAnimationGenerationOptions => {
+  const options: IAnimationGenerationOptions = normalizeAnimationLora(entry);
+  const loras = Array.isArray(entry.loras)
+    ? entry.loras
+        .filter(isPlainObjectRecord)
+        .map(normalizeAnimationLora)
+        .filter((lora) => Object.keys(lora).length > 0)
+    : [];
+  if (loras.length > 0) {
+    options.loras = loras;
+  }
+  return options;
+};
+
 // A single raw `animations` entry must be an object node with required key/name strings, a
 // `prompt` (string or array of strings, see normalizeAnimationPrompt), optional lora/trigger/weight
-// generation options, and optional recursively-normalized subVersions. A node with no prompt line
+// and loras generation options, and optional recursively-normalized subVersions. A node with no prompt line
 // and no (valid) subVersions has nothing to animate with and is skipped entirely - which includes
 // legacy plain-string entries, since those never carried a prompt. Anything else (wrong types,
 // missing key/name) is silently skipped too, matching readMarkedImageMap's existing leniency

@@ -17,6 +17,7 @@ import { ImageGrid } from "@/components/image-viewer/image/ImageGrid";
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, GRID, STACK_SPACING } from "../common/constants";
 import { MediaTypeFilter } from "../common/MediaTypeFilter";
+import { PendingActionFilter } from "../common/PendingActionFilter";
 import { RatingFilter } from "../common/RatingFilter";
 import { UpscaledFilter } from "../common/UpscaledFilter";
 import { filterCharactersByMetadataOption } from "../common/utils";
@@ -45,6 +46,8 @@ interface ICharactersViewProps {
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   ratingFilter: TRatingFilter;
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
+  withAction: boolean;
+  onWithActionChange: (withAction: boolean) => void;
   showOnlyUpscaled: boolean;
   onShowOnlyUpscaledChange: (enabled: boolean) => void;
   onSelectCharacter: (characterName: string | null) => void;
@@ -110,6 +113,8 @@ export const CharactersView = ({
   onMediaTypeFilterChange,
   ratingFilter,
   onRatingFilterChange,
+  withAction,
+  onWithActionChange,
   showOnlyUpscaled,
   onShowOnlyUpscaledChange,
   onSelectCharacter,
@@ -217,6 +222,7 @@ export const CharactersView = ({
               onMediaTypeFilterChange={onMediaTypeFilterChange}
             />
             <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
+            <PendingActionFilter withAction={withAction} onWithActionChange={onWithActionChange} />
             <UpscaledFilter
               showOnlyUpscaled={showOnlyUpscaled}
               onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
@@ -261,6 +267,7 @@ export const CharactersView = ({
                 characterDetailPose,
                 mediaTypeFilter,
                 ratingFilter,
+                withAction,
                 showOnlyUpscaled,
                 characterSortOrder,
                 showNewBadge,
@@ -280,6 +287,7 @@ export const CharactersView = ({
               onMediaTypeFilterChange={onMediaTypeFilterChange}
             />
             <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
+            <PendingActionFilter withAction={withAction} onWithActionChange={onWithActionChange} />
             <UpscaledFilter
               showOnlyUpscaled={showOnlyUpscaled}
               onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}

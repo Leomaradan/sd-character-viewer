@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { buildConformedStem, insertVariantNumber, isPoseConforming } from "./pose-conformity";
+import {
+  buildConformedStem,
+  compilePosePatterns,
+  insertVariantNumber,
+  isPoseConforming,
+} from "./pose-conformity";
 
 describe("isPoseConforming", () => {
   const poses = ["Casual", "Lying Side"];
@@ -24,6 +29,28 @@ describe("isPoseConforming", () => {
         poses,
       ),
     ).toBe(true);
+  });
+
+  it("accepts a video whose pose part matches a pose-filters.json pattern", () => {
+    const posePatterns = compilePosePatterns([
+      { id: "abducted", label: "Abducted by Somebody", pattern: "^abducted by ", flags: "gi" },
+      { id: "broken", label: "Broken", pattern: "(" },
+    ]);
+    const abducted = { poseFilterName: "Abducted by Ganondorf", posePatternFilterIds: [] };
+
+    expect(posePatterns).toHaveLength(1);
+    expect(isPoseConforming(abducted, poses, [], posePatterns)).toBe(true);
+    // A global flag's lastIndex doesn't leak from one item to the next.
+    expect(isPoseConforming(abducted, poses, [], posePatterns)).toBe(true);
+    expect(isPoseConforming(abducted, poses)).toBe(false);
+    expect(
+      isPoseConforming(
+        { poseFilterName: "Kidnapped", posePatternFilterIds: [] },
+        poses,
+        [],
+        posePatterns,
+      ),
+    ).toBe(false);
   });
 
   it("accepts special poses, case-insensitively", () => {

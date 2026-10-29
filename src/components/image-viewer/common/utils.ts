@@ -112,16 +112,32 @@ export const isUpscaledFile = (image: Readonly<Pick<IImageItem, "relativePath">>
   return UPSCALED_ANNOTATION_REGEX.test(fileName);
 };
 
-// "unrated" keeps files with no OK/Good rating, "good" only Good ones.
+// Keeps the files whose rating is checked ("unrated" = no rating yet); nothing checked keeps
+// everything, bad files included. Bad files are otherwise always left out.
 export const matchesRatingFilter = (
   image: Readonly<Pick<IImageItem, "rating">>,
   ratingFilter: TRatingFilter,
 ): boolean => {
-  if (ratingFilter === "unrated") {
-    return image.rating === undefined;
+  if (ratingFilter.length === 0) {
+    return true;
   }
 
-  return ratingFilter === "all" || image.rating === "good";
+  const rating = image.rating ?? "unrated";
+  return rating !== "bad" && ratingFilter.includes(rating);
+};
+
+// Applies a pending-action change made in the app on top of the loaded state.
+export const applyPendingActionOverride = (
+  image: IImageItem,
+  pendingActionOverrides: ReadonlyMap<string, boolean>,
+): IImageItem => {
+  const override = pendingActionOverrides.get(image.relativePath);
+  if (override === undefined || override === Boolean(image.hasPendingAction)) {
+    return image;
+  }
+
+  const { hasPendingAction: _previous, ...rest } = image;
+  return override ? { ...rest, hasPendingAction: true } : rest;
 };
 
 export const pickRandomItem = <T>(

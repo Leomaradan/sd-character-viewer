@@ -8,28 +8,53 @@ import { describe, expect, it, vi } from "vitest";
 import { RatingFilter } from "@/components/image-viewer/common/RatingFilter";
 
 describe("RatingFilter", () => {
-  it("marks the currently selected option as pressed", () => {
-    render(<RatingFilter ratingFilter="good" onRatingFilterChange={vi.fn()} />);
+  it("checks the selected ratings", () => {
+    render(<RatingFilter ratingFilter={["unrated", "good"]} onRatingFilterChange={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: "Good" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("checkbox", { name: "Unrated" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "OK" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Good" })).toBeChecked();
   });
 
-  it("calls onRatingFilterChange with the newly selected value", () => {
+  it("adds a checked rating, keeping the checkboxes' order", () => {
     const onRatingFilterChange = vi.fn();
-    render(<RatingFilter ratingFilter="all" onRatingFilterChange={onRatingFilterChange} />);
+    render(<RatingFilter ratingFilter={["good"]} onRatingFilterChange={onRatingFilterChange} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Unrated" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Unrated" }));
 
-    expect(onRatingFilterChange).toHaveBeenCalledWith("unrated");
+    expect(onRatingFilterChange).toHaveBeenCalledWith(["unrated", "good"]);
   });
 
-  it("does not call onRatingFilterChange when clicking the already-selected option", () => {
+  it("removes an unchecked rating", () => {
     const onRatingFilterChange = vi.fn();
-    render(<RatingFilter ratingFilter="all" onRatingFilterChange={onRatingFilterChange} />);
+    render(
+      <RatingFilter ratingFilter={["ok", "good"]} onRatingFilterChange={onRatingFilterChange} />,
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "OK" }));
 
-    expect(onRatingFilterChange).not.toHaveBeenCalled();
+    expect(onRatingFilterChange).toHaveBeenCalledWith(["good"]);
+  });
+
+  it("keeps an earlier click when a second one comes before the filter prop updates", () => {
+    const onRatingFilterChange = vi.fn();
+    render(<RatingFilter ratingFilter={[]} onRatingFilterChange={onRatingFilterChange} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Unrated" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "OK" }));
+
+    expect(onRatingFilterChange).toHaveBeenLastCalledWith(["unrated", "ok"]);
+    expect(screen.getByRole("checkbox", { name: "Unrated" })).toBeChecked();
+  });
+
+  it("follows the filter prop when it changes", () => {
+    const { rerender } = render(
+      <RatingFilter ratingFilter={["good"]} onRatingFilterChange={vi.fn()} />,
+    );
+
+    rerender(<RatingFilter ratingFilter={["ok"]} onRatingFilterChange={vi.fn()} />);
+
+    expect(screen.getByRole("checkbox", { name: "OK" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Good" })).not.toBeChecked();
   });
 });

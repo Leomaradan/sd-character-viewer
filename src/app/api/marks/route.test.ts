@@ -108,6 +108,7 @@ describe("/api/marks GET", () => {
       upscaleVideo: true,
       extend: { action: "Zoom In", prompt: "zoom in slowly" },
       link: null,
+      derived: [],
     });
   });
 
@@ -127,6 +128,7 @@ describe("/api/marks GET", () => {
       upscaleVideo: false,
       extend: null,
       link: null,
+      derived: [],
     });
   });
 
@@ -154,6 +156,7 @@ describe("/api/marks GET", () => {
       upscaleVideo: false,
       extend: null,
       link,
+      derived: [],
     });
   });
 
@@ -197,6 +200,7 @@ describe("/api/marks GET", () => {
     vi.mocked(readToAnimateEntries).mockResolvedValue({
       "a.png": { metadata: "raw", action: "Zoom In", prompt: "slow zoom" },
     });
+    vi.mocked(readVideoLinks).mockResolvedValue({});
 
     const response = await GET(new Request("http://localhost/api/marks?path=a.png"));
 
@@ -204,6 +208,40 @@ describe("/api/marks GET", () => {
     await expect(response.json()).resolves.toEqual({
       upscale: true,
       animate: { action: "Zoom In", prompt: "slow zoom" },
+      derived: [],
+    });
+  });
+
+  it("lists the videos generated from the file", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.png");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(readToUpscaleEntries).mockResolvedValue({});
+    vi.mocked(readToAnimateEntries).mockResolvedValue({});
+    const linkFrom = (sourceRelativePath: string, action: string) => ({
+      sourceRelativePath,
+      sourceMediaType: "image" as const,
+      action,
+      prompt: "",
+      metadata: "",
+      linkedAt: 0,
+    });
+    vi.mocked(readVideoLinks).mockResolvedValue({
+      "Dance.mp4": linkFrom("a.png", "dance"),
+      "Other.mp4": linkFrom("b.png", "dance"),
+      "Zoom.mp4": linkFrom("a.png", "zoom-in"),
+    });
+
+    const response = await GET(new Request("http://localhost/api/marks?path=a.png"));
+
+    await expect(response.json()).resolves.toEqual({
+      upscale: false,
+      animate: null,
+      derived: [
+        { relativePath: "Dance.mp4", action: "dance" },
+        { relativePath: "Zoom.mp4", action: "zoom-in" },
+      ],
     });
   });
 
@@ -214,10 +252,11 @@ describe("/api/marks GET", () => {
     vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
     vi.mocked(readToUpscaleEntries).mockResolvedValue({});
     vi.mocked(readToAnimateEntries).mockResolvedValue({});
+    vi.mocked(readVideoLinks).mockResolvedValue({});
 
     const response = await GET(new Request("http://localhost/api/marks?path=a.png"));
 
-    await expect(response.json()).resolves.toEqual({ upscale: false, animate: null });
+    await expect(response.json()).resolves.toEqual({ upscale: false, animate: null, derived: [] });
   });
 });
 
@@ -697,6 +736,36 @@ describe("/api/marks PUT", () => {
       lora: "zoom_lora",
       weight: 1,
     });
+    expect(response.status).toBe(200);
+  });
+
+  it("passes the node's loras through to a mark", async () => {
+    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
+    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
+    vi.mocked(env.readBooleanEnvFlag).mockReturnValue(true);
+    vi.mocked(resolveImageFilePath).mockReturnValue("/tmp/a.mp4");
+    vi.mocked(getImagesRootPathFromEnv).mockReturnValue("/tmp");
+    vi.mocked(isVideoFilePath).mockReturnValueOnce(true);
+    const loras = [
+      { lora: "zoom_lora", weight: 1 },
+      { lora: "detail_lora", trigger: "detailed" },
+    ];
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    vi.mocked(readImageLibrary).mockResolvedValue({
+      animations: [{ key: "zoom", name: "Zoom", prompt: ["zoom"], loras }],
+    } as never);
+    vi.mocked(readVideoLinks).mockResolvedValue({});
+    vi.mocked(setToExtendEntry).mockResolvedValue(undefined);
+
+    const response = await PUT(
+      jsonRequest("http://localhost/api/marks", "PUT", {
+        path: "a.mp4",
+        type: "extend",
+        action: "zoom",
+      }),
+    );
+
+    expect(setToExtendEntry).toHaveBeenCalledWith("/tmp", "a.mp4", "", "zoom", "zoom", { loras });
     expect(response.status).toBe(200);
   });
 

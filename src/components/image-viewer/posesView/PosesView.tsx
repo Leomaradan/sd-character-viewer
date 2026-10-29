@@ -15,6 +15,7 @@ import { ImageGrid } from "@/components/image-viewer/image/ImageGrid";
 import { CategoryFilter } from "../common/CategoryFilter";
 import { FLEXWRAP, STACK_SPACING } from "../common/constants";
 import { MediaTypeFilter } from "../common/MediaTypeFilter";
+import { PendingActionFilter } from "../common/PendingActionFilter";
 import { RatingFilter } from "../common/RatingFilter";
 import { SearchField } from "../common/SearchField";
 import { TagPicker } from "../common/TagPicker";
@@ -45,6 +46,8 @@ interface IPosesViewProps {
   onMediaTypeFilterChange: (mediaTypeFilter: TMediaTypeFilter) => void;
   ratingFilter: TRatingFilter;
   onRatingFilterChange: (ratingFilter: TRatingFilter) => void;
+  withAction: boolean;
+  onWithActionChange: (withAction: boolean) => void;
   showOnlyUpscaled: boolean;
   onShowOnlyUpscaledChange: (enabled: boolean) => void;
   onClearPoses: () => void;
@@ -72,6 +75,8 @@ export const PosesView = ({
   onMediaTypeFilterChange,
   ratingFilter,
   onRatingFilterChange,
+  withAction,
+  onWithActionChange,
   showOnlyUpscaled,
   onShowOnlyUpscaledChange,
   onClearPoses,
@@ -174,6 +179,7 @@ export const PosesView = ({
           onMediaTypeFilterChange={onMediaTypeFilterChange}
         />
         <RatingFilter ratingFilter={ratingFilter} onRatingFilterChange={onRatingFilterChange} />
+        <PendingActionFilter withAction={withAction} onWithActionChange={onWithActionChange} />
         <UpscaledFilter
           showOnlyUpscaled={showOnlyUpscaled}
           onShowOnlyUpscaledChange={onShowOnlyUpscaledChange}
@@ -211,6 +217,7 @@ export const PosesView = ({
             selectedMetadataFilterId,
             mediaTypeFilter,
             ratingFilter,
+            withAction,
             showOnlyUpscaled,
             showDate,
             showNewBadge,

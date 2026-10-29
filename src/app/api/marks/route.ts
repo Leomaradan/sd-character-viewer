@@ -1,4 +1,4 @@
-import type { IAnimationConfig, IAnimationGenerationOptions } from "@/types/library";
+import type { IAnimationConfig, IAnimationGenerationOptions, IVideoLink } from "@/types/library";
 
 import { isAuthenticatedRequest, isMisconfigured, isPasswordProtectionEnabled } from "@/lib/auth";
 import { ensureLocalEnvLoaded, readBooleanEnvFlag } from "@/lib/env";
@@ -46,6 +46,15 @@ const isMarkingAllowed = (): boolean => {
   return readBooleanEnvFlag(process.env[SD_ALLOW_DELETE_ENV_KEY]);
 };
 
+// The videos generated from `sourcePath` (animations of an image, extensions of a video), by path.
+const listDerivedVideos = (
+  videoLinks: Record<string, IVideoLink>,
+  sourcePath: string,
+): { relativePath: string; action: string }[] =>
+  Object.entries(videoLinks)
+    .filter(([, link]) => link.sourceRelativePath === sourcePath)
+    .map(([relativePath, link]) => ({ relativePath, action: link.action }));
+
 const normalizeRequestedPath = (rawPath: string): string => rawPath.trim().replaceAll("\\", "/");
 
 export const GET = async (request: Request) => {
@@ -70,11 +79,13 @@ export const GET = async (request: Request) => {
     return new Response("Image library is not configured", { status: 400 });
   }
 
+  const videoLinks = await readVideoLinks(rootPath);
+  const derived = listDerivedVideos(videoLinks, requestedPath);
+
   if (isVideoFilePath(filePath)) {
-    const [upscaleVideoEntries, extendEntries, videoLinks] = await Promise.all([
+    const [upscaleVideoEntries, extendEntries] = await Promise.all([
       readToUpscaleVideoEntries(rootPath),
       readToExtendEntries(rootPath),
-      readVideoLinks(rootPath),
     ]);
 
     const extendEntry = extendEntries[requestedPath];
@@ -83,6 +94,7 @@ export const GET = async (request: Request) => {
       upscaleVideo: requestedPath in upscaleVideoEntries,
       extend: extendEntry ? { action: extendEntry.action, prompt: extendEntry.prompt } : null,
       link: videoLinks[requestedPath] ?? null,
+      derived,
     });
   }
 
@@ -96,6 +108,7 @@ export const GET = async (request: Request) => {
   return Response.json({
     upscale: requestedPath in upscaleEntries,
     animate: animateEntry ? { action: animateEntry.action, prompt: animateEntry.prompt } : null,
+    derived,
   });
 };
 
@@ -145,7 +158,7 @@ interface IResolvedMark {
 // Animation reuses this same PUT upsert with an explicit `prompt`: that edits the existing mark
 // as-is, so no random pick happens - otherwise a mark on a group node (one created before its
 // prompt was emptied) would silently switch to a random child's key while the client keeps
-// showing the original action - and its stored lora/trigger/weight are kept rather than
+// showing the original action - and its stored lora/trigger/weight/loras are kept rather than
 // replaced by whatever the (possibly since-edited) config now says.
 const resolveMark = (rawPrompt: unknown, node: IAnimationConfig): IResolvedMark => {
   if (typeof rawPrompt === "string") {
@@ -153,11 +166,11 @@ const resolveMark = (rawPrompt: unknown, node: IAnimationConfig): IResolvedMark 
   }
 
   const selection = selectAnimation(node);
-  const { lora, trigger, weight } = selection.node;
+  const { lora, trigger, weight, loras } = selection.node;
   return {
     action: selection.node.key,
     prompt: selection.prompt,
-    options: { lora, trigger, weight },
+    options: { lora, trigger, weight, loras },
   };
 };
 

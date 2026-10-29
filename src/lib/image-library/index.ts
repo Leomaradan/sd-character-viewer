@@ -42,6 +42,7 @@ import {
   readToAnimateEntries,
   readToExtendEntries,
   readMarkedImageMap,
+  readPendingActionPaths,
   readRatings,
   removeMarkedImageMapEntryIfUnchanged,
   TO_ANIMATE_FILE_NAME,
@@ -80,7 +81,7 @@ interface ILibraryConfig {
   styles?: string[];
   defaultStyle?: string;
   styleLabels?: Record<string, string>;
-  // Recursive shape ({key,name,prompt,lora,trigger,weight,subVersions} nodes) validated by
+  // Recursive shape ({key,name,prompt,lora,trigger,weight,loras,subVersions} nodes) validated by
   // normalizeAnimationsConfig, not Ajv - see its comment.
   animations?: unknown[];
   poses?: string[];
@@ -156,7 +157,7 @@ const libraryConfigValidator = ajv.compile<ILibraryConfig>({
       additionalProperties: { type: "string" },
     },
     // Items aren't constrained here: animations is a recursive shape
-    // ({key,name,prompt,lora,trigger,weight,subVersions} nodes) that normalizeAnimationsConfig validates/normalizes
+    // ({key,name,prompt,lora,trigger,weight,loras,subVersions} nodes) that normalizeAnimationsConfig validates/normalizes
     // instead, since Ajv's `strict: false` mode doesn't support recursive schemas cleanly.
     animations: {
       type: "array",
@@ -1596,22 +1597,36 @@ const inFlightState = globalThis as typeof globalThis & {
 // Concurrent callers (the page's /api/library plus a tool's request, or several tabs) share one
 // read, so a big library is never rebuilt several times in parallel. A read started before an
 // in-app change (see removeLibraryIndexCache) isn't shared with callers arriving after it.
-// Ratings aren't part of the cached index (rating a file must not force a rescan): they're laid
-// over whichever library a read returns. Unreadable ratings just leave the files unrated.
-const withRatings = async (library: ILibraryData): Promise<ILibraryData> => {
+// Ratings and pending marks aren't part of the cached index (rating or marking a file must not
+// force a rescan): they're laid over whichever library a read returns. Unreadable files just
+// leave the files unrated/unmarked.
+const withRatingsAndMarks = async (library: ILibraryData): Promise<ILibraryData> => {
   const rootPath = getImagesRootPathFromEnv();
-  const ratings: Readonly<Record<string, TRating>> = rootPath
-    ? await readRatings(rootPath).catch(() => ({}))
-    : {};
-  if (Object.keys(ratings).length === 0) {
+  const [ratings, pendingActionPaths]: [Readonly<Record<string, TRating>>, Set<string>] = rootPath
+    ? await Promise.all([
+        readRatings(rootPath).catch(() => ({})),
+        // Can't fail: unreadable mark files count as empty.
+        readPendingActionPaths(rootPath),
+      ])
+    : [{}, new Set<string>()];
+  if (Object.keys(ratings).length === 0 && pendingActionPaths.size === 0) {
     return library;
   }
 
   return {
     ...library,
     images: library.images.map((image) => {
-      const rating = ratings[image.relativePath];
-      return rating ? { ...image, rating } : image;
+      const rating: TRating | undefined = ratings[image.relativePath];
+      const hasPendingAction = pendingActionPaths.has(image.relativePath);
+      if (!rating && !hasPendingAction) {
+        return image;
+      }
+
+      return {
+        ...image,
+        ...(rating ? { rating } : {}),
+        ...(hasPendingAction ? { hasPendingAction } : {}),
+      };
     }),
   };
 };
@@ -1636,10 +1651,10 @@ const readLibraryIndex = (): Promise<ILibraryData> => {
   return promise;
 };
 
-// Ratings are read per call, after the (possibly shared) build: a rating set while a build was
-// in flight still shows up.
+// Ratings and marks are read per call, after the (possibly shared) build: a rating or mark set
+// while a build was in flight still shows up.
 export const readImageLibrary = async (): Promise<ILibraryData> =>
-  withRatings(await readLibraryIndex());
+  withRatingsAndMarks(await readLibraryIndex());
 
 interface IChangedFolder {
   // Library form: "characters/3d/Anna" or "extra-roots/00/characters/3d/Anna".

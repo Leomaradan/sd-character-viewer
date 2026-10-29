@@ -8,6 +8,12 @@ vi.mock("@/lib/auth", () => ({
   isPasswordProtectionEnabled: vi.fn(),
 }));
 
+// Keep a local .env from re-setting SD_ALLOW_DELETE after a test deletes it.
+vi.mock("@/lib/env", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/env")>()),
+  ensureLocalEnvLoaded: vi.fn(),
+}));
+
 vi.mock("@/lib/image-library", () => ({
   getImagesRootPathFromEnv: vi.fn(),
   resolveImageFilePath: vi.fn(),

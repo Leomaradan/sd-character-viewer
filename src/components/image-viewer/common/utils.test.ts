@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ICharacterSummary, IImageItem, IPosePatternFilter } from "@/types/library";
 
 import {
+  applyPendingActionOverride,
   applyRatingOverride,
   buildPoseFilterOptions,
   buildPoseOptions,
@@ -176,6 +177,23 @@ describe("applyRatingOverride", () => {
   });
 });
 
+describe("applyPendingActionOverride", () => {
+  const image = { relativePath: "characters/3d/Anna/Casual.png" } as IImageItem;
+
+  it("keeps the image when there is no override or it changes nothing", () => {
+    expect(applyPendingActionOverride(image, new Map())).toBe(image);
+    expect(applyPendingActionOverride(image, new Map([[image.relativePath, false]]))).toBe(image);
+  });
+
+  it("sets or clears the pending action", () => {
+    const marked = applyPendingActionOverride(image, new Map([[image.relativePath, true]]));
+    expect(marked.hasPendingAction).toBe(true);
+    expect(
+      applyPendingActionOverride(marked, new Map([[image.relativePath, false]])),
+    ).not.toHaveProperty("hasPendingAction");
+  });
+});
+
 describe("isUpscaledFile", () => {
   it("matches an [Upscaled] annotation in the file name, in any case or position", () => {
     expect(isUpscaledFile({ relativePath: "characters/3d/Anna/Casual [Upscaled].png" })).toBe(true);
@@ -193,25 +211,26 @@ describe("isUpscaledFile", () => {
 });
 
 describe("matchesRatingFilter", () => {
-  it("keeps everything with All", () => {
-    expect(matchesRatingFilter({}, "all")).toBe(true);
-    expect(matchesRatingFilter({ rating: "ok" }, "all")).toBe(true);
-    expect(matchesRatingFilter({ rating: "good" }, "all")).toBe(true);
-    expect(matchesRatingFilter({ rating: "bad" }, "all")).toBe(true);
+  it("keeps everything, bad files included, when nothing is checked", () => {
+    expect(matchesRatingFilter({}, [])).toBe(true);
+    expect(matchesRatingFilter({ rating: "ok" }, [])).toBe(true);
+    expect(matchesRatingFilter({ rating: "good" }, [])).toBe(true);
+    expect(matchesRatingFilter({ rating: "bad" }, [])).toBe(true);
   });
 
   it("keeps only files without a rating with Unrated", () => {
-    expect(matchesRatingFilter({}, "unrated")).toBe(true);
-    expect(matchesRatingFilter({ rating: "ok" }, "unrated")).toBe(false);
-    expect(matchesRatingFilter({ rating: "good" }, "unrated")).toBe(false);
-    expect(matchesRatingFilter({ rating: "bad" }, "unrated")).toBe(false);
+    expect(matchesRatingFilter({}, ["unrated"])).toBe(true);
+    expect(matchesRatingFilter({ rating: "ok" }, ["unrated"])).toBe(false);
+    expect(matchesRatingFilter({ rating: "good" }, ["unrated"])).toBe(false);
+    expect(matchesRatingFilter({ rating: "bad" }, ["unrated"])).toBe(false);
   });
 
-  it("keeps only Good files with Good", () => {
-    expect(matchesRatingFilter({}, "good")).toBe(false);
-    expect(matchesRatingFilter({ rating: "ok" }, "good")).toBe(false);
-    expect(matchesRatingFilter({ rating: "good" }, "good")).toBe(true);
-    expect(matchesRatingFilter({ rating: "bad" }, "good")).toBe(false);
+  it("combines the checked ratings, never keeping bad files", () => {
+    const okOrGood = ["ok", "good"] as const;
+    expect(matchesRatingFilter({}, okOrGood)).toBe(false);
+    expect(matchesRatingFilter({ rating: "ok" }, okOrGood)).toBe(true);
+    expect(matchesRatingFilter({ rating: "good" }, okOrGood)).toBe(true);
+    expect(matchesRatingFilter({ rating: "bad" }, ["unrated", "ok", "good"])).toBe(false);
   });
 });
 

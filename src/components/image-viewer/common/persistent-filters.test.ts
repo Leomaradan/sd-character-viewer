@@ -7,6 +7,7 @@ import {
   parseCharacterSortOrder,
   parseMediaTypeFilter,
   parseRatingFilter,
+  parseWithActionFilter,
   parsePoseViewStyle,
   parseShowOnlyNewImages,
   parseShowOnlyUpscaled,
@@ -91,14 +92,25 @@ describe("persistent filters", () => {
   });
 
   describe("parseRatingFilter", () => {
-    it("reads unrated and good values", () => {
-      expect(parseRatingFilter(new URLSearchParams("rating=unrated"))).toBe("unrated");
-      expect(parseRatingFilter(new URLSearchParams("rating=%20GOOD%20"))).toBe("good");
+    it("reads every checked rating, in the checkboxes' order", () => {
+      expect(parseRatingFilter(new URLSearchParams("rating=unrated"))).toEqual(["unrated"]);
+      expect(
+        parseRatingFilter(new URLSearchParams("rating=%20GOOD%20&rating=ok&rating=good")),
+      ).toEqual(["ok", "good"]);
     });
 
-    it("defaults to all when absent or unknown", () => {
-      expect(parseRatingFilter(new URLSearchParams(""))).toBe("all");
-      expect(parseRatingFilter(new URLSearchParams("rating=bad"))).toBe("all");
+    it("is empty (all) when absent or unknown", () => {
+      expect(parseRatingFilter(new URLSearchParams(""))).toEqual([]);
+      expect(parseRatingFilter(new URLSearchParams("rating=bad&rating=all"))).toEqual([]);
+    });
+  });
+
+  describe("parseWithActionFilter", () => {
+    it("is on for enabled values only", () => {
+      expect(parseWithActionFilter(new URLSearchParams("action=1"))).toBe(true);
+      expect(parseWithActionFilter(new URLSearchParams("action=TRUE"))).toBe(true);
+      expect(parseWithActionFilter(new URLSearchParams("action=0"))).toBe(false);
+      expect(parseWithActionFilter(new URLSearchParams(""))).toBe(false);
     });
   });
 

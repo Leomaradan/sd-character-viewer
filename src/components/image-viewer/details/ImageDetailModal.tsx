@@ -15,6 +15,7 @@ import {
   DialogContent,
   Divider,
   IconButton,
+  Link,
   Menu,
   MenuItem,
   Tooltip,
@@ -33,10 +34,13 @@ import { ImageDetailDeleteDialog } from "./ImageDetailDeleteDialog";
 import { ImageDetailEditPromptDialog } from "./ImageDetailEditPromptDialog";
 import { ImageDetailMetadata } from "./ImageDetailMetadata";
 import { ImageDetailRenameDialog } from "./ImageDetailRenameDialog";
+import { buildRelatedItems, type IDerivedVideo, type IRelatedItem } from "./related-items";
 
 // Stable reference for the `animations` default prop - an inline `[]` literal would be
 // re-created on every render, breaking referential equality for anything memoized off it.
 const EMPTY_ANIMATIONS: IAnimationConfig[] = [];
+const EMPTY_IMAGES: IImageItem[] = [];
+const EMPTY_DERIVED: IDerivedVideo[] = [];
 const MARK_SEEN_BUTTON_SX = { alignSelf: "flex-start" };
 const POSE_ROW_SX = { display: "flex", alignItems: "center", gap: 0.5 };
 const RENAME_BUTTON_SX = { color: "rgba(255,255,255,0.7)" };
@@ -105,6 +109,8 @@ const SIDEBAR_SX = {
 };
 
 const META_BODY_SX = { mt: 0.5, opacity: 0.8 };
+const RELATED_LIST_SX = { display: "flex", flexDirection: "column", gap: 0.5, mt: 0.5 };
+const RELATED_LINK_SX = { color: "inherit", textAlign: "left", verticalAlign: "baseline" };
 
 const METADATA_LOADING_SX = { display: "flex", justifyContent: "center", pt: 1 };
 const MOBILE_ACTIONS_SX = {
@@ -140,6 +146,11 @@ interface IImageDetailModalProps {
   onDeleteSuccess?: () => void;
   onImageSeen?: (relativePath: string) => void;
   onImageRated?: (relativePath: string, rating: TRating | null) => void;
+  // Called when the file's marks show it now has (or no longer has) a pending action.
+  onImagePendingActionChange?: (relativePath: string, hasPendingAction: boolean) => void;
+  // Where related files (source, generated videos, versions) are looked up to be opened.
+  libraryImages?: IImageItem[];
+  onOpenRelatedImage?: (image: IImageItem) => void;
   // Redraw (the "Bad" rating) renamed the file. Without it, Redraw closes like a delete.
   onImageRedrawn?: (relativePath: string) => void;
   // Random mode: Next shows another random file, and there's no Previous.
@@ -165,6 +176,8 @@ interface IMetadataState {
 
 interface IMarksState {
   path: string | null;
+  // False until GET /api/marks answers: the mark fields are then unknown, not empty.
+  loaded: boolean;
   upscale: boolean;
   animateAction: string | null;
   animatePrompt: string | null;
@@ -172,6 +185,7 @@ interface IMarksState {
   extendAction: string | null;
   extendPrompt: string | null;
   videoLink: IVideoLink | null;
+  derived: IDerivedVideo[];
 }
 
 interface IMarksApiResponse {
@@ -180,6 +194,7 @@ interface IMarksApiResponse {
   upscaleVideo?: boolean;
   extend?: { action: string; prompt: string } | null;
   link?: IVideoLink | null;
+  derived?: IDerivedVideo[];
 }
 
 interface IMobileViewState {
@@ -239,6 +254,7 @@ const resolveMarksDerived = (
   extendAction: string | null;
   extendPrompt: string | null;
   videoLink: IVideoLink | null;
+  derived: IDerivedVideo[];
 } => {
   const isCurrentMarksState = marksState.path === relativePath;
   return {
@@ -249,6 +265,7 @@ const resolveMarksDerived = (
     extendAction: isCurrentMarksState ? marksState.extendAction : null,
     extendPrompt: isCurrentMarksState ? marksState.extendPrompt : null,
     videoLink: isCurrentMarksState ? marksState.videoLink : null,
+    derived: isCurrentMarksState ? marksState.derived : EMPTY_DERIVED,
   };
 };
 
@@ -274,27 +291,6 @@ const findAnimationNodeByKey = (
   return null;
 };
 
-// "Came from X" resolves the source's filename (not a full pose-name parse - link.
-// sourceRelativePath already points at a real file, so its own basename is the pose it shows)
-// and the action's display name, e.g. "Extended from Base (Dance)". A null link (reconciliation
-// hasn't matched this video to a source yet, or never will) renders nothing - not an error state.
-const resolveCameFromLabel = (
-  videoLink: IVideoLink | null,
-  animations: IAnimationConfig[],
-): string | null => {
-  if (!videoLink) {
-    return null;
-  }
-
-  const sourceFileName =
-    videoLink.sourceRelativePath.split("/").pop() ?? videoLink.sourceRelativePath;
-  const sourceLabel = sourceFileName.replace(/\.(png|mp4)$/i, "");
-  const actionLabel =
-    findAnimationNodeByKey(animations, videoLink.action)?.name ?? videoLink.action;
-
-  return `Extended from ${sourceLabel} (${actionLabel})`;
-};
-
 // PUT /api/marks (animate/extend) answers with the mark it actually stored.
 const readMarkResponse = async (response: Response): Promise<{ action: string; prompt: string }> =>
   (await response.json()) as { action: string; prompt: string };
@@ -307,6 +303,32 @@ const flattenAnimations = (nodes: IAnimationConfig[], depth: number = 0): IFlatA
     ...(node.subVersions ? flattenAnimations(node.subVersions, depth + 1) : []),
   ]);
 
+interface IRelatedItemRowProps {
+  item: IRelatedItem;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+}
+
+// "Animated from With Sheik": the name opens the file when it's in the library.
+const RelatedItemRow = ({ item, onClick }: Readonly<IRelatedItemRowProps>) => (
+  <Typography variant="body2" sx={META_BODY_SX}>
+    {item.label}{" "}
+    {item.image ? (
+      <Link
+        component="button"
+        type="button"
+        variant="body2"
+        data-path={item.relativePath}
+        onClick={onClick}
+        sx={RELATED_LINK_SX}
+      >
+        {item.name}
+      </Link>
+    ) : (
+      item.name
+    )}
+  </Typography>
+);
+
 export function ImageDetailModal({
   image,
   canDeleteImage = false,
@@ -314,6 +336,9 @@ export function ImageDetailModal({
   onDeleteSuccess,
   onImageSeen,
   onImageRated,
+  onImagePendingActionChange,
+  libraryImages = EMPTY_IMAGES,
+  onOpenRelatedImage,
   onImageRedrawn,
   isRandomMode = false,
   canNavigatePrevious = false,
@@ -338,6 +363,7 @@ export function ImageDetailModal({
   } | null>(null);
   const [marksState, setMarksState] = useState<IMarksState>({
     path: null,
+    loaded: false,
     upscale: false,
     animateAction: null,
     animatePrompt: null,
@@ -345,6 +371,7 @@ export function ImageDetailModal({
     extendAction: null,
     extendPrompt: null,
     videoLink: null,
+    derived: EMPTY_DERIVED,
   });
   const [isTogglingUpscale, setIsTogglingUpscale] = useState(false);
   const [upscaleError, setUpscaleError] = useState<string | null>(null);
@@ -464,17 +491,17 @@ export function ImageDetailModal({
 
   useEffect(() => {
     // The upscale/animate/extend mark state this fetch also carries is only ever rendered
-    // inside imageActions, itself gated on canDeleteImage - but a video's provenance link
-    // (the "Came From" block) is plain informational display, shown to every viewer regardless
-    // of delete permission. Skipping this fetch outright for a read-only video would silently
-    // suppress that block for the vast majority of viewers (SD_ALLOW_DELETE defaults off).
-    if (!relativePath || (!canDeleteImage && !isVideo)) {
+    // inside imageActions, itself gated on canDeleteImage - but the related files (a video's
+    // source, the videos generated from a file) are plain informational display, shown to every
+    // viewer regardless of delete permission (SD_ALLOW_DELETE defaults off).
+    if (!relativePath) {
       return () => {};
     }
 
     let isMounted = true;
     const emptyMarksState: IMarksState = {
       path: relativePath,
+      loaded: false,
       upscale: false,
       animateAction: null,
       animatePrompt: null,
@@ -482,6 +509,7 @@ export function ImageDetailModal({
       extendAction: null,
       extendPrompt: null,
       videoLink: null,
+      derived: EMPTY_DERIVED,
     };
 
     fetch(`/api/marks?path=${encodeURIComponent(relativePath)}`)
@@ -493,6 +521,7 @@ export function ImageDetailModal({
         if (isMounted) {
           setMarksState({
             path: relativePath,
+            loaded: data !== null,
             upscale: data?.upscale ?? false,
             animateAction: data?.animate?.action ?? null,
             animatePrompt: data?.animate?.prompt ?? null,
@@ -500,6 +529,7 @@ export function ImageDetailModal({
             extendAction: data?.extend?.action ?? null,
             extendPrompt: data?.extend?.prompt ?? null,
             videoLink: data?.link ?? null,
+            derived: data?.derived ?? EMPTY_DERIVED,
           });
         }
       })
@@ -512,7 +542,7 @@ export function ImageDetailModal({
     return () => {
       isMounted = false;
     };
-  }, [relativePath, canDeleteImage, isVideo]);
+  }, [relativePath]);
 
   const isLoadingMetadata = resolveIsLoadingMetadata(image, isVideo, metadataState, relativePath);
   const pngMetadata = useMemo(
@@ -670,6 +700,7 @@ export function ImageDetailModal({
     extendAction,
     extendPrompt,
     videoLink,
+    derived,
   } = resolveMarksDerived(marksState, relativePath);
   const rawMetadata = pngMetadata?.parameters ?? "";
   const flatAnimationOptions = useMemo(() => flattenAnimations(animations), [animations]);
@@ -679,7 +710,53 @@ export function ImageDetailModal({
   const extendActionLabel = extendAction
     ? (findAnimationNodeByKey(animations, extendAction)?.name ?? extendAction)
     : "Extend";
-  const cameFromLabel = resolveCameFromLabel(videoLink, animations);
+  const relatedItems = useMemo(
+    () =>
+      image
+        ? buildRelatedItems({
+            image,
+            images: libraryImages,
+            videoLink,
+            derived,
+            animationName: (action) => findAnimationNodeByKey(animations, action)?.name ?? action,
+          })
+        : [],
+    [image, libraryImages, videoLink, derived, animations],
+  );
+
+  const handleRelatedItemClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      const relatedImage = relatedItems.find(
+        (item) => item.relativePath === event.currentTarget.dataset.path,
+      )?.image;
+      if (relatedImage) {
+        onOpenRelatedImage?.(relatedImage);
+      }
+    },
+    [relatedItems, onOpenRelatedImage],
+  );
+
+  // Keeps the "With action" filter in step with the marks, whether they were just toggled here
+  // or the loaded library was out of date. Only marks loaded for the shown file count: a failed
+  // fetch says nothing about them.
+  const isCurrentMarksState = marksState.path === relativePath && marksState.loaded;
+  const hasPendingAction =
+    marksState.upscale ||
+    marksState.animateAction !== null ||
+    marksState.upscaleVideo ||
+    marksState.extendAction !== null;
+  const knownHasPendingAction = Boolean(image?.hasPendingAction);
+  useEffect(() => {
+    if (relativePath && isCurrentMarksState && hasPendingAction !== knownHasPendingAction) {
+      onImagePendingActionChange?.(relativePath, hasPendingAction);
+    }
+  }, [
+    relativePath,
+    isCurrentMarksState,
+    hasPendingAction,
+    knownHasPendingAction,
+    onImagePendingActionChange,
+  ]);
 
   const handleToggleUpscale = useCallback(async () => {
     if (!relativePath) {
@@ -1190,14 +1267,20 @@ export function ImageDetailModal({
                 </Box>
               </Box>
 
-              {cameFromLabel && (
+              {relatedItems.length > 0 && (
                 <Box>
                   <Typography variant="caption" sx={CAPTION_SX}>
-                    Came From
+                    Related
                   </Typography>
-                  <Typography variant="body2" sx={META_BODY_SX}>
-                    {cameFromLabel}
-                  </Typography>
+                  <Box sx={RELATED_LIST_SX}>
+                    {relatedItems.map((item) => (
+                      <RelatedItemRow
+                        key={item.relativePath}
+                        item={item}
+                        onClick={handleRelatedItemClick}
+                      />
+                    ))}
+                  </Box>
                 </Box>
               )}
 

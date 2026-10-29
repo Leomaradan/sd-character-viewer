@@ -56,8 +56,10 @@ import {
   parseSelectedMetadataFilterId,
   parseSelectedPoseFilters,
   parseStyleViewStyle,
+  parseWithActionFilter,
 } from "@/components/image-viewer/common/persistent-filters";
 import {
+  applyPendingActionOverride,
   applyRatingOverride,
   formatStyleLabel,
   pickRandomItem,
@@ -157,6 +159,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const characterSortOrder = useMemo(() => parseCharacterSortOrder(searchParams), [searchParams]);
   const mediaTypeFilter = useMemo(() => parseMediaTypeFilter(searchParams), [searchParams]);
   const ratingFilter = useMemo(() => parseRatingFilter(searchParams), [searchParams]);
+  const withAction = useMemo(() => parseWithActionFilter(searchParams), [searchParams]);
   const showOnlyUpscaled = useMemo(() => parseShowOnlyUpscaled(searchParams), [searchParams]);
   const styleViewStyle = useMemo(() => parseStyleViewStyle(searchParams), [searchParams]);
   const poseViewStyle = useMemo(() => parsePoseViewStyle(searchParams), [searchParams]);
@@ -186,6 +189,10 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const [ratingOverrides, setRatingOverrides] = useState<ReadonlyMap<string, TRating | null>>(
     new Map(),
   );
+  // And for Upscale/Animate/Extend marks set or cleared in the detail view.
+  const [pendingActionOverrides, setPendingActionOverrides] = useState<
+    ReadonlyMap<string, boolean>
+  >(new Map());
   const [authStatus, setAuthStatus] = useState<TAuthStatus>("checking");
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -354,6 +361,30 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     setModalFilteredImages((currentImages) => currentImages.map(applyRating));
     setSelectedImageForModal((currentImage) => currentImage && applyRating(currentImage));
     setRatingOverrides((current) => new Map(current).set(relativePath, rating));
+  }, []);
+
+  // Same for a mark set or cleared in the detail view, so the "With action" filter follows it.
+  const handleImagePendingActionChange = useCallback(
+    (relativePath: string, hasPendingAction: boolean) => {
+      const overrides = new Map([[relativePath, hasPendingAction]]);
+      const applyPendingAction = (item: IImageItem): IImageItem =>
+        applyPendingActionOverride(item, overrides);
+
+      setLibrary((currentLibrary) => ({
+        ...currentLibrary,
+        images: currentLibrary.images.map(applyPendingAction),
+      }));
+      setModalFilteredImages((currentImages) => currentImages.map(applyPendingAction));
+      setSelectedImageForModal((currentImage) => currentImage && applyPendingAction(currentImage));
+      setPendingActionOverrides((current) => new Map(current).set(relativePath, hasPendingAction));
+    },
+    [],
+  );
+
+  // A related file picked in the detail view replaces the shown one; previous/next keep working
+  // when it's part of the grid the modal was opened from.
+  const handleOpenRelatedImage = useCallback((image: IImageItem) => {
+    setSelectedImageForModal(image);
   }, []);
 
   const handleImageDeleted = useCallback(() => {
@@ -574,7 +605,14 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
 
   const handleRatingFilterChange = useCallback(
     (nextRatingFilter: TRatingFilter) => {
-      updateQueryParams({ rating: nextRatingFilter === "all" ? null : nextRatingFilter });
+      updateQueryParams({ rating: [...nextRatingFilter] });
+    },
+    [updateQueryParams],
+  );
+
+  const handleWithActionChange = useCallback(
+    (nextWithAction: boolean) => {
+      updateQueryParams({ action: nextWithAction ? "1" : null });
     },
     [updateQueryParams],
   );
@@ -656,6 +694,9 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
 
   const handleLibraryLoad = useCallback((loadedLibrary: ILibraryData) => {
     setLibrary(loadedLibrary);
+    // Marks are read on each library request, so a fresh load is already up to date (and may
+    // reflect an external tool having processed a mark since it was set here).
+    setPendingActionOverrides((current) => (current.size === 0 ? current : new Map()));
   }, []);
 
   // The Library Toolbox tools start on the style shown by the Styles view (same fallback as
@@ -829,6 +870,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           characterSortOrder={characterSortOrder}
           mediaTypeFilter={mediaTypeFilter}
           ratingFilter={ratingFilter}
+          withAction={withAction}
           showOnlyUpscaled={showOnlyUpscaled}
           styleViewStyle={styleViewStyle}
           poseViewStyle={poseViewStyle}
@@ -838,6 +880,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           randomRequestToken={randomRequestToken}
           seenRelativePaths={seenRelativePaths}
           ratingOverrides={ratingOverrides}
+          pendingActionOverrides={pendingActionOverrides}
           setSelectedCharacter={handleSelectCharacter}
           setSelectedPoseFilters={handlePoseFiltersChange}
           setSelectedMetadataFilterId={handleMetadataFilterChange}
@@ -847,6 +890,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           setCharacterDetailPose={setCharacterDetailPose}
           onMediaTypeFilterChange={handleMediaTypeFilterChange}
           onRatingFilterChange={handleRatingFilterChange}
+          onWithActionChange={handleWithActionChange}
           onShowOnlyUpscaledChange={handleShowOnlyUpscaledChange}
           onImageSelect={handleOpenImageModal}
           onLibraryLoad={handleLibraryLoad}
@@ -860,6 +904,9 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         onDeleteSuccess={handleImageDeleted}
         onImageSeen={handleImageSeen}
         onImageRated={handleImageRated}
+        onImagePendingActionChange={handleImagePendingActionChange}
+        libraryImages={library.images}
+        onOpenRelatedImage={handleOpenRelatedImage}
         onImageRedrawn={handleImageRedrawn}
         isRandomMode={isRandomMode}
         canNavigatePrevious={canNavigateModalPrevious}

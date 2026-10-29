@@ -29,6 +29,7 @@ import {
   normalizeAnimationsConfig,
   parsePoseName,
   readImageLibrary,
+  readPendingActionPaths,
   readRatings,
   readReviewedDuplicateGroups,
   readToAnimateEntries,
@@ -1830,6 +1831,37 @@ describe("normalizeAnimationsConfig", () => {
     ).toEqual([]);
   });
 
+  it("keeps the valid loras items alongside the single lora, dropping empty or malformed ones", () => {
+    expect(
+      normalizeAnimationsConfig([
+        {
+          key: "zoom",
+          name: "Zoom",
+          prompt: "zoom in",
+          lora: "zoom_lora",
+          loras: [
+            { lora: " detail_lora ", trigger: " detailed ", weight: 0.5 },
+            { weight: 0.7 },
+            { lora: "  ", trigger: 1 },
+            "not_a_lora",
+          ],
+        },
+        { key: "pan", name: "Pan", prompt: "pan", loras: [{ lora: "" }] },
+        { key: "tilt", name: "Tilt", prompt: "tilt", loras: "tilt_lora" },
+      ]),
+    ).toEqual([
+      {
+        key: "zoom",
+        name: "Zoom",
+        prompt: ["zoom in"],
+        lora: "zoom_lora",
+        loras: [{ lora: "detail_lora", trigger: "detailed", weight: 0.5 }, { weight: 0.7 }],
+      },
+      { key: "pan", name: "Pan", prompt: ["pan"] },
+      { key: "tilt", name: "Tilt", prompt: ["tilt"] },
+    ]);
+  });
+
   it("keeps trimmed lora/trigger and finite weight, ignoring blank or malformed values", () => {
     expect(
       normalizeAnimationsConfig([
@@ -2058,6 +2090,45 @@ describe("animate/extend mark generation options", () => {
       metadata: "raw",
       action: "zoom",
       prompt: "zoom in",
+    });
+  });
+
+  it("stores loras on a mark, keeps them on a prompt-only edit, and drops malformed ones on read", async () => {
+    await fs.mkdir(tempRoot, { recursive: true });
+    const loras = [{ lora: "zoom_lora", trigger: "zoomtrigger", weight: 0.8 }, { lora: "detail" }];
+    await setToAnimateEntry(tempRoot, "a.png", "raw", "zoom", "zoom in", { weight: 1, loras });
+    await setToAnimateEntry(tempRoot, "b.png", "raw", "pan", "pan", { loras: [] });
+
+    await setToAnimateEntry(tempRoot, "a.png", undefined, "zoom", "edited");
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "a.png": { metadata: "raw", action: "zoom", prompt: "edited", weight: 1, loras },
+      "b.png": { metadata: "raw", action: "pan", prompt: "pan" },
+    });
+
+    await fs.writeFile(
+      path.join(tempRoot, "to-animate.json"),
+      JSON.stringify({
+        "a.png": {
+          metadata: "",
+          action: "zoom",
+          prompt: "p",
+          loras: [{ lora: 1, trigger: "t", weight: "1" }, { weight: 2 }, {}, "x"],
+        },
+        "b.png": { metadata: "", action: "zoom", prompt: "p", loras: [{ lora: 1 }] },
+        "c.png": { metadata: "", action: "zoom", prompt: "p", loras: "x" },
+      }),
+    );
+
+    expect(await readToAnimateEntries(tempRoot)).toEqual({
+      "a.png": {
+        metadata: "",
+        action: "zoom",
+        prompt: "p",
+        loras: [{ trigger: "t" }, { weight: 2 }],
+      },
+      "b.png": { metadata: "", action: "zoom", prompt: "p" },
+      "c.png": { metadata: "", action: "zoom", prompt: "p" },
     });
   });
 
@@ -3078,5 +3149,53 @@ describe("ratings", () => {
 
   it("does nothing without a configured root", async () => {
     await expect(moveRatingEntries({ "characters/3d/Anna/A.png": null })).resolves.toBeUndefined();
+  });
+
+  it("re-reads a mark file only when it changes, and ignores a malformed one", async () => {
+    const { tempRoot } = await setUpLibrary("pending-cache");
+    await setToUpscaleEntry(tempRoot, "characters/3d/Anna/Base.png", "");
+    expect(await readPendingActionPaths(tempRoot)).toEqual(
+      new Set(["characters/3d/Anna/Base.png"]),
+    );
+
+    const readFileSpy = vi.spyOn(fs, "readFile");
+    await readPendingActionPaths(tempRoot);
+    expect(readFileSpy).not.toHaveBeenCalled();
+    readFileSpy.mockRestore();
+
+    await fs.writeFile(path.join(tempRoot, "to-upscale.json"), "{ half-written");
+    expect(await readPendingActionPaths(tempRoot)).toEqual(new Set());
+
+    await setToUpscaleEntry(tempRoot, "characters/3d/Anna/Casual.png", "");
+    vi.spyOn(fs, "readFile").mockRejectedValueOnce(new Error("EACCES"));
+    expect(await readPendingActionPaths(tempRoot)).toEqual(new Set());
+  });
+
+  it("flags files with a pending upscale, animate, extend or upscale-video mark", async () => {
+    const { tempRoot, characterDir } = await setUpLibrary("pending");
+    await fs.writeFile(path.join(characterDir, "Dance.mp4"), "");
+    await fs.writeFile(path.join(characterDir, "Spin.mp4"), "");
+    await fs.writeFile(path.join(characterDir, "Jump.mp4"), "");
+    await setRatingEntry(tempRoot, "characters/3d/Anna/Base.png", "ok");
+    await setToUpscaleEntry(tempRoot, "characters/3d/Anna/Base.png", "");
+    await setToAnimateEntry(tempRoot, "characters/3d/Anna/Casual.png", "", "zoom-in", "zoom");
+    await setToExtendEntry(tempRoot, "characters/3d/Anna/Dance.mp4", "", "zoom-in", "zoom");
+    await setToUpscaleVideoEntry(tempRoot, "characters/3d/Anna/Spin.mp4", "");
+
+    const library = await readImageLibrary();
+    const flagged = library.images
+      .filter((image) => image.hasPendingAction)
+      .map((image) => image.relativePath);
+
+    expect(flagged.sort()).toEqual([
+      "characters/3d/Anna/Base.png",
+      "characters/3d/Anna/Casual.png",
+      "characters/3d/Anna/Dance.mp4",
+      "characters/3d/Anna/Spin.mp4",
+    ]);
+    expect(ratingOf(library, "Base.png")).toBe("ok");
+    expect(
+      library.images.find((image) => image.relativePath.endsWith("/Jump.mp4")),
+    ).not.toHaveProperty("hasPendingAction");
   });
 });
