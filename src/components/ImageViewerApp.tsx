@@ -5,6 +5,8 @@ import CasinoIcon from "@mui/icons-material/Casino";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import MenuIcon from "@mui/icons-material/Menu";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
   Alert,
   AppBar,
@@ -48,6 +50,7 @@ import {
   metadataFilterIdToQueryChanges,
   normalizePoseFilters,
   parseCharacterSortOrder,
+  parseContentFilter,
   parseMediaTypeFilter,
   parseRatingFilter,
   parseShowOnlyUpscaled,
@@ -63,6 +66,7 @@ import {
   applyRatingOverride,
   formatStyleLabel,
   pickRandomItem,
+  withoutSensitiveItems,
 } from "@/components/image-viewer/common/utils";
 import { ImageDetailModal } from "@/components/image-viewer/details/ImageDetailModal";
 import { DuplicateFinderModal } from "@/components/image-viewer/duplicateFinder/DuplicateFinderModal";
@@ -161,6 +165,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const ratingFilter = useMemo(() => parseRatingFilter(searchParams), [searchParams]);
   const withAction = useMemo(() => parseWithActionFilter(searchParams), [searchParams]);
   const showOnlyUpscaled = useMemo(() => parseShowOnlyUpscaled(searchParams), [searchParams]);
+  const contentFilter = useMemo(() => parseContentFilter(searchParams), [searchParams]);
   const styleViewStyle = useMemo(() => parseStyleViewStyle(searchParams), [searchParams]);
   const poseViewStyle = useMemo(() => parsePoseViewStyle(searchParams), [searchParams]);
   const selectedMetadataFilterId = useMemo(
@@ -225,6 +230,10 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
   const handleRandomClick = useCallback(() => {
     setRandomRequestToken((currentToken) => currentToken + 1);
   }, []);
+
+  const handleContentFilterToggle = useCallback(() => {
+    updateQueryParams({ safe: contentFilter ? null : "1" });
+  }, [contentFilter, updateQueryParams]);
 
   const handleToggleSidebar = useCallback(() => {
     setIsSidebarCollapsed((prev) => !prev);
@@ -713,6 +722,12 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
     [library.styleLabels],
   );
 
+  // What the detail view's related files are picked from.
+  const visibleLibraryImages = useMemo(
+    () => (contentFilter ? withoutSensitiveItems(library.images) : library.images),
+    [contentFilter, library.images],
+  );
+
   if (authStatus === "checking") {
     return (
       <Box sx={AUTH_LOADING_SX}>
@@ -802,6 +817,21 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
             Stable Diffusion Character Viewer
           </Typography>
 
+          <Tooltip title={contentFilter ? "Show sensitive content" : "Hide sensitive content"}>
+            <IconButton
+              color="inherit"
+              aria-label="content filter"
+              aria-pressed={contentFilter}
+              onClick={handleContentFilterToggle}
+            >
+              {contentFilter ? (
+                <VisibilityOffIcon fontSize="small" />
+              ) : (
+                <VisibilityIcon fontSize="small" />
+              )}
+            </IconButton>
+          </Tooltip>
+
           <Tooltip
             title={
               selectedCharacter || majorFilter !== "character" ? "Random media" : "Random character"
@@ -872,6 +902,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
           ratingFilter={ratingFilter}
           withAction={withAction}
           showOnlyUpscaled={showOnlyUpscaled}
+          contentFilter={contentFilter}
           styleViewStyle={styleViewStyle}
           poseViewStyle={poseViewStyle}
           characterDetailStyle={characterDetailStyle}
@@ -905,7 +936,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         onImageSeen={handleImageSeen}
         onImageRated={handleImageRated}
         onImagePendingActionChange={handleImagePendingActionChange}
-        libraryImages={library.images}
+        libraryImages={visibleLibraryImages}
         onOpenRelatedImage={handleOpenRelatedImage}
         onImageRedrawn={handleImageRedrawn}
         isRandomMode={isRandomMode}
@@ -929,6 +960,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         onChangesApplied={handleDuplicateChangesApplied}
         styleLabel={styleLabel}
         initialStyle={toolInitialStyle}
+        hideSensitive={contentFilter}
       />
 
       <PoseConformityModal
@@ -938,6 +970,7 @@ export const ImageViewerApp = ({ canDeleteImage = false, appVersion }: IImageVie
         styleLabel={styleLabel}
         initialStyle={toolInitialStyle}
         initialMediaTypeFilter={mediaTypeFilter}
+        hideSensitive={contentFilter}
       />
 
       <ScrollToTopButton />

@@ -2,6 +2,7 @@ import type {
   ICharacterSummary,
   IImageItem,
   IMetadataFilterOption,
+  IPoseFilterOption,
   IPosePatternFilter,
   TRating,
   TRatingFilter,
@@ -166,6 +167,59 @@ export const filterCharactersByMetadataOption = (
       (value) => value?.trim().toLowerCase() === selectedValue,
     ),
   );
+};
+
+// The content filter: the same list without the sensitive files.
+export const withoutSensitiveItems = <T extends Pick<IImageItem, "isSensitive">>(
+  items: T[],
+): T[] => {
+  return items.some((item) => item.isSensitive === true)
+    ? items.filter((item) => item.isSensitive !== true)
+    : items;
+};
+
+// Drops the character thumbnails that are sensitive files (the card then shows its placeholder).
+export const withoutSensitiveThumbnails = (
+  characters: ICharacterSummary[],
+  images: readonly Pick<IImageItem, "relativePath" | "isSensitive">[],
+): ICharacterSummary[] => {
+  const sensitivePaths = new Set(
+    images.filter((image) => image.isSensitive === true).map((image) => image.relativePath),
+  );
+  if (sensitivePaths.size === 0) {
+    return characters;
+  }
+
+  return characters.map((character) => {
+    const entries = Object.entries(character.thumbnailsByStyle);
+    if (!entries.some(([, thumbnailPath]) => thumbnailPath && sensitivePaths.has(thumbnailPath))) {
+      return character;
+    }
+
+    return {
+      ...character,
+      thumbnailsByStyle: Object.fromEntries(
+        entries.filter(([, thumbnailPath]) => !thumbnailPath || !sensitivePaths.has(thumbnailPath)),
+      ),
+    };
+  });
+};
+
+// Keeps the pose chips that still match a file once the sensitive ones are hidden. `images`
+// is the already-filtered list.
+export const filterPoseOptionsByImages = (
+  options: IPoseFilterOption[],
+  images: readonly Pick<IImageItem, "poseFilterName" | "posePatternFilterIds">[],
+): IPoseFilterOption[] => {
+  const usedValues = new Set<string>();
+  for (const image of images) {
+    usedValues.add(image.poseFilterName);
+    for (const filterId of image.posePatternFilterIds) {
+      usedValues.add(filterId);
+    }
+  }
+
+  return options.filter((option) => usedValues.has(option.value));
 };
 
 const FIRST_SEEN_DATE_FORMAT: Intl.DateTimeFormatOptions = {

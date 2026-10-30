@@ -50,6 +50,12 @@ export const parseShowOnlyUpscaled = (queryParams: IQueryParamsReader): boolean 
   return rawValue === "1" || rawValue === "true";
 };
 
+// The app bar's content filter: hides the sensitive files everywhere when on.
+export const parseContentFilter = (queryParams: IQueryParamsReader): boolean => {
+  const rawValue = queryParams.get("safe")?.trim().toLowerCase();
+  return rawValue === "1" || rawValue === "true";
+};
+
 export const parseCharacterSortOrder = (queryParams: IQueryParamsReader): TCharacterSortOrder => {
   const rawValue = queryParams.get("sort")?.trim().toLowerCase();
   return rawValue === "date" ? "date" : "name";

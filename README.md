@@ -15,7 +15,7 @@ characters/{style}/{character_name}/*.mp4
 Styles configuration:
 
 - Optional styles are loaded from `config.json` in the image root folder (`SD_IMAGES_ROOT`).
-- `config.json` accepts `styles` (array of folder names), optional `defaultStyle`, optional `styleLabels` for display aliases, optional `animations` (see [Upscale and Animate Marking](#upscale-and-animate-marking) below), optional `poses` (the standard pose names checked by the [Pose Conformity](#library-toolbox) tool, for example `"poses": ["Casual", "Dancing", "Lying Side"]`), and optional `specialPoses` (poses that exist and count as conforming, but aren't offered as rename targets by Pose Conformity, for example `"specialPoses": ["T-Pose"]`; a name also listed in `poses` stays a standard pose).
+- `config.json` accepts `styles` (array of folder names), optional `defaultStyle`, optional `styleLabels` for display aliases, optional `animations` (see [Upscale and Animate Marking](#upscale-and-animate-marking) below), optional `poses` (the standard pose names checked by the [Pose Conformity](#library-toolbox) tool, for example `"poses": ["Casual", "Dancing", "Lying Side"]`), optional `specialPoses` (poses that exist and count as conforming, but aren't offered as rename targets by Pose Conformity, for example `"specialPoses": ["T-Pose"]`; a name also listed in `poses` stays a standard pose), and optional `sensitivePoses` (poses hidden by the [content filter](#content-filter), for example `"sensitivePoses": ["Lingerie"]`).
 - If `config.json` is missing or invalid, the app falls back to `realistic`, `3d` (default), and `anime`, with no configured animations.
 
 Example `config.json`:
@@ -113,19 +113,32 @@ Optional pose pattern filters:
 - Add `pose-filters.json` in the image root folder (`SD_IMAGES_ROOT`).
 - Each item defines a synthetic filter chip with a `label`, a regex `pattern`, and optional regex `flags`.
 - A synthetic filter is shown only when at least one pose name matches its pattern.
+- Add `"sensitive": true` to an item to have the files matching it hidden by the [content filter](#content-filter).
 
 Example `pose-filters.json`:
 
 ```json
 [
   { "label": "With Somebody", "pattern": "^With " },
-  { "label": "With Somebody (CI)", "pattern": "^with ", "flags": "i" }
+  { "label": "With Somebody (CI)", "pattern": "^with ", "flags": "i" },
+  { "label": "Swimwear", "pattern": "^swim", "flags": "i", "sensitive": true }
 ]
 ```
 
+## Content Filter
+
+The eye button in the top app bar (just before the dice) toggles the content filter, which hides every sensitive file from the app. The setting is kept in the URL as `safe=1`, like the other filters, so it carries over while browsing and can be bookmarked.
+
+A file is sensitive when:
+
+- its pose is listed in `config.json`'s `sensitivePoses` (compared case-insensitively, annotations and variant number ignored): for a video named `Animation (Pose)`, listing either the pose or the animation works, so `Dancing (Lingerie).mp4` is hidden with `"Lingerie"` or `"Dancing"`;
+- or its name matches a `pose-filters.json` pattern marked `"sensitive": true`.
+
+When the filter is on, sensitive files are left out of every grid, of the random pick, of the detail view's related files, and of the Pose Conformity tool. A character whose thumbnail is sensitive shows a placeholder instead, a character with only sensitive files is hidden, and pose chips left with no file disappear. The Duplicate Finder hides whole groups that contain a sensitive file (since validating a group deletes the files left unselected).
+
 ## Random Pick
 
-The dice button in the top app bar picks something at random from what the current view shows:
+The dice button in the top app bar picks something at random from what the current view shows (sensitive files excluded when the [content filter](#content-filter) is on):
 
 - On the base **Characters** page (no character selected), it opens a random character among the visible ones (respecting the media type and metadata filters).
 - Anywhere else (a character's page, the Styles view, the Poses view), it opens a random image or video from the currently filtered grid in the detail view, in **random mode**: the URL gets a `random=1` flag, there's no previous button, and next (button, right arrow key or swipe) shows another random file from that same list (never the one already shown). Closing the detail view removes the flag. Since the grid already respects the Images/Videos/Both switch, a selection of only pictures yields a picture, only videos a video.

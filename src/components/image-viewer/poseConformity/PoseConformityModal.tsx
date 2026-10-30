@@ -20,7 +20,7 @@ import type { IImageItem, TMediaTypeFilter } from "@/types/library";
 
 import { MediaTypeFilter } from "@/components/image-viewer/common/MediaTypeFilter";
 import { StyleSelectFilter } from "@/components/image-viewer/common/StyleSelectFilter";
-import { formatStyleLabel } from "@/components/image-viewer/common/utils";
+import { formatStyleLabel, withoutSensitiveItems } from "@/components/image-viewer/common/utils";
 import { LazyImage } from "@/components/image-viewer/image/LazyImage";
 
 import { GRID } from "../common/constants";
@@ -35,6 +35,8 @@ interface IPoseConformityModalProps {
   // Filters the dialog starts on each time it opens (taken from the current view).
   initialStyle?: string;
   initialMediaTypeFilter?: TMediaTypeFilter;
+  // The app bar's content filter: sensitive files aren't listed.
+  hideSensitive?: boolean;
 }
 
 interface IPoseConformityResponse {
@@ -154,8 +156,13 @@ export function PoseConformityModal({
   styleLabel = formatStyleLabel,
   initialStyle = "",
   initialMediaTypeFilter = "both",
+  hideSensitive = false,
 }: Readonly<IPoseConformityModalProps>) {
-  const [items, setItems] = useState<IImageItem[]>([]);
+  const [loadedItems, setItems] = useState<IImageItem[]>([]);
+  const items = useMemo(
+    () => (hideSensitive ? withoutSensitiveItems(loadedItems) : loadedItems),
+    [hideSensitive, loadedItems],
+  );
   const [selectedStyle, setSelectedStyle] = useState(initialStyle);
   const [mediaTypeFilter, setMediaTypeFilter] = useState(initialMediaTypeFilter);
   // The filters restart from the current view each time the dialog opens (it stays mounted).

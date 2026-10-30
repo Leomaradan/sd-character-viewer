@@ -13,7 +13,10 @@ import {
   getImageUrl,
   isUpscaledFile,
   matchesRatingFilter,
+  filterPoseOptionsByImages,
   pickRandomItem,
+  withoutSensitiveItems,
+  withoutSensitiveThumbnails,
 } from "./utils";
 
 const POSE_PATTERN_FILTERS: IPosePatternFilter[] = [
@@ -297,5 +300,67 @@ describe("formatFirstSeenDate", () => {
         day: "numeric",
       }),
     );
+  });
+});
+
+describe("content filter helpers", () => {
+  const character = (
+    name: string,
+    thumbnailsByStyle: Partial<Record<string, string>>,
+  ): ICharacterSummary => ({
+    name,
+    imageCount: 1,
+    poseCount: 1,
+    styles: Object.keys(thumbnailsByStyle),
+    thumbnailsByStyle,
+    thumbnailModifiedAtByStyle: {},
+    category: null,
+    serie: null,
+    tags: [],
+    firstSeenAt: 0,
+  });
+
+  it("drops the sensitive items, returning the same list when there are none", () => {
+    const safe = { id: "a", isSensitive: undefined };
+    const sensitive = { id: "b", isSensitive: true };
+    const items = [safe, sensitive];
+
+    expect(withoutSensitiveItems(items)).toEqual([safe]);
+    const safeOnly = [safe];
+    expect(withoutSensitiveItems(safeOnly)).toBe(safeOnly);
+  });
+
+  it("drops the character thumbnails that are sensitive files", () => {
+    const anna = character("Anna", { "3d": "a/3d/Base.png", anime: "a/anime/Base.png" });
+    const bea = character("Bea", { "3d": "b/3d/Base.png" });
+    const images = [
+      { relativePath: "a/anime/Base.png", isSensitive: true },
+      { relativePath: "b/3d/Base.png" },
+    ];
+
+    const result = withoutSensitiveThumbnails([anna, bea], images);
+
+    expect(result[0].thumbnailsByStyle).toEqual({ "3d": "a/3d/Base.png" });
+    expect(result[1]).toBe(bea);
+    const characters = [anna];
+    expect(withoutSensitiveThumbnails(characters, [{ relativePath: "x" }])).toBe(characters);
+  });
+
+  it("keeps the pose options still matched by a file, by pose name or pattern id", () => {
+    const options = [
+      { value: "Casual", label: "Casual" },
+      { value: "Lingerie", label: "Lingerie" },
+      { value: "pose-pattern::with", label: "With Somebody" },
+      { value: "pose-pattern::duo", label: "Duo" },
+    ];
+    const images = [
+      { poseFilterName: "Casual", posePatternFilterIds: [] },
+      { poseFilterName: "With Zelda", posePatternFilterIds: ["pose-pattern::with"] },
+    ];
+
+    expect(filterPoseOptionsByImages(options, images).map((option) => option.label)).toEqual([
+      "Casual",
+      "With Somebody",
+    ]);
   });
 });

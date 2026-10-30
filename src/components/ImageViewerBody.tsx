@@ -22,10 +22,13 @@ import {
   filterCharactersByMetadataOption,
   applyPendingActionOverride,
   applyRatingOverride,
+  filterPoseOptionsByImages,
   formatStyleLabel,
   isUpscaledFile,
   matchesRatingFilter,
   pickRandomItem,
+  withoutSensitiveItems,
+  withoutSensitiveThumbnails,
 } from "@/components/image-viewer/common/utils";
 import { EmptyState } from "@/components/image-viewer/layout/EmptyState";
 import { PosesView } from "@/components/image-viewer/posesView/PosesView";
@@ -42,6 +45,8 @@ interface IImageViewerBodyProps {
   ratingFilter: TRatingFilter;
   withAction: boolean;
   showOnlyUpscaled: boolean;
+  // The app bar's content filter: sensitive files are hidden from every view when true.
+  contentFilter?: boolean;
   styleViewStyle: string;
   poseViewStyle: string;
   characterDetailStyle: string;
@@ -94,6 +99,7 @@ export const ImageViewerBody = ({
   ratingFilter,
   withAction,
   showOnlyUpscaled,
+  contentFilter = false,
   styleViewStyle,
   poseViewStyle,
   characterDetailStyle,
@@ -239,15 +245,16 @@ export const ImageViewerBody = ({
   ]);
 
   const libraryImages = useMemo(() => {
+    const images = contentFilter ? withoutSensitiveItems(library.images) : library.images;
     if (
       seenRelativePaths.size === 0 &&
       ratingOverrides.size === 0 &&
       pendingActionOverrides.size === 0
     ) {
-      return library.images;
+      return images;
     }
 
-    return library.images.map((image) =>
+    return images.map((image) =>
       applyPendingActionOverride(
         applyRatingOverride(
           image.isNew && seenRelativePaths.has(image.relativePath)
@@ -258,7 +265,7 @@ export const ImageViewerBody = ({
         pendingActionOverrides,
       ),
     );
-  }, [library.images, seenRelativePaths, ratingOverrides, pendingActionOverrides]);
+  }, [library.images, contentFilter, seenRelativePaths, ratingOverrides, pendingActionOverrides]);
 
   const filteredImages = useMemo(() => {
     const newOnlyImages = showOnlyNewImages
@@ -281,15 +288,23 @@ export const ImageViewerBody = ({
     showOnlyUpscaled,
   ]);
 
+  const characters = useMemo(
+    () =>
+      contentFilter
+        ? withoutSensitiveThumbnails(library.characters, library.images)
+        : library.characters,
+    [contentFilter, library.characters, library.images],
+  );
+
   const charactersForBrowseStyle = useMemo(() => {
     const visibleCharacterNames = new Set(filteredImages.map((image) => image.characterName));
 
-    return library.characters.filter(
+    return characters.filter(
       (character) =>
         character.styles.includes(library.defaultStyle) &&
         visibleCharacterNames.has(character.name),
     );
-  }, [library.characters, library.defaultStyle, filteredImages]);
+  }, [characters, library.defaultStyle, filteredImages]);
 
   const metadataFilterOptions = library.metadataFilterOptions;
 
@@ -424,7 +439,14 @@ export const ImageViewerBody = ({
     library.characterMetadataFilterIdsByName,
   ]);
 
-  const poseViewPoseOptions = library.poseFilterOptions;
+  // Chips left with no file once the sensitive ones are hidden go away too.
+  const poseViewPoseOptions = useMemo(
+    () =>
+      contentFilter
+        ? filterPoseOptionsByImages(library.poseFilterOptions, libraryImages)
+        : library.poseFilterOptions,
+    [contentFilter, library.poseFilterOptions, libraryImages],
+  );
 
   const togglePoseFilter = useCallback(
     (poseValue: string) => {
