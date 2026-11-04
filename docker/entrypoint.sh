@@ -3,6 +3,12 @@ set -eu
 
 SYNC_ENABLED_RAW="${SD_FIRST_SEEN_SYNC_ENABLED:-1}"
 SYNC_INTERVAL_SECONDS="${SD_FIRST_SEEN_SYNC_INTERVAL_SECONDS:-86400}"
+case "$SYNC_INTERVAL_SECONDS" in
+  "" | *[!0-9]* | 0 | 0*)
+    echo "[first-seen-sync] Invalid SD_FIRST_SEEN_SYNC_INTERVAL_SECONDS value '$SYNC_INTERVAL_SECONDS', defaulting to 86400"
+    SYNC_INTERVAL_SECONDS=86400
+    ;;
+esac
 
 is_true() {
   local raw_value="$1"

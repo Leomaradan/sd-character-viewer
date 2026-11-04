@@ -334,6 +334,22 @@ docker compose up --build
 
 3. Open `http://localhost:3000`.
 
+### Unraid
+
+An Unraid template is provided in [`unraid/sd-character-viewer.xml`](unraid/sd-character-viewer.xml). It uses the published `leomaradan/sd-character-viewer:latest` image. To install it:
+
+1. Download the template to the Unraid flash drive, from the Unraid terminal:
+
+```bash
+wget -O /boot/config/plugins/dockerMan/templates-user/my-sd-character-viewer.xml \
+  https://raw.githubusercontent.com/Leomaradan/sd-character-viewer/main/unraid/sd-character-viewer.xml
+```
+
+2. In the **Docker** tab, click **Add Container** and pick **sd-character-viewer** in the **Template** list.
+3. Set **Images** to your images root (the folder containing `characters/`), and optionally **Extra images** (left empty, it's simply ignored), **Password**/**Password salt** and **Allow destructive actions**.
+
+The images folders are mapped read/write, because ratings, marks, renames, deletes and the [preview thumbnails](#preview-thumbnails) are written there. The cache defaults to `/mnt/user/appdata/sd-character-viewer/cache`.
+
 ## Filter Flow
 
 The left menu controls the major filter:
