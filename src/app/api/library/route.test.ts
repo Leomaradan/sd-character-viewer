@@ -1,4 +1,3 @@
-import { gunzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth", () => ({
@@ -60,41 +59,17 @@ describe("GET /api/library", () => {
     await expect(response.json()).resolves.toEqual(payload);
   });
 
-  it("gzips the payload when the client accepts it", async () => {
+  it("leaves compression to Next.js instead of encoding the body itself", async () => {
     vi.mocked(auth.isMisconfigured).mockReturnValue(false);
     vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
     const payload = { rootConfigured: true, images: [] } as unknown as ILibraryData;
     vi.mocked(readImageLibrary).mockResolvedValue(payload);
 
     const response = await GET(
-      new Request("http://localhost/api/library", {
-        headers: { "Accept-Encoding": "br, GZIP;q=0.8" },
-      }),
-    );
-
-    expect(response.headers.get("content-encoding")).toBe("gzip");
-    expect(response.headers.get("vary")).toBe("Accept-Encoding");
-    const body = gunzipSync(Buffer.from(await response.arrayBuffer())).toString("utf8");
-    expect(JSON.parse(body)).toEqual(payload);
-  });
-
-  it("sends plain JSON when the client doesn't accept gzip", async () => {
-    vi.mocked(auth.isMisconfigured).mockReturnValue(false);
-    vi.mocked(auth.isPasswordProtectionEnabled).mockReturnValue(false);
-    vi.mocked(readImageLibrary).mockResolvedValue({ images: [] } as unknown as ILibraryData);
-
-    const response = await GET(
-      new Request("http://localhost/api/library", { headers: { "Accept-Encoding": "br" } }),
+      new Request("http://localhost/api/library", { headers: { "Accept-Encoding": "gzip" } }),
     );
 
     expect(response.headers.get("content-encoding")).toBeNull();
-    expect(response.headers.get("content-type")).toBe("application/json");
-
-    const refused = await GET(
-      new Request("http://localhost/api/library", {
-        headers: { "Accept-Encoding": "br, gzip;q=0" },
-      }),
-    );
-    expect(refused.headers.get("content-encoding")).toBeNull();
+    await expect(response.json()).resolves.toEqual(payload);
   });
 });
