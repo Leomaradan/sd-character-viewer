@@ -84,6 +84,23 @@ describe("DuplicateFinderModal", () => {
     vi.unstubAllGlobals();
   });
 
+  it("hides whole groups holding a sensitive file when the content filter is on", async () => {
+    const sensitiveGroup = buildGroup("group-a", "Alice");
+    sensitiveGroup.images[1] = { ...sensitiveGroup.images[1], isSensitive: true };
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ groups: [sensitiveGroup, buildGroup("group-b", "Bob")] }),
+    } as Response);
+
+    const { rerender } = render(<DuplicateFinderModal open onClose={vi.fn()} hideSensitive />);
+
+    await screen.findByText(/Bob - Base/);
+    expect(screen.queryByText(/Alice - Base/)).not.toBeInTheDocument();
+
+    rerender(<DuplicateFinderModal open onClose={vi.fn()} />);
+    expect(await screen.findByText(/Alice - Base/)).toBeInTheDocument();
+  });
+
   it("ignores a stale response from a load started before the dialog was closed and reopened", async () => {
     const firstLoad = createDeferred<Response>();
     const secondLoad = createDeferred<Response>();

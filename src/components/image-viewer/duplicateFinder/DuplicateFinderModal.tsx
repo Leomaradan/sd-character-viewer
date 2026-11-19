@@ -112,6 +112,9 @@ interface IDuplicateFinderModalProps {
   styleLabel?: (style: string) => string;
   // Style the filter starts on each time the dialog opens ("" = all styles).
   initialStyle?: string;
+  // The app bar's content filter: groups holding a sensitive file aren't listed (whole groups,
+  // since validating a group deletes the files left unselected - hidden ones included).
+  hideSensitive?: boolean;
 }
 
 interface IGroupSelection {
@@ -346,8 +349,16 @@ export function DuplicateFinderModal({
   onChangesApplied,
   styleLabel = formatStyleLabel,
   initialStyle = "",
+  hideSensitive = false,
 }: Readonly<IDuplicateFinderModalProps>) {
-  const [groups, setGroups] = useState<IDuplicateGroup[]>([]);
+  const [loadedGroups, setGroups] = useState<IDuplicateGroup[]>([]);
+  const groups = useMemo(
+    () =>
+      hideSensitive
+        ? loadedGroups.filter((group) => !group.images.some((image) => image.isSensitive === true))
+        : loadedGroups,
+    [hideSensitive, loadedGroups],
+  );
   const [selections, setSelections] = useState<Record<string, IGroupSelection>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { SD_IMAGES_ROOT_ENV_KEY } from "@/lib/env-keys";
 import { buildExtraRootRelativePrefix } from "@/lib/extra-image-roots";
-import { getPoseFilterName, getPoseMatchName } from "@/lib/pose-name";
+import { getPoseFilterName, getPoseMatchName, splitAnimationPose } from "@/lib/pose-name";
 import {
   STYLES,
   type IAnimationConfig,
@@ -86,6 +86,7 @@ interface ILibraryConfig {
   animations?: unknown[];
   poses?: string[];
   specialPoses?: string[];
+  sensitivePoses?: string[];
 }
 
 interface IStyleConfig {
@@ -95,6 +96,7 @@ interface IStyleConfig {
   animations: IAnimationConfig[];
   standardPoses: string[];
   specialPoses: string[];
+  sensitivePoses: string[];
 }
 
 interface ICharacterAccumulator {
@@ -129,6 +131,7 @@ interface IPosePatternFilterConfig {
   label: string;
   pattern: string;
   flags?: string;
+  sensitive?: boolean;
 }
 
 export interface IReviewedDuplicateGroup {
@@ -170,6 +173,10 @@ const libraryConfigValidator = ajv.compile<ILibraryConfig>({
       type: "array",
       items: { type: "string" },
     },
+    sensitivePoses: {
+      type: "array",
+      items: { type: "string" },
+    },
   },
   additionalProperties: true,
 });
@@ -195,6 +202,7 @@ const posePatternFilterConfigValidator = ajv.compile<IPosePatternFilterConfig>({
     label: { type: "string" },
     pattern: { type: "string" },
     flags: { type: "string" },
+    sensitive: { type: "boolean" },
   },
   required: ["label", "pattern"],
   additionalProperties: true,
@@ -331,6 +339,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         animations: fallbackAnimations,
         standardPoses: [],
         specialPoses: [],
+        sensitivePoses: [],
       };
     }
 
@@ -341,6 +350,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       animations: fallbackAnimations,
       standardPoses: [],
       specialPoses: [],
+      sensitivePoses: [],
     };
   }
 
@@ -355,6 +365,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         animations: fallbackAnimations,
         standardPoses: [],
         specialPoses: [],
+        sensitivePoses: [],
       };
     }
 
@@ -367,6 +378,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
         animations: normalizeAnimationsConfig(parsedContent.animations),
         standardPoses: normalizeStandardPoses(parsedContent.poses),
         specialPoses: normalizeSpecialPoses(parsedContent.specialPoses, parsedContent.poses),
+        sensitivePoses: normalizeStandardPoses(parsedContent.sensitivePoses),
       };
     }
 
@@ -377,6 +389,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       animations: normalizeAnimationsConfig(parsedContent.animations),
       standardPoses: normalizeStandardPoses(parsedContent.poses),
       specialPoses: normalizeSpecialPoses(parsedContent.specialPoses, parsedContent.poses),
+      sensitivePoses: normalizeStandardPoses(parsedContent.sensitivePoses),
     };
   } catch {
     // Fallback to legacy defaults when config.json is malformed.
@@ -387,6 +400,7 @@ const readStyleConfig = async (rootPath: string): Promise<IStyleConfig> => {
       animations: fallbackAnimations,
       standardPoses: [],
       specialPoses: [],
+      sensitivePoses: [],
     };
   }
 };
@@ -523,6 +537,7 @@ const normalizePosePatternFilters = (
       label,
       pattern,
       flags: flags || undefined,
+      ...(filterConfig.sensitive === true ? { sensitive: true } : {}),
     });
   }
 
@@ -1156,6 +1171,43 @@ const applyPosePatternFilterIds = (
   }
 };
 
+// Flags the items the content filter hides (after applyPosePatternFilterIds): a match on a
+// pose-filters.json pattern marked `sensitive`, or a config.json "sensitivePoses" entry equal
+// (case-insensitively) to the pose, the whole name, or a video's animation part - so both
+// "Dancing (Casual)" and "Casual" videos are sensitive when "Casual" is listed, and the
+// former also when "Dancing" is.
+const applySensitiveFlags = (
+  imageItems: IImageItem[],
+  sensitivePoses: string[],
+  posePatternFilters: IPosePatternFilter[],
+): void => {
+  const sensitivePoseKeys = new Set(sensitivePoses.map((pose) => pose.toLowerCase()));
+  const sensitivePatternIds = new Set(
+    posePatternFilters.filter((filter) => filter.sensitive === true).map((filter) => filter.id),
+  );
+
+  for (const imageItem of imageItems) {
+    const matchName = getPoseMatchName(imageItem.poseName);
+    const candidates = [imageItem.poseFilterName, matchName];
+    if (imageItem.mediaType === "video") {
+      const animationPose = splitAnimationPose(matchName);
+      if (animationPose) {
+        candidates.push(animationPose.animation);
+      }
+    }
+
+    const isSensitive =
+      imageItem.posePatternFilterIds.some((filterId) => sensitivePatternIds.has(filterId)) ||
+      candidates.some((name) => sensitivePoseKeys.has(name.trim().toLowerCase()));
+
+    if (isSensitive) {
+      imageItem.isSensitive = true;
+    } else {
+      delete imageItem.isSensitive;
+    }
+  }
+};
+
 // Builds the character summaries' accumulators and the pose counts from the final, sorted item
 // list (after applyPosePatternFilterIds, which can change poseFilterName). Sorted order makes
 // the thumbnail choice deterministic - "Base.png" before "Base 2.png" - so a full rebuild and a
@@ -1186,6 +1238,7 @@ const createEmptyLibraryData = (
     animations: styleConfig?.animations ?? [],
     standardPoses: styleConfig?.standardPoses ?? [],
     specialPoses: styleConfig?.specialPoses ?? [],
+    sensitivePoses: styleConfig?.sensitivePoses ?? [],
     images: [],
     characters: [],
     poses: [],
@@ -1458,6 +1511,7 @@ const toLibraryData = (
     animations: styleConfig.animations,
     standardPoses: styleConfig.standardPoses,
     specialPoses: styleConfig.specialPoses,
+    sensitivePoses: styleConfig.sensitivePoses,
     images: state.imageItems,
     characters,
     poses,
@@ -1479,6 +1533,7 @@ const buildImageLibrary = async (): Promise<ILibraryData> => {
     animations: [],
     standardPoses: [],
     specialPoses: [],
+    sensitivePoses: [],
   };
 
   if (!rootPath) {
@@ -1549,6 +1604,11 @@ const buildImageLibrary = async (): Promise<ILibraryData> => {
 
   sortImageItems(indexState.imageItems);
   applyPosePatternFilterIds(indexState.imageItems, posePatternFilters);
+  applySensitiveFlags(
+    indexState.imageItems,
+    effectiveStyleConfig.sensitivePoses,
+    posePatternFilters,
+  );
   rebuildAggregates(indexState);
   await reconcilePendingAnimationMarks(
     rootPath,
@@ -1782,10 +1842,12 @@ const refreshRememberedLibrary = async (
     animations: library.animations,
     standardPoses: library.standardPoses,
     specialPoses: library.specialPoses,
+    sensitivePoses: library.sensitivePoses,
   };
 
   sortImageItems(state.imageItems);
   applyPosePatternFilterIds(state.imageItems, library.posePatternFilters);
+  applySensitiveFlags(state.imageItems, library.sensitivePoses, library.posePatternFilters);
   rebuildAggregates(state);
   // A rescanned folder can hold a video generated since the last full build; its folder is now
   // up to date in the snapshot, so this is its only chance to be matched with its mark.

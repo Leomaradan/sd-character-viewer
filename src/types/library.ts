@@ -37,6 +37,9 @@ export interface IImageItem {
   rating?: TRating;
   // True when an Upscale/Animate/Extend mark is waiting on the file; absent otherwise.
   hasPendingAction?: boolean;
+  // True when the pose is listed in config.json "sensitivePoses" or matches a pose-filters.json
+  // pattern flagged `sensitive`; hidden by the content filter. Absent otherwise.
+  isSensitive?: boolean;
 }
 
 export interface ICharacterSummary {
@@ -69,6 +72,8 @@ export interface IPosePatternFilter {
   label: string;
   pattern: string;
   flags?: string;
+  // Files matching this pattern are sensitive (hidden by the content filter).
+  sensitive?: boolean;
 }
 
 export interface IPoseFilterOption {
@@ -138,6 +143,8 @@ export interface ILibraryData {
   // config.json "specialPoses": poses that exist and count as conforming, but aren't offered as
   // rename targets in the Pose Conformity tool.
   specialPoses: string[];
+  // config.json "sensitivePoses": poses whose files the content filter hides.
+  sensitivePoses: string[];
   images: IImageItem[];
   characters: ICharacterSummary[];
   poses: IPoseSummary[];

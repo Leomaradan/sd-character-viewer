@@ -1107,6 +1107,7 @@ describe("readImageLibrary with characters metadata", () => {
       animations: [],
       standardPoses: [],
       specialPoses: [],
+      sensitivePoses: [],
       images: [
         {
           id: "cached",
@@ -1139,7 +1140,7 @@ describe("readImageLibrary with characters metadata", () => {
       cacheFilePath,
       `${JSON.stringify(
         {
-          version: 13,
+          version: 14,
           rootPath: path.resolve(tempRoot),
           generatedAt: Date.now(),
           configFiles: [],
@@ -3197,5 +3198,88 @@ describe("ratings", () => {
     expect(
       library.images.find((image) => image.relativePath.endsWith("/Jump.mp4")),
     ).not.toHaveProperty("hasPendingAction");
+  });
+});
+
+describe("readImageLibrary sensitive content", () => {
+  const setUpLibrary = async (name: string, config: unknown, poseFilters?: unknown) => {
+    const tempRoot = `/tmp/sd-sensitive-${name}`;
+    const characterDir = path.join(tempRoot, "characters", "3d", "Anna");
+    await fs.mkdir(characterDir, { recursive: true });
+    await Promise.all(
+      [
+        "Base.png",
+        "Casual 2 [Upscaled].png",
+        "Lingerie.png",
+        "Dancing (Casual).mp4",
+        "Undress (Base).mp4",
+        "With Zelda.png",
+      ].map((fileName) => fs.writeFile(path.join(characterDir, fileName), "")),
+    );
+    await fs.writeFile(path.join(tempRoot, "config.json"), JSON.stringify(config));
+    if (poseFilters !== undefined) {
+      await fs.writeFile(path.join(tempRoot, "pose-filters.json"), JSON.stringify(poseFilters));
+    }
+    process.env.SD_IMAGES_ROOT = tempRoot;
+    process.env.SD_CACHE_DIR = `/tmp/sd-sensitive-cache-${name}`;
+    return { characterDir };
+  };
+
+  const sensitiveFileNames = (library: ILibraryData) =>
+    library.images
+      .filter((image) => image.isSensitive === true)
+      .map((image) => image.relativePath.split("/").pop());
+
+  it("flags the files whose pose, whole name or animation is a sensitive pose", async () => {
+    await setUpLibrary("poses", {
+      styles: ["3d"],
+      sensitivePoses: [" lingerie ", "", "CASUAL", "Undress"],
+    });
+
+    const library = await readImageLibrary();
+
+    expect(library.sensitivePoses).toEqual(["lingerie", "CASUAL", "Undress"]);
+    expect(sensitiveFileNames(library)).toEqual([
+      "Casual 2 [Upscaled].png",
+      "Dancing (Casual).mp4",
+      "Lingerie.png",
+      "Undress (Base).mp4",
+    ]);
+    expect(
+      library.images.find((image) => image.relativePath.endsWith("/Base.png")),
+    ).not.toHaveProperty("isSensitive");
+  });
+
+  it("flags the files matching a pose-filters pattern marked sensitive", async () => {
+    await setUpLibrary("patterns", { styles: ["3d"] }, [
+      { label: "With Somebody", pattern: "^with ", flags: "i", sensitive: true },
+      { label: "Dances", pattern: "^dancing " },
+      { label: "Invalid flag", pattern: "^Base", sensitive: "yes" },
+    ]);
+
+    const library = await readImageLibrary();
+
+    expect(library.posePatternFilters).toEqual([
+      expect.objectContaining({ label: "With Somebody", sensitive: true }),
+      expect.not.objectContaining({ sensitive: expect.anything() }),
+    ]);
+    expect(library.sensitivePoses).toEqual([]);
+    expect(sensitiveFileNames(library)).toEqual(["With Zelda.png"]);
+  });
+
+  it("keeps the flags up to date after an in-app change", async () => {
+    const { characterDir } = await setUpLibrary("refresh", {
+      styles: ["3d"],
+      sensitivePoses: ["Lingerie"],
+    });
+    await readImageLibrary();
+
+    await fs.rename(path.join(characterDir, "Base.png"), path.join(characterDir, "Lingerie 2.png"));
+    await refreshLibraryAfterChange(["characters/3d/Anna/Base.png"]);
+
+    expect(sensitiveFileNames(await readImageLibrary())).toEqual([
+      "Lingerie.png",
+      "Lingerie 2.png",
+    ]);
   });
 });

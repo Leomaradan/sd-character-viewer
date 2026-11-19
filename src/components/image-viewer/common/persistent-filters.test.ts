@@ -5,6 +5,7 @@ import {
   metadataFilterIdToQueryChanges,
   normalizePoseFilters,
   parseCharacterSortOrder,
+  parseContentFilter,
   parseMediaTypeFilter,
   parseRatingFilter,
   parseWithActionFilter,
@@ -111,6 +112,15 @@ describe("persistent filters", () => {
       expect(parseWithActionFilter(new URLSearchParams("action=TRUE"))).toBe(true);
       expect(parseWithActionFilter(new URLSearchParams("action=0"))).toBe(false);
       expect(parseWithActionFilter(new URLSearchParams(""))).toBe(false);
+    });
+  });
+
+  describe("parseContentFilter", () => {
+    it("is on for enabled values only", () => {
+      expect(parseContentFilter(new URLSearchParams("safe=1"))).toBe(true);
+      expect(parseContentFilter(new URLSearchParams("safe=True"))).toBe(true);
+      expect(parseContentFilter(new URLSearchParams("safe=0"))).toBe(false);
+      expect(parseContentFilter(new URLSearchParams(""))).toBe(false);
     });
   });
 
